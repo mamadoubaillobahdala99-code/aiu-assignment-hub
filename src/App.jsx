@@ -603,7 +603,8 @@ function AssignmentTeacher({ classId, assignmentId, setScreen, showToast }) {
               return (
                 <>
                   <div className="field-label">Submitted answer</div>
-                  <div className="submission-box">{sub.content}</div>
+                  <div className="spellcheck-hint"><Highlighter size={12} /> Misspelled words appear underlined in red.</div>
+                  <textarea readOnly className="submission-box" value={sub.content} lang="en" spellCheck="true" />
                   <div className="sub-meta">
                     Submitted {new Date(sub.submitted_at).toLocaleString()}
                     {assignment.target_word_count ? ` · ${wordCount(sub.content)} / ${assignment.target_word_count} words` : ` · ${wordCount(sub.content)} words`}
@@ -937,6 +938,8 @@ function AssignmentStudent({ userId, classId, assignmentId, setScreen, showToast
         value={content}
         onChange={(e) => setContent(e.target.value)}
         disabled={locked}
+        lang="en"
+        spellCheck="true"
       />
       {(assignment.target_word_count || content.trim()) && (
         <div className={`word-count ${assignment.target_word_count && wordCount(content) >= assignment.target_word_count ? "met" : ""}`}>
@@ -1143,7 +1146,8 @@ body { margin: 0; }
 .roster-name { flex: 1; font-weight: 500; font-size: 14px; }
 .roster-date { font-size: 12px; color: var(--ink-soft); }
 
-.submission-box { background: var(--paper); border: 1px solid var(--line); border-radius: 8px; padding: 13px 15px; font-size: 13.5px; line-height: 1.55; white-space: pre-wrap; }
+.submission-box { background: var(--paper); border: 1px solid var(--line); border-radius: 8px; padding: 13px 15px; font-size: 13.5px; line-height: 1.55; white-space: pre-wrap; width: 100%; min-height: 130px; font-family: inherit; color: var(--ink); resize: vertical; }
+.spellcheck-hint { display: flex; align-items: center; gap: 5px; font-size: 11.5px; color: var(--ink-soft); margin-bottom: 6px; }
 .empty-inline { color: var(--ink-soft); font-size: 13.5px; font-style: italic; }
 
 .feedback-panel { background: var(--teal-soft); border: 1px solid var(--teal); border-radius: 10px; padding: 16px 18px; margin: 18px 0; }
