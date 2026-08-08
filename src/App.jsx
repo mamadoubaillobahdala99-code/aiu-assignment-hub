@@ -17,11 +17,14 @@ function makeCode() {
 }
 
 const TYPES = {
-  Reading: { icon: BookOpen, color: "var(--teal)" },
-  Listening: { icon: Headphones, color: "var(--teal)" },
-  Writing: { icon: PenLine, color: "var(--amber)" },
-  Speaking: { icon: Mic, color: "var(--amber)" },
-  Other: { icon: ListChecks, color: "var(--ink-soft)" },
+  Reading: { icon: BookOpen, color: "var(--teal)", timeLimit: 60, targetWords: null },
+  Listening: { icon: Headphones, color: "var(--teal)", timeLimit: 40, targetWords: null },
+  "Writing Task 1": { icon: PenLine, color: "var(--amber)", timeLimit: 20, targetWords: 150 },
+  "Writing Task 2": { icon: PenLine, color: "var(--amber)", timeLimit: 40, targetWords: 250 },
+  "Speaking Part 1": { icon: Mic, color: "var(--amber)", timeLimit: 5, targetWords: null },
+  "Speaking Part 2": { icon: Mic, color: "var(--amber)", timeLimit: 4, targetWords: null },
+  "Speaking Part 3": { icon: Mic, color: "var(--amber)", timeLimit: 5, targetWords: null },
+  Other: { icon: ListChecks, color: "var(--ink-soft)", timeLimit: null, targetWords: null },
 };
 
 function fmtDate(iso) {
@@ -38,6 +41,20 @@ function daysUntil(iso) {
 function wordCount(text) {
   const trimmed = (text || "").trim();
   return trimmed ? trimmed.split(/\s+/).length : 0;
+}
+function isPdfUrl(url) {
+  return /\.pdf(\?|$)/i.test(url || "");
+}
+function AttachmentPreview({ url }) {
+  if (!url) return null;
+  if (isPdfUrl(url)) {
+    return (
+      <a href={url} target="_blank" rel="noreferrer" className="pdf-attachment">
+        <FileText size={16} /> View attached PDF
+      </a>
+    );
+  }
+  return <img src={url} alt="Assignment attachment" className="asg-image" />;
 }
 
 export default function App() {
@@ -372,7 +389,14 @@ function AssignmentsTab({ classId, assignments, onCreated, onOpen }) {
     const file = e.target.files?.[0];
     if (!file) return;
     setImageFile(file);
-    setImagePreview(URL.createObjectURL(file));
+    setImagePreview(file.type.startsWith("image/") ? URL.createObjectURL(file) : null);
+  }
+
+  function selectType(t) {
+    setType(t);
+    const preset = TYPES[t];
+    setTimeLimit(preset?.timeLimit != null ? String(preset.timeLimit) : "");
+    setTargetWords(preset?.targetWords != null ? String(preset.targetWords) : "");
   }
 
   async function create() {
@@ -437,9 +461,10 @@ function AssignmentsTab({ classId, assignments, onCreated, onOpen }) {
           <label className="field-label" style={{ marginTop: 14 }}>Type</label>
           <div className="type-row">
             {Object.keys(TYPES).map((t) => (
-              <button key={t} className={`type-chip ${type === t ? "active" : ""}`} onClick={() => setType(t)}>{t}</button>
+              <button key={t} className={`type-chip ${type === t ? "active" : ""}`} onClick={() => selectType(t)}>{t}</button>
             ))}
           </div>
+          <p className="field-hint">Click a skill and the time limit + word target below fill in automatically — feel free to adjust them.</p>
 
           <label className="field-label" style={{ marginTop: 14 }}>Instructions</label>
           <textarea className="field-input textarea" placeholder="Task instructions, prompt text, or a link to the material…" value={description} onChange={(e) => setDescription(e.target.value)} />
@@ -469,10 +494,13 @@ function AssignmentsTab({ classId, assignments, onCreated, onOpen }) {
           />
           <p className="field-hint">Students see a live word counter that turns green once they reach this target.</p>
 
-          <label className="field-label" style={{ marginTop: 14 }}>Attach an image (optional)</label>
-          <p className="field-hint" style={{ marginTop: 0, marginBottom: 8 }}>Perfect for a Writing Task 1 chart, graph, or table — students will see it above the instructions.</p>
-          <input type="file" accept="image/*" className="field-input" onChange={pickImage} style={{ padding: 8 }} />
-          {imagePreview && <img src={imagePreview} alt="Preview" className="image-preview" />}
+          <label className="field-label" style={{ marginTop: 14 }}>Attach an image or PDF (fully optional)</label>
+          <p className="field-hint" style={{ marginTop: 0, marginBottom: 8 }}>Only if you want to — perfect for a Writing Task 1 chart, a scanned Reading passage, or any reference material. Skip it entirely for a text-only task.</p>
+          <input type="file" accept="image/*,application/pdf" className="field-input" onChange={pickImage} style={{ padding: 8 }} />
+          {imageFile && imagePreview && <img src={imagePreview} alt="Preview" className="image-preview" />}
+          {imageFile && !imagePreview && (
+            <div className="file-chip"><FileText size={14} /> {imageFile.name}</div>
+          )}
           {uploadPct !== null && <div className="field-hint">Uploading…</div>}
 
           <button className="btn-primary" style={{ marginTop: 16 }} disabled={!title.trim() || busy} onClick={create}>
@@ -569,7 +597,7 @@ function AssignmentTeacher({ classId, assignmentId, setScreen, showToast }) {
           <div className="asg-due"><Clock size={13} /> Due {fmtDate(assignment.due_date)}</div>
         </div>
       </div>
-      {assignment.image_url && <img src={assignment.image_url} alt="Assignment attachment" className="asg-image" />}
+      <AttachmentPreview url={assignment.image_url} />
       {assignment.description && <p className="asg-desc">{assignment.description}</p>}
 
       <h3 className="section-title">Submissions</h3>
@@ -901,7 +929,7 @@ function AssignmentStudent({ userId, classId, assignmentId, setScreen, showToast
           <div className="asg-due"><Clock size={13} /> Due {fmtDate(assignment.due_date)}</div>
         </div>
       </div>
-      {assignment.image_url && <img src={assignment.image_url} alt="Assignment attachment" className="asg-image" />}
+      <AttachmentPreview url={assignment.image_url} />
       {assignment.description && (
         assignment.type === "Reading"
           ? <ReadingPassage assignmentId={assignmentId} userId={userId} text={assignment.description} />
@@ -1126,6 +1154,9 @@ body { margin: 0; }
 .asg-due { display: flex; align-items: center; gap: 5px; font-size: 12.5px; color: var(--ink-soft); }
 .asg-desc { color: var(--ink-soft); font-size: 14px; line-height: 1.6; margin: 14px 0 0; padding: 14px 16px; background: var(--paper-raised); border-radius: 8px; border: 1px solid var(--line); white-space: pre-wrap; }
 .asg-image { max-width: 100%; border-radius: 10px; border: 1px solid var(--line); margin: 14px 0 0; display: block; }
+.pdf-attachment { display: inline-flex; align-items: center; gap: 7px; margin: 14px 0 0; padding: 10px 14px; background: var(--teal-soft); color: var(--teal); border-radius: 8px; font-size: 13px; font-weight: 600; text-decoration: none; }
+.pdf-attachment:hover { opacity: 0.85; }
+.file-chip { display: inline-flex; align-items: center; gap: 6px; margin-top: 10px; padding: 7px 12px; background: var(--paper-raised); border: 1px solid var(--line); border-radius: 20px; font-size: 12.5px; color: var(--ink-soft); }
 .image-preview { max-width: 100%; max-height: 160px; border-radius: 8px; border: 1px solid var(--line); margin-top: 10px; }
 
 .reading-passage { margin-top: 14px; }
