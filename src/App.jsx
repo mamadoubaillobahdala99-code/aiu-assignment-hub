@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import {
   BookOpen, Users, Plus, Check, Clock, AlertTriangle, LogOut,
   GraduationCap, FileText, ChevronRight, X, Copy, CheckCircle2,
-  Headphones, PenLine, Mic, ListChecks, ArrowLeft, Loader2, Timer
+  Headphones, PenLine, Mic, ListChecks, ArrowLeft, Loader2, Timer, Highlighter
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
 
@@ -363,11 +363,38 @@ function AssignmentsTab({ classId, assignments, onCreated, onOpen }) {
   const [dueDate, setDueDate] = useState("");
   const [timeLimit, setTimeLimit] = useState("");
   const [targetWords, setTargetWords] = useState("");
+  const [imageFile, setImageFile] = useState(null);
+  const [imagePreview, setImagePreview] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [uploadPct, setUploadPct] = useState(null);
+
+  function pickImage(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImageFile(file);
+    setImagePreview(URL.createObjectURL(file));
+  }
 
   async function create() {
     if (!title.trim()) return;
     setBusy(true);
+
+    let image_url = null;
+    if (imageFile) {
+      setUploadPct(0);
+      const ext = imageFile.name.split(".").pop();
+      const path = `${classId}/${uid("img")}.${ext}`;
+      const { error: uploadError } = await supabase.storage.from("assignment-files").upload(path, imageFile);
+      setUploadPct(null);
+      if (uploadError) {
+        setBusy(false);
+        alert("Image upload failed: " + uploadError.message);
+        return;
+      }
+      const { data: pub } = supabase.storage.from("assignment-files").getPublicUrl(path);
+      image_url = pub.publicUrl;
+    }
+
     const { error } = await supabase.from("assignments").insert({
       class_id: classId,
       title: title.trim(),
@@ -376,11 +403,13 @@ function AssignmentsTab({ classId, assignments, onCreated, onOpen }) {
       due_date: dueDate || null,
       time_limit_minutes: timeLimit ? parseInt(timeLimit, 10) : null,
       target_word_count: targetWords ? parseInt(targetWords, 10) : null,
+      image_url,
     });
     setBusy(false);
     if (error) return;
     setShowCreate(false);
     setTitle(""); setDescription(""); setDueDate(""); setType("Reading"); setTimeLimit(""); setTargetWords("");
+    setImageFile(null); setImagePreview(null);
     onCreated();
   }
 
@@ -439,6 +468,12 @@ function AssignmentsTab({ classId, assignments, onCreated, onOpen }) {
             onChange={(e) => setTargetWords(e.target.value)}
           />
           <p className="field-hint">Students see a live word counter that turns green once they reach this target.</p>
+
+          <label className="field-label" style={{ marginTop: 14 }}>Attach an image (optional)</label>
+          <p className="field-hint" style={{ marginTop: 0, marginBottom: 8 }}>Perfect for a Writing Task 1 chart, graph, or table — students will see it above the instructions.</p>
+          <input type="file" accept="image/*" className="field-input" onChange={pickImage} style={{ padding: 8 }} />
+          {imagePreview && <img src={imagePreview} alt="Preview" className="image-preview" />}
+          {uploadPct !== null && <div className="field-hint">Uploading…</div>}
 
           <button className="btn-primary" style={{ marginTop: 16 }} disabled={!title.trim() || busy} onClick={create}>
             {busy ? "Posting…" : "Post assignment"}
@@ -534,6 +569,7 @@ function AssignmentTeacher({ classId, assignmentId, setScreen, showToast }) {
           <div className="asg-due"><Clock size={13} /> Due {fmtDate(assignment.due_date)}</div>
         </div>
       </div>
+      {assignment.image_url && <img src={assignment.image_url} alt="Assignment attachment" className="asg-image" />}
       {assignment.description && <p className="asg-desc">{assignment.description}</p>}
 
       <h3 className="section-title">Submissions</h3>
@@ -697,6 +733,64 @@ function StudentHome({ userId, setScreen, showToast }) {
 }
 
 // ---------- Student: assignment detail (submit) ----------
+// ---------- Reading passage with click-to-highlight ----------
+function ReadingPassage({ assignmentId, userId, text }) {
+  const [highlighted, setHighlighted] = useState(new Set());
+  const [loaded, setLoaded] = useState(false);
+
+  // split into tokens, keeping whitespace as separate tokens so layout stays natural
+  const tokens = React.useMemo(() => text.split(/(\s+)/), [text]);
+
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase
+        .from("reading_highlights")
+        .select("word_indices")
+        .eq("assignment_id", assignmentId)
+        .eq("student_id", userId)
+        .maybeSingle();
+      setHighlighted(new Set(data?.word_indices || []));
+      setLoaded(true);
+    })();
+  }, [assignmentId, userId]);
+
+  async function persist(nextSet) {
+    await supabase.from("reading_highlights").upsert(
+      { assignment_id: assignmentId, student_id: userId, word_indices: Array.from(nextSet), updated_at: new Date().toISOString() },
+      { onConflict: "assignment_id,student_id" }
+    );
+  }
+
+  function toggleWord(i) {
+    setHighlighted((prev) => {
+      const next = new Set(prev);
+      if (next.has(i)) next.delete(i);
+      else next.add(i);
+      persist(next);
+      return next;
+    });
+  }
+
+  if (!loaded) return <div className="asg-desc"><Loader2 className="spin" size={14} /></div>;
+
+  return (
+    <div className="reading-passage">
+      <div className="reading-hint"><Highlighter size={13} /> Click any word to highlight it while you read.</div>
+      <p className="asg-desc reading-text">
+        {tokens.map((tok, i) =>
+          /^\s+$/.test(tok) ? (
+            tok
+          ) : (
+            <span key={i} className={`hl-word ${highlighted.has(i) ? "hl-active" : ""}`} onClick={() => toggleWord(i)}>
+              {tok}
+            </span>
+          )
+        )}
+      </p>
+    </div>
+  );
+}
+
 function AssignmentStudent({ userId, classId, assignmentId, setScreen, showToast }) {
   const [assignment, setAssignment] = useState(null);
   const [mySub, setMySub] = useState(null);
@@ -806,7 +900,12 @@ function AssignmentStudent({ userId, classId, assignmentId, setScreen, showToast
           <div className="asg-due"><Clock size={13} /> Due {fmtDate(assignment.due_date)}</div>
         </div>
       </div>
-      {assignment.description && <p className="asg-desc">{assignment.description}</p>}
+      {assignment.image_url && <img src={assignment.image_url} alt="Assignment attachment" className="asg-image" />}
+      {assignment.description && (
+        assignment.type === "Reading"
+          ? <ReadingPassage assignmentId={assignmentId} userId={userId} text={assignment.description} />
+          : <p className="asg-desc">{assignment.description}</p>
+      )}
 
       {isTimed && !alreadySubmitted && (
         <div className={`timer-panel ${urgent ? "urgent" : ""}`}>
@@ -1023,6 +1122,15 @@ body { margin: 0; }
 .asg-title { font-family: 'Fraunces', serif; font-size: 24px; font-weight: 600; margin: 0 0 6px; }
 .asg-due { display: flex; align-items: center; gap: 5px; font-size: 12.5px; color: var(--ink-soft); }
 .asg-desc { color: var(--ink-soft); font-size: 14px; line-height: 1.6; margin: 14px 0 0; padding: 14px 16px; background: var(--paper-raised); border-radius: 8px; border: 1px solid var(--line); white-space: pre-wrap; }
+.asg-image { max-width: 100%; border-radius: 10px; border: 1px solid var(--line); margin: 14px 0 0; display: block; }
+.image-preview { max-width: 100%; max-height: 160px; border-radius: 8px; border: 1px solid var(--line); margin-top: 10px; }
+
+.reading-passage { margin-top: 14px; }
+.reading-hint { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--teal); font-weight: 600; margin-bottom: 8px; }
+.reading-text { cursor: default; }
+.hl-word { cursor: pointer; border-radius: 3px; padding: 0 1px; transition: background .1s; }
+.hl-word:hover { background: rgba(14,107,92,0.12); }
+.hl-word.hl-active { background: var(--amber-soft); color: var(--ink); box-shadow: 0 0 0 1px var(--amber); }
 
 .sub-list { display: flex; flex-direction: column; gap: 8px; }
 .sub-row { display: flex; align-items: center; gap: 11px; background: var(--paper-raised); border: 1px solid var(--line); border-radius: 9px; padding: 11px 14px; cursor: pointer; transition: border-color .15s; }
