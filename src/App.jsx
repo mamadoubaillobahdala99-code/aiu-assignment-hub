@@ -35,6 +35,10 @@ function daysUntil(iso) {
   const due = new Date(iso);
   return Math.ceil((due - now) / (1000 * 60 * 60 * 24));
 }
+function wordCount(text) {
+  const trimmed = (text || "").trim();
+  return trimmed ? trimmed.split(/\s+/).length : 0;
+}
 
 export default function App() {
   const [loading, setLoading] = useState(true);
@@ -358,6 +362,7 @@ function AssignmentsTab({ classId, assignments, onCreated, onOpen }) {
   const [description, setDescription] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [timeLimit, setTimeLimit] = useState("");
+  const [targetWords, setTargetWords] = useState("");
   const [busy, setBusy] = useState(false);
 
   async function create() {
@@ -370,11 +375,12 @@ function AssignmentsTab({ classId, assignments, onCreated, onOpen }) {
       description: description.trim(),
       due_date: dueDate || null,
       time_limit_minutes: timeLimit ? parseInt(timeLimit, 10) : null,
+      target_word_count: targetWords ? parseInt(targetWords, 10) : null,
     });
     setBusy(false);
     if (error) return;
     setShowCreate(false);
-    setTitle(""); setDescription(""); setDueDate(""); setType("Reading"); setTimeLimit("");
+    setTitle(""); setDescription(""); setDueDate(""); setType("Reading"); setTimeLimit(""); setTargetWords("");
     onCreated();
   }
 
@@ -422,6 +428,17 @@ function AssignmentsTab({ classId, assignments, onCreated, onOpen }) {
             onChange={(e) => setTimeLimit(e.target.value)}
           />
           <p className="field-hint">If set, the countdown starts the moment the student opens this assignment — just like the real IELTS test.</p>
+
+          <label className="field-label" style={{ marginTop: 14 }}>Target word count (optional)</label>
+          <input
+            type="number"
+            min="1"
+            className="field-input"
+            placeholder="e.g. 250 (Writing Task 2) — leave empty to skip"
+            value={targetWords}
+            onChange={(e) => setTargetWords(e.target.value)}
+          />
+          <p className="field-hint">Students see a live word counter that turns green once they reach this target.</p>
 
           <button className="btn-primary" style={{ marginTop: 16 }} disabled={!title.trim() || busy} onClick={create}>
             {busy ? "Posting…" : "Post assignment"}
@@ -551,7 +568,10 @@ function AssignmentTeacher({ classId, assignmentId, setScreen, showToast }) {
                 <>
                   <div className="field-label">Submitted answer</div>
                   <div className="submission-box">{sub.content}</div>
-                  <div className="sub-meta">Submitted {new Date(sub.submitted_at).toLocaleString()}</div>
+                  <div className="sub-meta">
+                    Submitted {new Date(sub.submitted_at).toLocaleString()}
+                    {assignment.target_word_count ? ` · ${wordCount(sub.content)} / ${assignment.target_word_count} words` : ` · ${wordCount(sub.content)} words`}
+                  </div>
                 </>
               );
             }
@@ -819,6 +839,11 @@ function AssignmentStudent({ userId, classId, assignmentId, setScreen, showToast
         onChange={(e) => setContent(e.target.value)}
         disabled={locked}
       />
+      {(assignment.target_word_count || content.trim()) && (
+        <div className={`word-count ${assignment.target_word_count && wordCount(content) >= assignment.target_word_count ? "met" : ""}`}>
+          {wordCount(content)} {assignment.target_word_count ? `/ ${assignment.target_word_count} words` : "words"}
+        </div>
+      )}
       {!locked && (
         <button className="btn-primary" style={{ marginTop: 12 }} disabled={!content.trim() || busy} onClick={submit}>
           {busy ? "Submitting…" : isTimed ? "Submit now" : mySub?.submitted_at ? "Resubmit" : "Submit"}
@@ -975,6 +1000,9 @@ body { margin: 0; }
 .due-badge.timed { background: var(--sidebar); color: #fff; }
 
 .field-hint { font-size: 12px; color: var(--ink-soft); margin: 6px 0 0; line-height: 1.5; }
+
+.word-count { display: inline-flex; align-items: center; font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 500; color: var(--ink-soft); background: var(--paper-raised); border: 1px solid var(--line); padding: 5px 10px; border-radius: 20px; margin-top: 8px; }
+.word-count.met { color: var(--teal); background: var(--teal-soft); border-color: var(--teal); }
 
 .timer-panel { display: flex; align-items: center; gap: 12px; background: var(--sidebar); color: #fff; border-radius: 10px; padding: 14px 18px; margin: 16px 0; }
 .timer-panel.urgent { background: var(--rose); animation: pulse 1s infinite; }
