@@ -21,9 +21,7 @@ const TYPES = {
   Listening: { icon: Headphones, color: "var(--teal)", timeLimit: 40, targetWords: null },
   "Writing Task 1": { icon: PenLine, color: "var(--amber)", timeLimit: 20, targetWords: 150 },
   "Writing Task 2": { icon: PenLine, color: "var(--amber)", timeLimit: 40, targetWords: 250 },
-  "Speaking Part 1": { icon: Mic, color: "var(--amber)", timeLimit: 5, targetWords: null },
-  "Speaking Part 2": { icon: Mic, color: "var(--amber)", timeLimit: 4, targetWords: null },
-  "Speaking Part 3": { icon: Mic, color: "var(--amber)", timeLimit: 5, targetWords: null },
+  Speaking: { icon: Mic, color: "var(--amber)", timeLimit: null, targetWords: null },
   Other: { icon: ListChecks, color: "var(--ink-soft)", timeLimit: null, targetWords: null },
 };
 
@@ -382,6 +380,7 @@ function AssignmentsTab({ classId, assignments, onCreated, onOpen }) {
   const [targetWords, setTargetWords] = useState("");
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
+  const [fileInputKey, setFileInputKey] = useState(0);
   const [busy, setBusy] = useState(false);
   const [uploadPct, setUploadPct] = useState(null);
 
@@ -390,6 +389,12 @@ function AssignmentsTab({ classId, assignments, onCreated, onOpen }) {
     if (!file) return;
     setImageFile(file);
     setImagePreview(file.type.startsWith("image/") ? URL.createObjectURL(file) : null);
+  }
+
+  function removeImage() {
+    setImageFile(null);
+    setImagePreview(null);
+    setFileInputKey((k) => k + 1); // remounts the <input type="file"> so it forgets the old selection
   }
 
   function selectType(t) {
@@ -433,7 +438,7 @@ function AssignmentsTab({ classId, assignments, onCreated, onOpen }) {
     if (error) return;
     setShowCreate(false);
     setTitle(""); setDescription(""); setDueDate(""); setType("Reading"); setTimeLimit(""); setTargetWords("");
-    setImageFile(null); setImagePreview(null);
+    setImageFile(null); setImagePreview(null); setFileInputKey((k) => k + 1);
     onCreated();
   }
 
@@ -496,10 +501,18 @@ function AssignmentsTab({ classId, assignments, onCreated, onOpen }) {
 
           <label className="field-label" style={{ marginTop: 14 }}>Attach an image or PDF (fully optional)</label>
           <p className="field-hint" style={{ marginTop: 0, marginBottom: 8 }}>Only if you want to — perfect for a Writing Task 1 chart, a scanned Reading passage, or any reference material. Skip it entirely for a text-only task.</p>
-          <input type="file" accept="image/*,application/pdf" className="field-input" onChange={pickImage} style={{ padding: 8 }} />
-          {imageFile && imagePreview && <img src={imagePreview} alt="Preview" className="image-preview" />}
+          <input key={fileInputKey} type="file" accept="image/*,application/pdf" className="field-input" onChange={pickImage} style={{ padding: 8 }} />
+          {imageFile && imagePreview && (
+            <div className="file-preview-row">
+              <img src={imagePreview} alt="Preview" className="image-preview" />
+              <button type="button" className="btn-ghost remove-file" onClick={removeImage}><X size={13} /> Remove</button>
+            </div>
+          )}
           {imageFile && !imagePreview && (
-            <div className="file-chip"><FileText size={14} /> {imageFile.name}</div>
+            <div className="file-preview-row">
+              <div className="file-chip"><FileText size={14} /> {imageFile.name}</div>
+              <button type="button" className="btn-ghost remove-file" onClick={removeImage}><X size={13} /> Remove</button>
+            </div>
           )}
           {uploadPct !== null && <div className="field-hint">Uploading…</div>}
 
@@ -1157,6 +1170,8 @@ body { margin: 0; }
 .pdf-attachment { display: inline-flex; align-items: center; gap: 7px; margin: 14px 0 0; padding: 10px 14px; background: var(--teal-soft); color: var(--teal); border-radius: 8px; font-size: 13px; font-weight: 600; text-decoration: none; }
 .pdf-attachment:hover { opacity: 0.85; }
 .file-chip { display: inline-flex; align-items: center; gap: 6px; margin-top: 10px; padding: 7px 12px; background: var(--paper-raised); border: 1px solid var(--line); border-radius: 20px; font-size: 12.5px; color: var(--ink-soft); }
+.file-preview-row { display: flex; align-items: center; gap: 12px; margin-top: 10px; flex-wrap: wrap; }
+.remove-file { padding: 6px 10px; font-size: 11.5px; color: var(--rose); }
 .image-preview { max-width: 100%; max-height: 160px; border-radius: 8px; border: 1px solid var(--line); margin-top: 10px; }
 
 .reading-passage { margin-top: 14px; }
