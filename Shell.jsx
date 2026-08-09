@@ -1,6 +1,7 @@
 import React from "react";
 import { BookOpen, Users, Plus, Check, Clock, AlertTriangle, LogOut, GraduationCap, FileText, ChevronRight, X, Copy, CheckCircle2, Headphones, PenLine, Mic, ListChecks, ArrowLeft, Loader2, Timer, Highlighter } from "lucide-react";
 import { TeacherHome } from "./features/assignment-hub/TeacherHome";
+import { TeacherDashboard } from "./features/assignment-hub/TeacherDashboard";
 import { ClassDetail } from "./features/assignment-hub/ClassDetail";
 import { AssignmentTeacher } from "./features/assignment-hub/AssignmentTeacher";
 import { JoinClass } from "./features/assignment-hub/JoinClass";
@@ -26,6 +27,11 @@ export function Shell({ profile, userId, onSignOut, screen, setScreen, showToast
         </div>
 
         <nav className="nav">
+          {isTeacher && (
+            <button className={`nav-item ${screen.name === "dashboard" ? "active" : ""}`} onClick={() => setScreen({ name: "dashboard" })}>
+              <Timer size={17} /> Dashboard
+            </button>
+          )}
           <button className={`nav-item ${screen.name === "home" ? "active" : ""}`} onClick={() => setScreen({ name: "home" })}>
             {isTeacher ? <BookOpen size={17} /> : <ListChecks size={17} />}
             {isTeacher ? "My classes" : "My assignments"}
@@ -43,6 +49,7 @@ export function Shell({ profile, userId, onSignOut, screen, setScreen, showToast
       </aside>
 
       <main className="main">
+        {screen.name === "dashboard" && isTeacher && <TeacherDashboard userId={userId} setScreen={setScreen} />}
         {screen.name === "home" && isTeacher && <TeacherHome userId={userId} setScreen={setScreen} showToast={showToast} />}
         {screen.name === "home" && !isTeacher && <StudentHome userId={userId} setScreen={setScreen} showToast={showToast} />}
         {screen.name === "join" && !isTeacher && <JoinClass userId={userId} setScreen={setScreen} showToast={showToast} />}
