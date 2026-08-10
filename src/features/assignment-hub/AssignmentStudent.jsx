@@ -13,7 +13,9 @@ export function AssignmentStudent({ userId, classId, assignmentId, setScreen, sh
   const [initializing, setInitializing] = useState(true);
   const [remainingSec, setRemainingSec] = useState(null);
   const [imgZoom, setImgZoom] = useState(1);
+  const [saveState, setSaveState] = useState("idle"); // idle | saving | saved
   const autoSubmitted = React.useRef(false);
+  const lastSavedRef = React.useRef("");
 
   const isTimed = !!assignment?.time_limit_minutes;
   const alreadySubmitted = !!mySub?.submitted_at;
@@ -37,6 +39,7 @@ export function AssignmentStudent({ userId, classId, assignmentId, setScreen, sh
 
     setMySub(sub || null);
     setContent(sub?.content || "");
+    lastSavedRef.current = sub?.content || "";
     setInitializing(false);
   }, [assignmentId, userId]);
 
@@ -73,6 +76,29 @@ export function AssignmentStudent({ userId, classId, assignmentId, setScreen, sh
       load();
     })();
   }, [remainingSec, isTimed, alreadySubmitted]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Autosave for Writing: saves a few seconds after the student stops typing.
+  // Uses the same submissions row (unique per assignment+student), so it
+  // never creates a duplicate — and never touches submitted_at or grade.
+  const isWritingType = assignment?.type === "Writing Task 1" || assignment?.type === "Writing Task 2";
+  useEffect(() => {
+    if (!isWritingType || alreadySubmitted || initializing) return;
+    if (content === lastSavedRef.current) return;
+    const t = setTimeout(async () => {
+      setSaveState("saving");
+      const { error } = await supabase
+        .from("submissions")
+        .upsert({ assignment_id: assignmentId, student_id: userId, content }, { onConflict: "assignment_id,student_id" });
+      if (!error) {
+        lastSavedRef.current = content;
+        setSaveState("saved");
+        setTimeout(() => setSaveState("idle"), 1500);
+      } else {
+        setSaveState("idle");
+      }
+    }, 2500);
+    return () => clearTimeout(t);
+  }, [content, isWritingType, alreadySubmitted, initializing, assignmentId, userId]);
 
   async function submit() {
     if (!content.trim()) return;
@@ -194,6 +220,9 @@ export function AssignmentStudent({ userId, classId, assignmentId, setScreen, sh
             />
             <div className="wf-footer">
               {wordCountBadge}
+              {saveState !== "idle" && (
+                <div className="wf-save-indicator">{saveState === "saving" ? "Saving…" : "Saved"}</div>
+              )}
               {submitButton}
             </div>
             {submittedMeta}
