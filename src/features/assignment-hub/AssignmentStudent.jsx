@@ -12,6 +12,7 @@ export function AssignmentStudent({ userId, classId, assignmentId, setScreen, sh
   const [busy, setBusy] = useState(false);
   const [initializing, setInitializing] = useState(true);
   const [remainingSec, setRemainingSec] = useState(null);
+  const [imgZoom, setImgZoom] = useState(1);
   const autoSubmitted = React.useRef(false);
 
   const isTimed = !!assignment?.time_limit_minutes;
@@ -139,7 +140,28 @@ export function AssignmentStudent({ userId, classId, assignmentId, setScreen, sh
         <div className={`wf-body ${assignment.image_url ? "with-image" : ""}`}>
           {assignment.image_url && (
             <div className="wf-image-panel">
-              <AttachmentPreview url={assignment.image_url} />
+              {isPdfUrl(assignment.image_url) ? (
+                <AttachmentPreview url={assignment.image_url} />
+              ) : (
+                <>
+                  <div className="wf-zoom-controls">
+                    <button type="button" className="wf-zoom-btn" onClick={() => setImgZoom((z) => Math.max(0.5, +(z - 0.15).toFixed(2)))}>−</button>
+                    <span className="wf-zoom-level">{Math.round(imgZoom * 100)}%</span>
+                    <button type="button" className="wf-zoom-btn" onClick={() => setImgZoom((z) => Math.min(3, +(z + 0.15).toFixed(2)))}>+</button>
+                    {imgZoom !== 1 && (
+                      <button type="button" className="wf-zoom-reset" onClick={() => setImgZoom(1)}>Reset</button>
+                    )}
+                  </div>
+                  <div className="wf-image-scroll">
+                    <img
+                      src={assignment.image_url}
+                      alt="Assignment attachment"
+                      className="wf-zoomable-image"
+                      style={{ transform: `scale(${imgZoom})` }}
+                    />
+                  </div>
+                </>
+              )}
             </div>
           )}
 
