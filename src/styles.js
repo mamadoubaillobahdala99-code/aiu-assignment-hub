@@ -252,6 +252,7 @@ body { margin: 0; }
 .wf-textarea { flex: 1; min-height: 46vh; width: 100%; padding: 20px 22px; border: 1px solid var(--line); border-radius: 10px; background: #fff; font-family: inherit; font-size: 16px; line-height: 1.7; color: var(--ink); outline: none; resize: vertical; }
 .wf-textarea:focus { border-color: var(--teal); }
 .wf-footer { display: flex; align-items: center; justify-content: space-between; margin-top: 12px; gap: 12px; flex-wrap: wrap; }
+.wf-save-indicator { font-size: 11.5px; color: var(--ink-soft); font-style: italic; }
 
 @media (max-width: 800px) {
   .wf-body { flex-direction: column; padding: 18px; }
