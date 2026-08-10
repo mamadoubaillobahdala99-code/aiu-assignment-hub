@@ -134,9 +134,9 @@ export function AssignmentsTab({ classId, assignments, onCreated, onOpen }) {
           />
           <p className="field-hint">Students see a live word counter that turns green once they reach this target.</p>
 
-          <label className="field-label" style={{ marginTop: 14 }}>Attach an image or PDF (fully optional)</label>
-          <p className="field-hint" style={{ marginTop: 0, marginBottom: 8 }}>Only if you want to — perfect for a Writing Task 1 chart, a scanned Reading passage, or any reference material. Skip it entirely for a text-only task.</p>
-          <input key={fileInputKey} type="file" accept="image/*,application/pdf" className="field-input" onChange={pickImage} style={{ padding: 8 }} />
+          <label className="field-label" style={{ marginTop: 14 }}>Attach an image, PDF, or audio file (fully optional)</label>
+          <p className="field-hint" style={{ marginTop: 0, marginBottom: 8 }}>Only if you want to — perfect for a Writing Task 1 chart, a scanned Reading passage, a Listening audio clip, or any reference material. Skip it entirely for a text-only task.</p>
+          <input key={fileInputKey} type="file" accept="image/*,application/pdf,audio/*" className="field-input" onChange={pickImage} style={{ padding: 8 }} />
           {imageFile && imagePreview && (
             <div className="file-preview-row">
               <img src={imagePreview} alt="Preview" className="image-preview" />
