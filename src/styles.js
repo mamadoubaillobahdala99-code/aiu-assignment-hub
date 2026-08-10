@@ -233,17 +233,23 @@ body { margin: 0; }
   background: var(--paper-raised); flex-shrink: 0;
 }
 .wf-title-group { text-align: center; flex: 1; min-width: 0; }
-.wf-title { font-family: 'Fraunces', serif; font-size: 16px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wf-title { font-family: 'Fraunces', serif; font-size: 17px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .wf-timer { display: flex; align-items: center; gap: 6px; font-family: 'IBM Plex Mono', monospace; font-size: 14px; font-weight: 600; color: var(--teal); background: var(--teal-soft); padding: 6px 12px; border-radius: 20px; white-space: nowrap; }
 .wf-timer.urgent { color: #fff; background: var(--rose); animation: pulse 1s infinite; }
 
-.wf-body { flex: 1; display: flex; gap: 28px; padding: 28px; max-width: 1100px; margin: 0 auto; width: 100%; align-items: flex-start; }
+.wf-body { flex: 1; display: flex; gap: 28px; padding: 28px; max-width: 1200px; margin: 0 auto; width: 100%; align-items: flex-start; }
 .wf-body.with-image { align-items: stretch; }
-.wf-image-panel { flex: 0 0 38%; max-width: 420px; position: sticky; top: 28px; }
-.wf-image-panel .asg-image { margin-top: 0; max-height: 70vh; object-fit: contain; }
+.wf-image-panel { flex: 0 0 44%; max-width: 540px; display: flex; flex-direction: column; gap: 8px; position: sticky; top: 28px; }
+.wf-zoom-controls { display: flex; align-items: center; gap: 6px; align-self: flex-start; background: var(--paper-raised); border: 1px solid var(--line); border-radius: 8px; padding: 5px 8px; }
+.wf-zoom-btn { width: 26px; height: 26px; border-radius: 6px; border: 1px solid var(--line); background: #fff; cursor: pointer; font-weight: 700; font-size: 15px; display: flex; align-items: center; justify-content: center; color: var(--ink); line-height: 1; }
+.wf-zoom-btn:hover { border-color: var(--teal); color: var(--teal); }
+.wf-zoom-level { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--ink-soft); min-width: 38px; text-align: center; }
+.wf-zoom-reset { font-size: 11px; color: var(--teal); background: none; border: none; cursor: pointer; text-decoration: underline; padding: 0 2px; }
+.wf-image-scroll { overflow: auto; border: 1px solid var(--line); border-radius: 10px; background: #fff; max-height: 72vh; padding: 8px; }
+.wf-zoomable-image { display: block; width: 100%; height: auto; transform-origin: 0 0; transition: transform .12s ease; }
 .wf-editor-panel { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.wf-instructions { color: var(--ink-soft); font-size: 14.5px; line-height: 1.6; margin-bottom: 16px; padding: 14px 16px; background: var(--paper-raised); border-radius: 8px; border: 1px solid var(--line); white-space: pre-wrap; }
-.wf-textarea { flex: 1; min-height: 46vh; width: 100%; padding: 20px 22px; border: 1px solid var(--line); border-radius: 10px; background: #fff; font-family: inherit; font-size: 15.5px; line-height: 1.7; color: var(--ink); outline: none; resize: vertical; }
+.wf-instructions { color: var(--ink-soft); font-size: 15px; line-height: 1.6; margin-bottom: 16px; padding: 14px 16px; background: var(--paper-raised); border-radius: 8px; border: 1px solid var(--line); white-space: pre-wrap; }
+.wf-textarea { flex: 1; min-height: 46vh; width: 100%; padding: 20px 22px; border: 1px solid var(--line); border-radius: 10px; background: #fff; font-family: inherit; font-size: 16px; line-height: 1.7; color: var(--ink); outline: none; resize: vertical; }
 .wf-textarea:focus { border-color: var(--teal); }
 .wf-footer { display: flex; align-items: center; justify-content: space-between; margin-top: 12px; gap: 12px; flex-wrap: wrap; }
 
