@@ -41,3 +41,6 @@ export function wordCount(text) {
 export function isPdfUrl(url) {
   return /\.pdf(\?|$)/i.test(url || "");
 }
+export function isAudioUrl(url) {
+  return /\.(mp3|wav|m4a|ogg|aac|webm)(\?|$)/i.test(url || "");
+}
