@@ -134,8 +134,10 @@ body { margin: 0; }
 .asg-due { display: flex; align-items: center; gap: 5px; font-size: 12.5px; color: var(--ink-soft); }
 .asg-desc { color: var(--ink-soft); font-size: 14px; line-height: 1.6; margin: 14px 0 0; padding: 14px 16px; background: var(--paper-raised); border-radius: 8px; border: 1px solid var(--line); white-space: pre-wrap; }
 .asg-image { max-width: 100%; border-radius: 10px; border: 1px solid var(--line); margin: 14px 0 0; display: block; }
-.pdf-attachment { display: inline-flex; align-items: center; gap: 7px; margin: 14px 0 0; padding: 10px 14px; background: var(--teal-soft); color: var(--teal); border-radius: 8px; font-size: 13px; font-weight: 600; text-decoration: none; }
-.pdf-attachment:hover { opacity: 0.85; }
+.pdf-embed-wrap { margin: 14px 0 0; }
+.pdf-embed { width: 100%; height: 60vh; min-height: 380px; border: 1px solid var(--line); border-radius: 10px; background: #fff; display: block; }
+.pdf-embed-fallback { display: inline-flex; align-items: center; gap: 5px; margin-top: 8px; font-size: 11.5px; color: var(--ink-soft); text-decoration: none; }
+.pdf-embed-fallback:hover { color: var(--teal); }
 .file-chip { display: inline-flex; align-items: center; gap: 6px; margin-top: 10px; padding: 7px 12px; background: var(--paper-raised); border: 1px solid var(--line); border-radius: 20px; font-size: 12.5px; color: var(--ink-soft); }
 .file-preview-row { display: flex; align-items: center; gap: 12px; margin-top: 10px; flex-wrap: wrap; }
 .remove-file { padding: 6px 10px; font-size: 11.5px; color: var(--rose); }
