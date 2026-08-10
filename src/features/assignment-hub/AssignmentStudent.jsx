@@ -101,7 +101,87 @@ export function AssignmentStudent({ userId, classId, assignmentId, setScreen, sh
   const mm = remainingSec !== null ? String(Math.floor(remainingSec / 60)).padStart(2, "0") : null;
   const ss = remainingSec !== null ? String(remainingSec % 60).padStart(2, "0") : null;
   const urgent = remainingSec !== null && remainingSec <= 60;
+  const isWriting = assignment.type === "Writing Task 1" || assignment.type === "Writing Task 2";
 
+  const wordCountBadge = (assignment.target_word_count || content.trim()) ? (
+    <div className={`word-count ${assignment.target_word_count && wordCount(content) >= assignment.target_word_count ? "met" : ""}`}>
+      {wordCount(content)} {assignment.target_word_count ? `/ ${assignment.target_word_count} words` : "words"}
+    </div>
+  ) : null;
+
+  const submitButton = !locked && (
+    <button className="btn-primary" style={{ marginTop: 12 }} disabled={!content.trim() || busy} onClick={submit}>
+      {busy ? "Submitting…" : isTimed ? "Submit now" : mySub?.submitted_at ? "Resubmit" : "Submit"}
+    </button>
+  );
+
+  const submittedMeta = mySub?.submitted_at && (
+    <div className="sub-meta" style={{ marginTop: 8 }}>Submitted {new Date(mySub.submitted_at).toLocaleString()}</div>
+  );
+
+  // ---- Writing Focus Mode: full-screen overlay layout, Task 1/2 only ----
+  // This is a self-contained visual overlay — it does not touch Shell.jsx,
+  // so no other screen or component is affected.
+  if (isWriting) {
+    return (
+      <div className="wf-overlay">
+        <div className="wf-topbar">
+          <button className="back-link" onClick={() => setScreen({ name: "home" })}><ArrowLeft size={14} /> Exit</button>
+          <div className="wf-title-group">
+            <div className="asg-type">{assignment.type}</div>
+            <div className="wf-title">{assignment.title}</div>
+          </div>
+          {isTimed && !alreadySubmitted ? (
+            <div className={`wf-timer ${urgent ? "urgent" : ""}`}><Timer size={15} /> {mm}:{ss}</div>
+          ) : <div />}
+        </div>
+
+        <div className={`wf-body ${assignment.image_url ? "with-image" : ""}`}>
+          {assignment.image_url && (
+            <div className="wf-image-panel">
+              <AttachmentPreview url={assignment.image_url} />
+            </div>
+          )}
+
+          <div className="wf-editor-panel">
+            {assignment.description && <div className="wf-instructions">{assignment.description}</div>}
+
+            {mySub?.grade && (
+              <div className="feedback-panel">
+                <div className="feedback-band">Band {mySub.grade}</div>
+                {mySub.feedback && <p className="feedback-text">{mySub.feedback}</p>}
+              </div>
+            )}
+
+            {isTimed && alreadySubmitted && (
+              <div className="timer-panel done">
+                <Timer size={18} />
+                <div className="timer-label">Timed task — submitted, no further changes possible.</div>
+              </div>
+            )}
+
+            <textarea
+              className="wf-textarea"
+              placeholder="Write your answer here…"
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              disabled={locked}
+              lang="en"
+              spellCheck="true"
+              autoFocus
+            />
+            <div className="wf-footer">
+              {wordCountBadge}
+              {submitButton}
+            </div>
+            {submittedMeta}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ---- Original layout, unchanged, for every other assignment type ----
   return (
     <div className="page narrow">
       <button className="back-link" onClick={() => setScreen({ name: "home" })}><ArrowLeft size={14} /> All assignments</button>
@@ -154,17 +234,9 @@ export function AssignmentStudent({ userId, classId, assignmentId, setScreen, sh
         lang="en"
         spellCheck="true"
       />
-      {(assignment.target_word_count || content.trim()) && (
-        <div className={`word-count ${assignment.target_word_count && wordCount(content) >= assignment.target_word_count ? "met" : ""}`}>
-          {wordCount(content)} {assignment.target_word_count ? `/ ${assignment.target_word_count} words` : "words"}
-        </div>
-      )}
-      {!locked && (
-        <button className="btn-primary" style={{ marginTop: 12 }} disabled={!content.trim() || busy} onClick={submit}>
-          {busy ? "Submitting…" : isTimed ? "Submit now" : mySub?.submitted_at ? "Resubmit" : "Submit"}
-        </button>
-      )}
-      {mySub?.submitted_at && <div className="sub-meta" style={{ marginTop: 8 }}>Submitted {new Date(mySub.submitted_at).toLocaleString()}</div>}
+      {wordCountBadge}
+      {submitButton}
+      {submittedMeta}
     </div>
   );
 }
