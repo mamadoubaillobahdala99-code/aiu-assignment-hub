@@ -1,9 +1,16 @@
 import React from "react";
 import { BookOpen, Users, Plus, Check, Clock, AlertTriangle, LogOut, GraduationCap, FileText, ChevronRight, X, Copy, CheckCircle2, Headphones, PenLine, Mic, ListChecks, ArrowLeft, Loader2, Timer, Highlighter } from "lucide-react";
-import { isPdfUrl } from "../lib/utils";
+import { isPdfUrl, isAudioUrl } from "../lib/utils";
 
 export function AttachmentPreview({ url }) {
   if (!url) return null;
+  if (isAudioUrl(url)) {
+    return (
+      <div className="audio-embed-wrap">
+        <audio controls src={url} className="audio-embed" />
+      </div>
+    );
+  }
   if (isPdfUrl(url)) {
     return (
       <div className="pdf-embed-wrap">
