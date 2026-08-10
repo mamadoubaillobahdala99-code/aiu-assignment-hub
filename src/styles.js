@@ -218,4 +218,37 @@ body { margin: 0; }
 @media (max-width: 900px) {
   .dash-columns { grid-template-columns: 1fr; }
 }
+
+/* Writing Focus Mode — full-screen overlay, Task 1/2 only.
+   Self-contained: does not alter any other layout rule above. */
+.wf-overlay {
+  position: fixed; inset: 0; z-index: 200;
+  background: var(--paper);
+  display: flex; flex-direction: column;
+  overflow-y: auto;
+}
+.wf-topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 28px; border-bottom: 1px solid var(--line);
+  background: var(--paper-raised); flex-shrink: 0;
+}
+.wf-title-group { text-align: center; flex: 1; min-width: 0; }
+.wf-title { font-family: 'Fraunces', serif; font-size: 16px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wf-timer { display: flex; align-items: center; gap: 6px; font-family: 'IBM Plex Mono', monospace; font-size: 14px; font-weight: 600; color: var(--teal); background: var(--teal-soft); padding: 6px 12px; border-radius: 20px; white-space: nowrap; }
+.wf-timer.urgent { color: #fff; background: var(--rose); animation: pulse 1s infinite; }
+
+.wf-body { flex: 1; display: flex; gap: 28px; padding: 28px; max-width: 1100px; margin: 0 auto; width: 100%; align-items: flex-start; }
+.wf-body.with-image { align-items: stretch; }
+.wf-image-panel { flex: 0 0 38%; max-width: 420px; position: sticky; top: 28px; }
+.wf-image-panel .asg-image { margin-top: 0; max-height: 70vh; object-fit: contain; }
+.wf-editor-panel { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.wf-instructions { color: var(--ink-soft); font-size: 14.5px; line-height: 1.6; margin-bottom: 16px; padding: 14px 16px; background: var(--paper-raised); border-radius: 8px; border: 1px solid var(--line); white-space: pre-wrap; }
+.wf-textarea { flex: 1; min-height: 46vh; width: 100%; padding: 20px 22px; border: 1px solid var(--line); border-radius: 10px; background: #fff; font-family: inherit; font-size: 15.5px; line-height: 1.7; color: var(--ink); outline: none; resize: vertical; }
+.wf-textarea:focus { border-color: var(--teal); }
+.wf-footer { display: flex; align-items: center; justify-content: space-between; margin-top: 12px; gap: 12px; flex-wrap: wrap; }
+
+@media (max-width: 800px) {
+  .wf-body { flex-direction: column; padding: 18px; }
+  .wf-image-panel { flex: none; max-width: 100%; position: static; }
+}
 `;
