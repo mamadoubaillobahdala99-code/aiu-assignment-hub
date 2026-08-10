@@ -6,9 +6,12 @@ export function AttachmentPreview({ url }) {
   if (!url) return null;
   if (isPdfUrl(url)) {
     return (
-      <a href={url} target="_blank" rel="noreferrer" className="pdf-attachment">
-        <FileText size={16} /> View attached PDF
-      </a>
+      <div className="pdf-embed-wrap">
+        <iframe src={url} title="Assignment PDF" className="pdf-embed" />
+        <a href={url} target="_blank" rel="noreferrer" className="pdf-embed-fallback">
+          <FileText size={13} /> Open in a new tab if the preview doesn't load
+        </a>
+      </div>
     );
   }
   return <img src={url} alt="Assignment attachment" className="asg-image" />;
