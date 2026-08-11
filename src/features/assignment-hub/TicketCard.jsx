@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { BookOpen, Users, Plus, Check, Clock, AlertTriangle, LogOut, GraduationCap, FileText, ChevronRight, X, Copy, CheckCircle2, Headphones, PenLine, Mic, ListChecks, ArrowLeft, Loader2, Timer, Highlighter } from "lucide-react";
 import { supabase } from "../../supabaseClient";
-import { uid, makeCode, TYPES, fmtDate, daysUntil, wordCount, isPdfUrl } from "../../lib/utils";
+import { uid, makeCode, TYPES, fmtDate, fmtDueDateTime, daysUntil, wordCount, isPdfUrl } from "../../lib/utils";
 import { AttachmentPreview, PageHeader, EmptyState, CenterSpinner, Modal, StatusBadge } from "../../components/shared";
 
 export function TicketCard({ assignment, onClick, statusBadge }) {
@@ -24,7 +24,7 @@ export function TicketCard({ assignment, onClick, statusBadge }) {
           <span className="due-badge timed" style={{ marginRight: 8 }}><Timer size={12} /> {assignment.time_limit_minutes} min</span>
         )}
         {statusBadge || (
-          <span className={`due-badge ${dueTone}`}><Clock size={12} /> {assignment.dueDate ? fmtDate(assignment.dueDate) : "No due date"}</span>
+          <span className={`due-badge ${dueTone}`}><Clock size={12} /> {assignment.dueDate ? fmtDueDateTime(assignment.dueDate, assignment.due_time) : "No due date"}</span>
         )}
       </div>
     </button>
