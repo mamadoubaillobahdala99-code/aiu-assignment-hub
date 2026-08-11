@@ -3,7 +3,7 @@ import {
   BookOpen, Users, Check, Clock, AlertTriangle, FileText, Timer, ChevronRight,
 } from "lucide-react";
 import { supabase } from "../../supabaseClient";
-import { fmtDate } from "../../lib/utils";
+import { fmtDate, fmtDueDateTime } from "../../lib/utils";
 import { PageHeader, EmptyState, CenterSpinner } from "../../components/shared";
 
 function StatCard({ icon, label, value, tone }) {
@@ -122,7 +122,7 @@ export function TeacherDashboard({ userId, setScreen }) {
                     <div className="dash-row-title">{a.title}</div>
                     <div className="dash-row-sub">{a.classes?.name || "Class"}</div>
                   </div>
-                  <div className="dash-row-meta"><Clock size={12} /> {fmtDate(a.due_date)}</div>
+                  <div className="dash-row-meta"><Clock size={12} /> {fmtDueDateTime(a.due_date, a.due_time)}</div>
                 </div>
               ))}
             </div>
