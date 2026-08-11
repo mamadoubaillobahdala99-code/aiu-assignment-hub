@@ -5,12 +5,41 @@ import { uid, makeCode, TYPES, fmtDate, daysUntil, wordCount, isPdfUrl } from ".
 import { AttachmentPreview, PageHeader, EmptyState, CenterSpinner, Modal, StatusBadge } from "../../components/shared";
 import { TicketCard } from "./TicketCard";
 
+const DEFAULT_TITLES = {
+  Reading: "Reading Passage",
+  Listening: "Listening Practice",
+  "Writing Task 1": "Writing Task 1",
+  "Writing Task 2": "Writing Task 2",
+  Speaking: "Speaking Practice",
+  Other: "",
+};
+
+const INSTRUCTIONS_TEXT = {
+  Reading: {
+    label: "Passage text (paste it here so students can highlight it)",
+    placeholder: "Paste the full reading passage here…",
+  },
+  Listening: {
+    label: "Instructions or transcript (optional)",
+    placeholder: "Task instructions, or paste a transcript if you have one…",
+  },
+  Speaking: {
+    label: "Speaking prompt(s)",
+    placeholder: "Write the question(s) students should respond to…",
+  },
+  default: {
+    label: "Instructions",
+    placeholder: "Task instructions, prompt text, or a link to the material…",
+  },
+};
+
 export function AssignmentsTab({ classId, assignments, onCreated, onOpen }) {
   const [showCreate, setShowCreate] = useState(false);
   const [title, setTitle] = useState("");
   const [type, setType] = useState("Reading");
   const [description, setDescription] = useState("");
   const [dueDate, setDueDate] = useState("");
+  const [dueTime, setDueTime] = useState("");
   const [timeLimit, setTimeLimit] = useState("");
   const [targetWords, setTargetWords] = useState("");
   const [readingQuestionCount, setReadingQuestionCount] = useState("");
@@ -38,6 +67,7 @@ export function AssignmentsTab({ classId, assignments, onCreated, onOpen }) {
     const preset = TYPES[t];
     setTimeLimit(preset?.timeLimit != null ? String(preset.timeLimit) : "");
     setTargetWords(preset?.targetWords != null ? String(preset.targetWords) : "");
+    setTitle((prev) => (prev.trim() ? prev : DEFAULT_TITLES[t] || ""));
   }
 
   async function create() {
@@ -66,6 +96,7 @@ export function AssignmentsTab({ classId, assignments, onCreated, onOpen }) {
       type,
       description: description.trim(),
       due_date: dueDate || null,
+      due_time: dueTime || null,
       time_limit_minutes: timeLimit ? parseInt(timeLimit, 10) : null,
       target_word_count: targetWords ? parseInt(targetWords, 10) : null,
       reading_question_count: type === "Reading" && readingQuestionCount ? parseInt(readingQuestionCount, 10) : null,
@@ -74,7 +105,7 @@ export function AssignmentsTab({ classId, assignments, onCreated, onOpen }) {
     setBusy(false);
     if (error) return;
     setShowCreate(false);
-    setTitle(""); setDescription(""); setDueDate(""); setType("Reading"); setTimeLimit(""); setTargetWords(""); setReadingQuestionCount("");
+    setTitle(""); setDescription(""); setDueDate(""); setDueTime(""); setType("Reading"); setTimeLimit(""); setTargetWords(""); setReadingQuestionCount("");
     setImageFile(null); setImagePreview(null); setFileInputKey((k) => k + 1);
     onCreated();
   }
@@ -108,11 +139,20 @@ export function AssignmentsTab({ classId, assignments, onCreated, onOpen }) {
           </div>
           <p className="field-hint">Click a skill and the time limit + word target below fill in automatically — feel free to adjust them.</p>
 
-          <label className="field-label" style={{ marginTop: 14 }}>Instructions</label>
-          <textarea className="field-input textarea" placeholder="Task instructions, prompt text, or a link to the material…" value={description} onChange={(e) => setDescription(e.target.value)} />
+          <label className="field-label" style={{ marginTop: 14 }}>{(INSTRUCTIONS_TEXT[type] || INSTRUCTIONS_TEXT.default).label}</label>
+          <textarea
+            className="field-input textarea"
+            placeholder={(INSTRUCTIONS_TEXT[type] || INSTRUCTIONS_TEXT.default).placeholder}
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+          />
 
           <label className="field-label" style={{ marginTop: 14 }}>Due date</label>
-          <input type="date" className="field-input" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+          <div style={{ display: "flex", gap: 10 }}>
+            <input type="date" className="field-input" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+            <input type="time" className="field-input" style={{ maxWidth: 140 }} value={dueTime} onChange={(e) => setDueTime(e.target.value)} disabled={!dueDate} />
+          </div>
+          <p className="field-hint">Time is optional — pick a date first to set a specific deadline time.</p>
 
           <label className="field-label" style={{ marginTop: 14 }}>Time limit (optional)</label>
           <input
@@ -125,16 +165,20 @@ export function AssignmentsTab({ classId, assignments, onCreated, onOpen }) {
           />
           <p className="field-hint">If set, the countdown starts the moment the student opens this assignment — just like the real IELTS test.</p>
 
-          <label className="field-label" style={{ marginTop: 14 }}>Target word count (optional)</label>
-          <input
-            type="number"
-            min="1"
-            className="field-input"
-            placeholder="e.g. 250 (Writing Task 2) — leave empty to skip"
-            value={targetWords}
-            onChange={(e) => setTargetWords(e.target.value)}
-          />
-          <p className="field-hint">Students see a live word counter that turns green once they reach this target.</p>
+          {(type === "Writing Task 1" || type === "Writing Task 2") && (
+            <>
+              <label className="field-label" style={{ marginTop: 14 }}>Target word count (optional)</label>
+              <input
+                type="number"
+                min="1"
+                className="field-input"
+                placeholder="e.g. 250 (Writing Task 2) — leave empty to skip"
+                value={targetWords}
+                onChange={(e) => setTargetWords(e.target.value)}
+              />
+              <p className="field-hint">Students see a live word counter that turns green once they reach this target.</p>
+            </>
+          )}
 
           {type === "Reading" && (
             <>
