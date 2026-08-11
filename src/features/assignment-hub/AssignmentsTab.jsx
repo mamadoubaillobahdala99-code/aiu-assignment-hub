@@ -13,6 +13,7 @@ export function AssignmentsTab({ classId, assignments, onCreated, onOpen }) {
   const [dueDate, setDueDate] = useState("");
   const [timeLimit, setTimeLimit] = useState("");
   const [targetWords, setTargetWords] = useState("");
+  const [readingQuestionCount, setReadingQuestionCount] = useState("");
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
   const [fileInputKey, setFileInputKey] = useState(0);
@@ -67,12 +68,13 @@ export function AssignmentsTab({ classId, assignments, onCreated, onOpen }) {
       due_date: dueDate || null,
       time_limit_minutes: timeLimit ? parseInt(timeLimit, 10) : null,
       target_word_count: targetWords ? parseInt(targetWords, 10) : null,
+      reading_question_count: type === "Reading" && readingQuestionCount ? parseInt(readingQuestionCount, 10) : null,
       image_url,
     });
     setBusy(false);
     if (error) return;
     setShowCreate(false);
-    setTitle(""); setDescription(""); setDueDate(""); setType("Reading"); setTimeLimit(""); setTargetWords("");
+    setTitle(""); setDescription(""); setDueDate(""); setType("Reading"); setTimeLimit(""); setTargetWords(""); setReadingQuestionCount("");
     setImageFile(null); setImagePreview(null); setFileInputKey((k) => k + 1);
     onCreated();
   }
@@ -133,6 +135,22 @@ export function AssignmentsTab({ classId, assignments, onCreated, onOpen }) {
             onChange={(e) => setTargetWords(e.target.value)}
           />
           <p className="field-hint">Students see a live word counter that turns green once they reach this target.</p>
+
+          {type === "Reading" && (
+            <>
+              <label className="field-label" style={{ marginTop: 14 }}>Number of questions (optional)</label>
+              <input
+                type="number"
+                min="1"
+                max="40"
+                className="field-input"
+                placeholder="e.g. 13 — leave empty for a simple free-text answer instead"
+                value={readingQuestionCount}
+                onChange={(e) => setReadingQuestionCount(e.target.value)}
+              />
+              <p className="field-hint">If set, students get a numbered answer box for each question, side-by-side with the passage, in full-screen focus mode.</p>
+            </>
+          )}
 
           <label className="field-label" style={{ marginTop: 14 }}>Attach an image, PDF, or audio file (fully optional)</label>
           <p className="field-hint" style={{ marginTop: 0, marginBottom: 8 }}>Only if you want to — perfect for a Writing Task 1 chart, a scanned Reading passage, a Listening audio clip, or any reference material. Skip it entirely for a text-only task.</p>
