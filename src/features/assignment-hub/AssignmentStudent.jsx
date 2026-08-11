@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { BookOpen, Users, Plus, Check, Clock, AlertTriangle, LogOut, GraduationCap, FileText, ChevronRight, X, Copy, CheckCircle2, Headphones, PenLine, Mic, ListChecks, ArrowLeft, Loader2, Timer, Highlighter } from "lucide-react";
 import { supabase } from "../../supabaseClient";
-import { uid, makeCode, TYPES, fmtDate, daysUntil, wordCount, isPdfUrl, isAudioUrl } from "../../lib/utils";
+import { uid, makeCode, TYPES, fmtDate, fmtDueDateTime, daysUntil, wordCount, isPdfUrl, isAudioUrl } from "../../lib/utils";
 import { AttachmentPreview, PageHeader, EmptyState, CenterSpinner, Modal, StatusBadge } from "../../components/shared";
 import { ReadingPassage } from "./ReadingPassage";
 
@@ -442,7 +442,7 @@ export function AssignmentStudent({ userId, classId, assignmentId, setScreen, sh
         <div>
           <div className="asg-type">{assignment.type}</div>
           <h1 className="asg-title">{assignment.title}</h1>
-          <div className="asg-due"><Clock size={13} /> Due {fmtDate(assignment.due_date)}</div>
+          <div className="asg-due"><Clock size={13} /> Due {fmtDueDateTime(assignment.due_date, assignment.due_time)}</div>
         </div>
       </div>
       <AttachmentPreview url={assignment.image_url} />
