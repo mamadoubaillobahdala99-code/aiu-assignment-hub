@@ -262,4 +262,19 @@ body { margin: 0; }
   .wf-body { flex-direction: column; padding: 18px; }
   .wf-image-panel { flex: none; max-width: 100%; position: static; }
 }
+
+/* Reading Focus Mode — split passage + numbered answers, reuses .wf-overlay/.wf-topbar */
+.rf-body { flex: 1; display: flex; gap: 24px; padding: 28px; max-width: 1300px; margin: 0 auto; width: 100%; align-items: flex-start; }
+.rf-passage-panel { flex: 1.3; min-width: 0; background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 20px 22px; max-height: 78vh; overflow-y: auto; }
+.rf-answers-panel { flex: 1; min-width: 280px; max-width: 420px; position: sticky; top: 28px; background: var(--paper-raised); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; max-height: 78vh; overflow-y: auto; }
+.rf-answers-title { font-family: 'Fraunces', serif; font-size: 16px; font-weight: 600; margin-bottom: 14px; }
+.rf-answer-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px dashed var(--line); font-size: 14px; }
+.rf-answer-num { font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 700; color: var(--teal); width: 22px; flex-shrink: 0; }
+.rf-answer-input { flex: 1; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; font-family: inherit; font-size: 14px; outline: none; }
+.rf-answer-input:focus { border-color: var(--teal); }
+
+@media (max-width: 900px) {
+  .rf-body { flex-direction: column; }
+  .rf-answers-panel { position: static; max-width: 100%; }
+}
 `;
