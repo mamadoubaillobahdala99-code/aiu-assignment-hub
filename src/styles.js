@@ -288,4 +288,38 @@ body { margin: 0; }
   .rf-body { flex-direction: column; }
   .rf-answers-panel { position: static; max-width: 100%; }
 }
+
+/* Fullscreen toggle button, shared by Writing/Reading topbars */
+.wf-topbar-right { display: flex; align-items: center; gap: 10px; }
+.fullscreen-btn { padding: 7px 9px; }
+
+/* Full-screen grading view (teacher) — reuses the same overlay pattern as wf-overlay */
+.grade-overlay { position: fixed; inset: 0; z-index: 200; background: var(--paper); display: flex; flex-direction: column; overflow-y: auto; }
+.grade-topbar { display: flex; align-items: center; justify-content: space-between; padding: 16px 28px; border-bottom: 1px solid var(--line); background: var(--paper-raised); flex-shrink: 0; }
+.grade-title { font-family: 'Fraunces', serif; font-size: 16px; font-weight: 600; }
+.grade-body { flex: 1; display: flex; gap: 28px; padding: 28px; max-width: 1200px; margin: 0 auto; width: 100%; align-items: flex-start; }
+.grade-panel { flex: 1; min-width: 0; }
+@media (max-width: 900px) {
+  .grade-body { flex-direction: column; }
+}
+
+/* IELTS 4-criteria writing scores */
+.criteria-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+.criteria-label { font-size: 13.5px; color: var(--ink); }
+.criteria-input { width: 80px; text-align: center; }
+.criteria-avg { margin-top: 10px; padding: 10px 14px; background: var(--teal-soft); color: var(--teal); border-radius: 8px; font-size: 13.5px; font-weight: 600; }
+
+/* Reading Focus Mode — optional 3rd column for separately-entered questions */
+.rf-body.three-col .rf-passage-panel { flex: 1.1; }
+.rf-questions-panel { flex: 0.9; min-width: 220px; background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; max-height: 78vh; overflow-y: auto; }
+.rf-questions-title { font-family: 'Fraunces', serif; font-size: 15px; font-weight: 600; margin-bottom: 10px; }
+.rf-questions-text { font-size: 14px; line-height: 1.6; color: var(--ink); white-space: pre-wrap; }
+.rf-body.three-col .rf-answers-panel { flex: 0.7; min-width: 220px; max-width: 320px; }
+.rf-answers-title-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+.rf-answers-title-row .rf-answers-title { margin-bottom: 0; }
+
+@media (max-width: 1100px) {
+  .rf-body.three-col { flex-direction: column; }
+  .rf-questions-panel, .rf-body.three-col .rf-answers-panel { max-width: 100%; }
+}
 `;
