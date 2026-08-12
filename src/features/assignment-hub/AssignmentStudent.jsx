@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { BookOpen, Users, Plus, Check, Clock, AlertTriangle, LogOut, GraduationCap, FileText, ChevronRight, X, Copy, CheckCircle2, Headphones, PenLine, Mic, ListChecks, ArrowLeft, Loader2, Timer, Highlighter, Maximize, Minimize } from "lucide-react";
+import { BookOpen, Users, Plus, Check, Clock, AlertTriangle, LogOut, GraduationCap, FileText, ChevronRight, X, Copy, CheckCircle2, Headphones, PenLine, Mic, ListChecks, ArrowLeft, Loader2, Timer, Highlighter } from "lucide-react";
 import { supabase } from "../../supabaseClient";
 import { uid, makeCode, TYPES, fmtDate, fmtDueDateTime, daysUntil, wordCount, isPdfUrl, isAudioUrl } from "../../lib/utils";
 import { AttachmentPreview, PageHeader, EmptyState, CenterSpinner, Modal, StatusBadge } from "../../components/shared";
@@ -29,7 +29,9 @@ export function AssignmentStudent({ userId, classId, assignmentId, setScreen, sh
   const [initializing, setInitializing] = useState(true);
   const [remainingSec, setRemainingSec] = useState(null);
   const [imgZoom, setImgZoom] = useState(1);
-  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [colWidths, setColWidths] = useState([60, 40]); // percentages; grows to 3 values when a middle "questions" column is present
+  const rfBodyRef = React.useRef(null);
+  const draggingRef = React.useRef(null);
   const [saveState, setSaveState] = useState("idle"); // idle | saving | saved
   const [recording, setRecording] = useState(false);
   const [readingAnswers, setReadingAnswers] = useState([]);
@@ -76,20 +78,41 @@ export function AssignmentStudent({ userId, classId, assignmentId, setScreen, sh
 
   useEffect(() => { load(); }, [load]);
 
-  // Optional full-screen mode (browser Fullscreen API) — only ever activated
-  // by a real click, per browser security rules; never automatic.
+  // Reading Focus resizable columns — session only, not saved to the database.
   useEffect(() => {
-    function onFsChange() { setIsFullscreen(!!document.fullscreenElement); }
-    document.addEventListener("fullscreenchange", onFsChange);
-    return () => document.removeEventListener("fullscreenchange", onFsChange);
-  }, []);
+    if (assignment?.type !== "Reading") return;
+    setColWidths(assignment.reading_questions_text ? [38, 28, 34] : [60, 40]);
+  }, [assignment?.id, assignment?.reading_questions_text]);
 
-  function toggleFullscreen() {
-    if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen?.().catch(() => {});
-    } else {
-      document.exitFullscreen?.();
-    }
+  function startColumnDrag(dividerIndex, e) {
+    e.preventDefault();
+    draggingRef.current = dividerIndex;
+    document.body.style.cursor = "col-resize";
+    window.addEventListener("mousemove", onColumnDrag);
+    window.addEventListener("mouseup", stopColumnDrag);
+  }
+  function onColumnDrag(e) {
+    const idx = draggingRef.current;
+    if (idx === null || !rfBodyRef.current) return;
+    const rect = rfBodyRef.current.getBoundingClientRect();
+    const xPct = ((e.clientX - rect.left) / rect.width) * 100;
+    setColWidths((prev) => {
+      const next = [...prev];
+      const before = next.slice(0, idx).reduce((a, b) => a + b, 0);
+      const pairSum = next[idx] + next[idx + 1];
+      const minSize = 15;
+      let newLeft = xPct - before;
+      newLeft = Math.max(minSize, Math.min(pairSum - minSize, newLeft));
+      next[idx] = newLeft;
+      next[idx + 1] = pairSum - newLeft;
+      return next;
+    });
+  }
+  function stopColumnDrag() {
+    draggingRef.current = null;
+    document.body.style.cursor = "";
+    window.removeEventListener("mousemove", onColumnDrag);
+    window.removeEventListener("mouseup", stopColumnDrag);
   }
 
   // countdown tick
@@ -317,14 +340,9 @@ export function AssignmentStudent({ userId, classId, assignmentId, setScreen, sh
             <div className="asg-type">{assignment.type}</div>
             <div className="wf-title">{assignment.title}</div>
           </div>
-          <div className="wf-topbar-right">
-            {isTimed && !alreadySubmitted && (
-              <div className={`wf-timer ${urgent ? "urgent" : ""}`}><Timer size={15} /> {mm}:{ss}</div>
-            )}
-            <button type="button" className="btn-ghost fullscreen-btn" onClick={toggleFullscreen} title="Toggle full screen">
-              {isFullscreen ? <Minimize size={14} /> : <Maximize size={14} />}
-            </button>
-          </div>
+          {isTimed && !alreadySubmitted ? (
+            <div className={`wf-timer ${urgent ? "urgent" : ""}`}><Timer size={15} /> {mm}:{ss}</div>
+          ) : <div />}
         </div>
 
         <div className={`wf-body ${assignment.image_url ? "with-image" : ""}`}>
@@ -408,32 +426,32 @@ export function AssignmentStudent({ userId, classId, assignmentId, setScreen, sh
             <div className="asg-type">{assignment.type}</div>
             <div className="wf-title">{assignment.title}</div>
           </div>
-          <div className="wf-topbar-right">
-            {isTimed && !alreadySubmitted && (
-              <div className={`wf-timer ${urgent ? "urgent" : ""}`}><Timer size={15} /> {mm}:{ss}</div>
-            )}
-            <button type="button" className="btn-ghost fullscreen-btn" onClick={toggleFullscreen} title="Toggle full screen">
-              {isFullscreen ? <Minimize size={14} /> : <Maximize size={14} />}
-            </button>
-          </div>
+          {isTimed && !alreadySubmitted ? (
+            <div className={`wf-timer ${urgent ? "urgent" : ""}`}><Timer size={15} /> {mm}:{ss}</div>
+          ) : <div />}
         </div>
 
-        <div className={`rf-body ${assignment.reading_questions_text ? "three-col" : ""}`}>
-          <div className="rf-passage-panel">
+        <div className={`rf-body ${assignment.reading_questions_text ? "three-col" : ""}`} ref={rfBodyRef}>
+          <div className="rf-passage-panel" style={{ flex: `0 0 ${colWidths[0]}%`, maxWidth: "none" }}>
             <AttachmentPreview url={assignment.image_url} />
             {assignment.description && (
               <ReadingPassage assignmentId={assignmentId} userId={userId} text={assignment.description} />
             )}
           </div>
 
+          <div className="rf-divider" onMouseDown={(e) => startColumnDrag(0, e)} />
+
           {assignment.reading_questions_text && (
-            <div className="rf-questions-panel">
-              <div className="rf-questions-title">Questions</div>
-              <p className="rf-questions-text">{assignment.reading_questions_text}</p>
-            </div>
+            <>
+              <div className="rf-questions-panel" style={{ flex: `0 0 ${colWidths[1]}%`, maxWidth: "none" }}>
+                <div className="rf-questions-title">Questions</div>
+                <p className="rf-questions-text">{assignment.reading_questions_text}</p>
+              </div>
+              <div className="rf-divider" onMouseDown={(e) => startColumnDrag(1, e)} />
+            </>
           )}
 
-          <div className="rf-answers-panel">
+          <div className="rf-answers-panel" style={{ flex: `0 0 ${colWidths[colWidths.length - 1]}%`, maxWidth: "none" }}>
             <div className="rf-answers-title-row">
               <div className="rf-answers-title">Your Answers</div>
               {saveState !== "idle" && <div className="wf-save-indicator">{saveState === "saving" ? "Saving…" : "Saved"}</div>}
