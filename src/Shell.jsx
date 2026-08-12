@@ -1,5 +1,5 @@
-import React from "react";
-import { BookOpen, Users, Plus, Check, Clock, AlertTriangle, LogOut, GraduationCap, FileText, ChevronRight, X, Copy, CheckCircle2, Headphones, PenLine, Mic, ListChecks, ArrowLeft, Loader2, Timer, Highlighter } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { BookOpen, Users, Plus, Check, Clock, AlertTriangle, LogOut, GraduationCap, FileText, ChevronRight, X, Copy, CheckCircle2, Headphones, PenLine, Mic, ListChecks, ArrowLeft, Loader2, Timer, Highlighter, Maximize, Minimize } from "lucide-react";
 import { TeacherHome } from "./features/assignment-hub/TeacherHome";
 import { TeacherDashboard } from "./features/assignment-hub/TeacherDashboard";
 import { ClassDetail } from "./features/assignment-hub/ClassDetail";
@@ -10,6 +10,24 @@ import { AssignmentStudent } from "./features/assignment-hub/AssignmentStudent";
 
 export function Shell({ profile, userId, onSignOut, screen, setScreen, showToast }) {
   const isTeacher = profile.role === "teacher";
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  useEffect(() => {
+    function onFsChange() { setIsFullscreen(!!document.fullscreenElement); }
+    document.addEventListener("fullscreenchange", onFsChange);
+    return () => document.removeEventListener("fullscreenchange", onFsChange);
+  }, []);
+
+  function toggleFullscreen() {
+    // Only ever triggered by a real click, per browser security rules —
+    // fullscreen can never be activated automatically.
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen?.().catch(() => {});
+    } else {
+      document.exitFullscreen?.();
+    }
+  }
+
   return (
     <div className="shell">
       <aside className="sidebar">
@@ -42,6 +60,11 @@ export function Shell({ profile, userId, onSignOut, screen, setScreen, showToast
             </button>
           )}
         </nav>
+
+        <button className="nav-item" onClick={toggleFullscreen}>
+          {isFullscreen ? <Minimize size={16} /> : <Maximize size={16} />}
+          {isFullscreen ? "Exit full screen" : "Full screen"}
+        </button>
 
         <button className="nav-item logout" onClick={onSignOut}>
           <LogOut size={16} /> Sign out
