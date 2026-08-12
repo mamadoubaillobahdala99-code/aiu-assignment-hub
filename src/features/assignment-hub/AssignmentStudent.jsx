@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { BookOpen, Users, Plus, Check, Clock, AlertTriangle, LogOut, GraduationCap, FileText, ChevronRight, X, Copy, CheckCircle2, Headphones, PenLine, Mic, ListChecks, ArrowLeft, Loader2, Timer, Highlighter } from "lucide-react";
+import { BookOpen, Users, Plus, Check, Clock, AlertTriangle, LogOut, GraduationCap, FileText, ChevronRight, X, Copy, CheckCircle2, Headphones, PenLine, Mic, ListChecks, ArrowLeft, Loader2, Timer, Highlighter, Maximize, Minimize } from "lucide-react";
 import { supabase } from "../../supabaseClient";
 import { uid, makeCode, TYPES, fmtDate, fmtDueDateTime, daysUntil, wordCount, isPdfUrl, isAudioUrl } from "../../lib/utils";
 import { AttachmentPreview, PageHeader, EmptyState, CenterSpinner, Modal, StatusBadge } from "../../components/shared";
@@ -29,6 +29,7 @@ export function AssignmentStudent({ userId, classId, assignmentId, setScreen, sh
   const [initializing, setInitializing] = useState(true);
   const [remainingSec, setRemainingSec] = useState(null);
   const [imgZoom, setImgZoom] = useState(1);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const [saveState, setSaveState] = useState("idle"); // idle | saving | saved
   const [recording, setRecording] = useState(false);
   const [readingAnswers, setReadingAnswers] = useState([]);
@@ -41,6 +42,7 @@ export function AssignmentStudent({ userId, classId, assignmentId, setScreen, sh
   const recordTimerRef = React.useRef(null);
   const autoSubmitted = React.useRef(false);
   const lastSavedRef = React.useRef("");
+  const lastSavedReadingRef = React.useRef("");
 
   const isTimed = !!assignment?.time_limit_minutes;
   const alreadySubmitted = !!mySub?.submitted_at;
@@ -67,11 +69,28 @@ export function AssignmentStudent({ userId, classId, assignmentId, setScreen, sh
     lastSavedRef.current = sub?.content || "";
     if (a?.type === "Reading" && a?.reading_question_count > 0) {
       setReadingAnswers(parseReadingAnswers(sub?.content, a.reading_question_count));
+      lastSavedReadingRef.current = sub?.content || "";
     }
     setInitializing(false);
   }, [assignmentId, userId]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Optional full-screen mode (browser Fullscreen API) — only ever activated
+  // by a real click, per browser security rules; never automatic.
+  useEffect(() => {
+    function onFsChange() { setIsFullscreen(!!document.fullscreenElement); }
+    document.addEventListener("fullscreenchange", onFsChange);
+    return () => document.removeEventListener("fullscreenchange", onFsChange);
+  }, []);
+
+  function toggleFullscreen() {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen?.().catch(() => {});
+    } else {
+      document.exitFullscreen?.();
+    }
+  }
 
   // countdown tick
   useEffect(() => {
@@ -132,6 +151,28 @@ export function AssignmentStudent({ userId, classId, assignmentId, setScreen, sh
     }, 2500);
     return () => clearTimeout(t);
   }, [content, isWritingType, alreadySubmitted, initializing, assignmentId, userId]);
+
+  // Autosave for Reading answer boxes — same debounce/upsert pattern as Writing.
+  const isReadingStructuredType = assignment?.type === "Reading" && assignment?.reading_question_count > 0;
+  useEffect(() => {
+    if (!isReadingStructuredType || alreadySubmitted || initializing) return;
+    const built = buildReadingContent(readingAnswers);
+    if (built === lastSavedReadingRef.current) return;
+    const t = setTimeout(async () => {
+      setSaveState("saving");
+      const { error } = await supabase
+        .from("submissions")
+        .upsert({ assignment_id: assignmentId, student_id: userId, content: built }, { onConflict: "assignment_id,student_id" });
+      if (!error) {
+        lastSavedReadingRef.current = built;
+        setSaveState("saved");
+        setTimeout(() => setSaveState("idle"), 1500);
+      } else {
+        setSaveState("idle");
+      }
+    }, 2500);
+    return () => clearTimeout(t);
+  }, [readingAnswers, isReadingStructuredType, alreadySubmitted, initializing, assignmentId, userId]);
 
   async function submit() {
     if (!content.trim()) return;
@@ -276,9 +317,14 @@ export function AssignmentStudent({ userId, classId, assignmentId, setScreen, sh
             <div className="asg-type">{assignment.type}</div>
             <div className="wf-title">{assignment.title}</div>
           </div>
-          {isTimed && !alreadySubmitted ? (
-            <div className={`wf-timer ${urgent ? "urgent" : ""}`}><Timer size={15} /> {mm}:{ss}</div>
-          ) : <div />}
+          <div className="wf-topbar-right">
+            {isTimed && !alreadySubmitted && (
+              <div className={`wf-timer ${urgent ? "urgent" : ""}`}><Timer size={15} /> {mm}:{ss}</div>
+            )}
+            <button type="button" className="btn-ghost fullscreen-btn" onClick={toggleFullscreen} title="Toggle full screen">
+              {isFullscreen ? <Minimize size={14} /> : <Maximize size={14} />}
+            </button>
+          </div>
         </div>
 
         <div className={`wf-body ${assignment.image_url ? "with-image" : ""}`}>
@@ -362,12 +408,17 @@ export function AssignmentStudent({ userId, classId, assignmentId, setScreen, sh
             <div className="asg-type">{assignment.type}</div>
             <div className="wf-title">{assignment.title}</div>
           </div>
-          {isTimed && !alreadySubmitted ? (
-            <div className={`wf-timer ${urgent ? "urgent" : ""}`}><Timer size={15} /> {mm}:{ss}</div>
-          ) : <div />}
+          <div className="wf-topbar-right">
+            {isTimed && !alreadySubmitted && (
+              <div className={`wf-timer ${urgent ? "urgent" : ""}`}><Timer size={15} /> {mm}:{ss}</div>
+            )}
+            <button type="button" className="btn-ghost fullscreen-btn" onClick={toggleFullscreen} title="Toggle full screen">
+              {isFullscreen ? <Minimize size={14} /> : <Maximize size={14} />}
+            </button>
+          </div>
         </div>
 
-        <div className="rf-body">
+        <div className={`rf-body ${assignment.reading_questions_text ? "three-col" : ""}`}>
           <div className="rf-passage-panel">
             <AttachmentPreview url={assignment.image_url} />
             {assignment.description && (
@@ -375,8 +426,18 @@ export function AssignmentStudent({ userId, classId, assignmentId, setScreen, sh
             )}
           </div>
 
+          {assignment.reading_questions_text && (
+            <div className="rf-questions-panel">
+              <div className="rf-questions-title">Questions</div>
+              <p className="rf-questions-text">{assignment.reading_questions_text}</p>
+            </div>
+          )}
+
           <div className="rf-answers-panel">
-            <div className="rf-answers-title">Your Answers</div>
+            <div className="rf-answers-title-row">
+              <div className="rf-answers-title">Your Answers</div>
+              {saveState !== "idle" && <div className="wf-save-indicator">{saveState === "saving" ? "Saving…" : "Saved"}</div>}
+            </div>
 
             {isTimed && alreadySubmitted && (
               <div className="timer-panel done" style={{ marginBottom: 12 }}>
