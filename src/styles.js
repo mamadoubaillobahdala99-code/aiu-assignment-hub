@@ -297,8 +297,11 @@ body { margin: 0; }
 .grade-overlay { position: fixed; inset: 0; z-index: 200; background: var(--paper); display: flex; flex-direction: column; overflow-y: auto; }
 .grade-topbar { display: flex; align-items: center; justify-content: space-between; padding: 16px 28px; border-bottom: 1px solid var(--line); background: var(--paper-raised); flex-shrink: 0; }
 .grade-title { font-family: 'Fraunces', serif; font-size: 16px; font-weight: 600; }
-.grade-body { flex: 1; display: flex; gap: 28px; padding: 28px; max-width: 1200px; margin: 0 auto; width: 100%; align-items: flex-start; }
-.grade-panel { flex: 1; min-width: 0; }
+.grade-body { flex: 1; display: flex; gap: 28px; padding: 28px; max-width: 1400px; margin: 0 auto; width: 100%; align-items: flex-start; }
+.grade-panel { min-width: 0; }
+.grade-panel-submission { flex: 2.2; }
+.grade-panel-submission .submission-box { min-height: 68vh; font-size: 15px; line-height: 1.65; }
+.grade-panel-form { flex: 1; min-width: 300px; max-width: 400px; }
 @media (max-width: 900px) {
   .grade-body { flex-direction: column; }
 }
@@ -321,5 +324,13 @@ body { margin: 0; }
 @media (max-width: 1100px) {
   .rf-body.three-col { flex-direction: column; }
   .rf-questions-panel, .rf-body.three-col .rf-answers-panel { max-width: 100%; }
+}
+
+/* Resizable column divider — drag to resize, session-only (not saved) */
+.rf-divider { flex: 0 0 6px; align-self: stretch; cursor: col-resize; position: relative; }
+.rf-divider::after { content: ""; position: absolute; top: 0; bottom: 0; left: 2px; width: 2px; border-radius: 2px; background: var(--line); transition: background .15s; }
+.rf-divider:hover::after, .rf-divider:active::after { background: var(--teal); }
+@media (max-width: 1100px) {
+  .rf-divider { display: none; }
 }
 `;
