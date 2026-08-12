@@ -131,7 +131,7 @@ export function AssignmentTeacher({ classId, assignmentId, setScreen, showToast 
             </div>
 
             <div className="grade-body">
-              <div className="grade-panel">
+              <div className="grade-panel grade-panel-submission">
                 <div className="field-label">Submitted answer</div>
                 {sub?.submitted_at ? (
                   <>
@@ -149,7 +149,7 @@ export function AssignmentTeacher({ classId, assignmentId, setScreen, showToast 
                 )}
               </div>
 
-              <div className="grade-panel">
+              <div className="grade-panel grade-panel-form">
                 {isWritingType ? (
                   <>
                     <div className="field-label">IELTS Writing criteria</div>
@@ -177,7 +177,7 @@ export function AssignmentTeacher({ classId, assignmentId, setScreen, showToast 
                 )}
 
                 <label className="field-label" style={{ marginTop: 14 }}>Feedback</label>
-                <textarea className="field-input textarea" style={{ minHeight: 140 }} placeholder="Comments for the student…" value={feedbackDraft} onChange={(e) => setFeedbackDraft(e.target.value)} />
+                <textarea className="field-input textarea" style={{ minHeight: 260 }} placeholder="Comments for the student…" value={feedbackDraft} onChange={(e) => setFeedbackDraft(e.target.value)} />
 
                 <button className="btn-primary" style={{ marginTop: 16 }} disabled={busy || !canSave} onClick={saveGrade}>
                   {busy ? "Saving…" : "Save feedback"}
