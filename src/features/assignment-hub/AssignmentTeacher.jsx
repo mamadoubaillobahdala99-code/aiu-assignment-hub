@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { BookOpen, Users, Plus, Check, Clock, AlertTriangle, LogOut, GraduationCap, FileText, ChevronRight, X, Copy, CheckCircle2, Headphones, PenLine, Mic, ListChecks, ArrowLeft, Loader2, Timer, Highlighter } from "lucide-react";
+import { BookOpen, Users, Plus, Check, Clock, AlertTriangle, LogOut, GraduationCap, FileText, ChevronRight, X, Copy, CheckCircle2, Headphones, PenLine, Mic, ListChecks, ArrowLeft, Loader2, Timer, Highlighter, Trash2 } from "lucide-react";
 import { supabase } from "../../supabaseClient";
 import { uid, makeCode, TYPES, fmtDate, fmtDueDateTime, daysUntil, wordCount, isPdfUrl } from "../../lib/utils";
 import { AttachmentPreview, PageHeader, EmptyState, CenterSpinner, StatusBadge } from "../../components/shared";
@@ -27,6 +27,7 @@ export function AssignmentTeacher({ classId, assignmentId, setScreen, showToast 
   const [criteriaDraft, setCriteriaDraft] = useState({});
   const [feedbackDraft, setFeedbackDraft] = useState("");
   const [busy, setBusy] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const load = useCallback(async () => {
     const { data: a } = await supabase.from("assignments").select("*").eq("id", assignmentId).single();
@@ -52,6 +53,35 @@ export function AssignmentTeacher({ classId, assignmentId, setScreen, showToast 
       score_lexical_resource: sub?.score_lexical_resource ?? "",
       score_grammar_accuracy: sub?.score_grammar_accuracy ?? "",
     });
+  }
+
+  async function handleDelete() {
+    setDeleting(true);
+    const { count } = await supabase
+      .from("submissions")
+      .select("id", { count: "exact", head: true })
+      .eq("assignment_id", assignmentId)
+      .not("submitted_at", "is", null);
+
+    if (count && count > 0) {
+      setDeleting(false);
+      showToast(`Cannot delete: ${count} student${count > 1 ? "s have" : " has"} already submitted.`);
+      return;
+    }
+
+    if (!window.confirm("Delete this assignment? This cannot be undone.")) {
+      setDeleting(false);
+      return;
+    }
+
+    const { error } = await supabase.from("assignments").delete().eq("id", assignmentId);
+    setDeleting(false);
+    if (error) {
+      showToast("Could not delete assignment");
+      return;
+    }
+    showToast("Assignment deleted");
+    setScreen({ name: "class", classId });
   }
 
   async function saveGrade() {
@@ -83,7 +113,12 @@ export function AssignmentTeacher({ classId, assignmentId, setScreen, showToast 
 
   return (
     <div className="page">
-      <button className="back-link" onClick={() => setScreen({ name: "class", classId })}><ArrowLeft size={14} /> Back to class</button>
+      <div className="row-right" style={{ justifyContent: "space-between", marginBottom: 4 }}>
+        <button className="back-link" onClick={() => setScreen({ name: "class", classId })}><ArrowLeft size={14} /> Back to class</button>
+        <button className="btn-ghost delete-assignment-btn" disabled={deleting} onClick={handleDelete}>
+          <Trash2 size={13} /> {deleting ? "Checking…" : "Delete assignment"}
+        </button>
+      </div>
 
       <div className="asg-header">
         <div className="asg-icon" style={{ color: meta.color }}><Icon size={22} /></div>
