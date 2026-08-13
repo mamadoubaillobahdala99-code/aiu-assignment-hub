@@ -4,7 +4,7 @@ import { supabase } from "../../supabaseClient";
 import { fmtDate } from "../../lib/utils";
 import { PageHeader, EmptyState, CenterSpinner } from "../../components/shared";
 
-export function StudentClasses({ userId }) {
+export function StudentClasses({ userId, setScreen }) {
   const [loading, setLoading] = useState(true);
   const [classes, setClasses] = useState([]);
 
@@ -12,7 +12,7 @@ export function StudentClasses({ userId }) {
     setLoading(true);
     const { data } = await supabase
       .from("roster")
-      .select("joined_at, classes(name, profiles(name))")
+      .select("class_id, joined_at, classes(name, profiles(name))")
       .eq("student_id", userId);
     setClasses(data || []);
     setLoading(false);
@@ -31,7 +31,11 @@ export function StudentClasses({ userId }) {
       ) : (
         <div className="grid">
           {classes.map((row, i) => (
-            <div key={i} className="class-card" style={{ cursor: "default" }}>
+            <button
+              key={i}
+              className="class-card"
+              onClick={() => setScreen({ name: "student-class-detail", classId: row.class_id })}
+            >
               <div className="class-card-top">
                 <div className="class-card-name">{row.classes?.name || "Class"}</div>
                 <BookOpen size={16} className="chev" />
@@ -40,7 +44,7 @@ export function StudentClasses({ userId }) {
                 <GraduationCap size={13} /> {row.classes?.profiles?.name || "Unknown teacher"}
               </div>
               <div className="class-card-code">Joined {fmtDate(row.joined_at)}</div>
-            </div>
+            </button>
           ))}
         </div>
       )}
