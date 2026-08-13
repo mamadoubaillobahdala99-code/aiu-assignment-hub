@@ -7,6 +7,7 @@ import { AssignmentTeacher } from "./features/assignment-hub/AssignmentTeacher";
 import { JoinClass } from "./features/assignment-hub/JoinClass";
 import { StudentHome } from "./features/assignment-hub/StudentHome";
 import { StudentClasses } from "./features/assignment-hub/StudentClasses";
+import { StudentClassDetail } from "./features/assignment-hub/StudentClassDetail";
 import { AssignmentStudent } from "./features/assignment-hub/AssignmentStudent";
 
 export function Shell({ profile, userId, onSignOut, screen, setScreen, showToast }) {
@@ -81,7 +82,8 @@ export function Shell({ profile, userId, onSignOut, screen, setScreen, showToast
         {screen.name === "dashboard" && isTeacher && <TeacherDashboard userId={userId} setScreen={setScreen} />}
         {screen.name === "home" && isTeacher && <TeacherHome userId={userId} setScreen={setScreen} showToast={showToast} />}
         {screen.name === "home" && !isTeacher && <StudentHome userId={userId} setScreen={setScreen} showToast={showToast} />}
-        {screen.name === "student-classes" && !isTeacher && <StudentClasses userId={userId} />}
+        {screen.name === "student-classes" && !isTeacher && <StudentClasses userId={userId} setScreen={setScreen} />}
+        {screen.name === "student-class-detail" && !isTeacher && <StudentClassDetail classId={screen.classId} userId={userId} setScreen={setScreen} />}
         {screen.name === "join" && !isTeacher && <JoinClass userId={userId} setScreen={setScreen} showToast={showToast} />}
         {screen.name === "class" && isTeacher && <ClassDetail classId={screen.classId} setScreen={setScreen} showToast={showToast} />}
         {screen.name === "assignment-teacher" && isTeacher && (
