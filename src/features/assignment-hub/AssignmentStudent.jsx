@@ -26,6 +26,7 @@ export function AssignmentStudent({ userId, classId, assignmentId, setScreen, sh
   const [mySub, setMySub] = useState(null);
   const [content, setContent] = useState("");
   const [busy, setBusy] = useState(false);
+  const [pendingSubmit, setPendingSubmit] = useState(null); // null | "text" | "speaking" | "reading"
   const [initializing, setInitializing] = useState(true);
   const [remainingSec, setRemainingSec] = useState(null);
   const [imgZoom, setImgZoom] = useState(1);
@@ -278,6 +279,18 @@ export function AssignmentStudent({ userId, classId, assignmentId, setScreen, sh
     load();
   }
 
+  // ---- Submission confirmation: every "Submit" click goes through here first ----
+  function requestSubmitConfirm(kind) {
+    setPendingSubmit(kind);
+  }
+  function confirmPendingSubmit() {
+    const kind = pendingSubmit;
+    setPendingSubmit(null);
+    if (kind === "text") submit();
+    else if (kind === "speaking") submitSpeaking();
+    else if (kind === "reading") submitReadingAnswers();
+  }
+
   // ---- Reading: submit the numbered answer boxes as one combined string ----
   async function submitReadingAnswers() {
     const built = buildReadingContent(readingAnswers);
@@ -307,6 +320,19 @@ export function AssignmentStudent({ userId, classId, assignmentId, setScreen, sh
   const mm = remainingSec !== null ? String(Math.floor(remainingSec / 60)).padStart(2, "0") : null;
   const ss = remainingSec !== null ? String(remainingSec % 60).padStart(2, "0") : null;
   const urgent = remainingSec !== null && remainingSec <= 60;
+
+  const confirmOverlay = pendingSubmit && (
+    <div className="confirm-overlay">
+      <div className="confirm-box">
+        <div className="confirm-title">Submit your answer?</div>
+        <p className="confirm-text">This is final — once submitted, you won't be able to make further changes.</p>
+        <div className="confirm-actions">
+          <button className="btn-ghost" onClick={() => setPendingSubmit(null)}>Cancel</button>
+          <button className="btn-primary" onClick={confirmPendingSubmit}>Yes, submit</button>
+        </div>
+      </div>
+    </div>
+  );
   const isWriting = assignment.type === "Writing Task 1" || assignment.type === "Writing Task 2";
   const isSpeaking = assignment.type === "Speaking";
   const isReadingStructured = assignment.type === "Reading" && assignment.reading_question_count > 0;
@@ -319,7 +345,7 @@ export function AssignmentStudent({ userId, classId, assignmentId, setScreen, sh
   ) : null;
 
   const submitButton = !locked && (
-    <button className="btn-primary" style={{ marginTop: 12 }} disabled={!content.trim() || busy} onClick={submit}>
+    <button className="btn-primary" style={{ marginTop: 12 }} disabled={!content.trim() || busy} onClick={() => requestSubmitConfirm("text")}>
       {busy ? "Submitting…" : isTimed ? "Submit now" : mySub?.submitted_at ? "Resubmit" : "Submit"}
     </button>
   );
@@ -410,6 +436,7 @@ export function AssignmentStudent({ userId, classId, assignmentId, setScreen, sh
             {submittedMeta}
           </div>
         </div>
+        {confirmOverlay}
       </div>
     );
   }
@@ -498,7 +525,7 @@ export function AssignmentStudent({ userId, classId, assignmentId, setScreen, sh
                   className="btn-primary"
                   style={{ marginTop: 12, width: "100%", justifyContent: "center" }}
                   disabled={busy}
-                  onClick={submitReadingAnswers}
+                  onClick={() => requestSubmitConfirm("reading")}
                 >
                   {busy ? "Submitting…" : mySub?.submitted_at ? "Resubmit" : "Submit answers"}
                 </button>
@@ -507,6 +534,7 @@ export function AssignmentStudent({ userId, classId, assignmentId, setScreen, sh
             {submittedMeta}
           </div>
         </div>
+        {confirmOverlay}
       </div>
     );
   }
@@ -586,7 +614,7 @@ export function AssignmentStudent({ userId, classId, assignmentId, setScreen, sh
                   <audio controls src={recordedUrl} style={{ width: "100%" }} />
                   <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
                     <button className="btn-ghost" onClick={reRecord}>Re-record</button>
-                    <button className="btn-primary" disabled={busy} onClick={submitSpeaking}>
+                    <button className="btn-primary" disabled={busy} onClick={() => requestSubmitConfirm("speaking")}>
                       {busy ? "Submitting…" : "Submit recording"}
                     </button>
                   </div>
@@ -613,6 +641,7 @@ export function AssignmentStudent({ userId, classId, assignmentId, setScreen, sh
           {submittedMeta}
         </>
       )}
+      {confirmOverlay}
     </div>
   );
 }
