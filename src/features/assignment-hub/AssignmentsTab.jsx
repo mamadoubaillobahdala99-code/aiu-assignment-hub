@@ -44,6 +44,7 @@ export function AssignmentsTab({ classId, assignments, onCreated, onOpen }) {
   const [targetWords, setTargetWords] = useState("");
   const [readingQuestionCount, setReadingQuestionCount] = useState("");
   const [readingQuestionsText, setReadingQuestionsText] = useState("");
+  const [allowAudioPause, setAllowAudioPause] = useState(false);
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
   const [fileInputKey, setFileInputKey] = useState(0);
@@ -100,14 +101,15 @@ export function AssignmentsTab({ classId, assignments, onCreated, onOpen }) {
       due_time: dueTime || null,
       time_limit_minutes: timeLimit ? parseInt(timeLimit, 10) : null,
       target_word_count: targetWords ? parseInt(targetWords, 10) : null,
-      reading_question_count: type === "Reading" && readingQuestionCount ? parseInt(readingQuestionCount, 10) : null,
-      reading_questions_text: type === "Reading" && readingQuestionsText.trim() ? readingQuestionsText.trim() : null,
+      reading_question_count: (type === "Reading" || type === "Listening") && readingQuestionCount ? parseInt(readingQuestionCount, 10) : null,
+      reading_questions_text: (type === "Reading" || type === "Listening") && readingQuestionsText.trim() ? readingQuestionsText.trim() : null,
+      allow_audio_pause: type === "Listening" ? allowAudioPause : false,
       image_url,
     });
     setBusy(false);
     if (error) return;
     setShowCreate(false);
-    setTitle(""); setDescription(""); setDueDate(""); setDueTime(""); setType("Reading"); setTimeLimit(""); setTargetWords(""); setReadingQuestionCount(""); setReadingQuestionsText("");
+    setTitle(""); setDescription(""); setDueDate(""); setDueTime(""); setType("Reading"); setTimeLimit(""); setTargetWords(""); setReadingQuestionCount(""); setReadingQuestionsText(""); setAllowAudioPause(false);
     setImageFile(null); setImagePreview(null); setFileInputKey((k) => k + 1);
     onCreated();
   }
@@ -182,7 +184,7 @@ export function AssignmentsTab({ classId, assignments, onCreated, onOpen }) {
             </>
           )}
 
-          {type === "Reading" && (
+          {(type === "Reading" || type === "Listening") && (
             <>
               <label className="field-label" style={{ marginTop: 14 }}>Number of questions (optional)</label>
               <input
@@ -194,16 +196,38 @@ export function AssignmentsTab({ classId, assignments, onCreated, onOpen }) {
                 value={readingQuestionCount}
                 onChange={(e) => setReadingQuestionCount(e.target.value)}
               />
-              <p className="field-hint">If set, students get a numbered answer box for each question, side-by-side with the passage, in full-screen focus mode.</p>
+              <p className="field-hint">
+                {type === "Reading"
+                  ? "If set, students get a numbered answer box for each question, side-by-side with the passage, in full-screen focus mode."
+                  : "If set, students get a numbered answer box for each question, side-by-side with the audio player, in full-screen focus mode."}
+              </p>
 
               <label className="field-label" style={{ marginTop: 14 }}>Questions text (optional)</label>
               <textarea
                 className="field-input textarea"
-                placeholder="Paste or write the questions here, separately from the passage above…"
+                placeholder={type === "Reading" ? "Paste or write the questions here, separately from the passage above…" : "Write the questions here, separately from the audio…"}
                 value={readingQuestionsText}
                 onChange={(e) => setReadingQuestionsText(e.target.value)}
               />
-              <p className="field-hint">If set, students see three columns: passage, questions, and answer boxes — side by side, so they never have to scroll back and forth.</p>
+              <p className="field-hint">
+                {type === "Reading"
+                  ? "If set, students see three columns: passage, questions, and answer boxes — side by side, so they never have to scroll back and forth."
+                  : "If set, students see three columns: audio player, questions, and answer boxes — side by side."}
+              </p>
+
+              {type === "Listening" && (
+                <label className="checkbox-row" style={{ marginTop: 14 }}>
+                  <input type="checkbox" checked={allowAudioPause} onChange={(e) => setAllowAudioPause(e.target.checked)} />
+                  <span>Allow students to pause and rewind the audio</span>
+                </label>
+              )}
+              {type === "Listening" && (
+                <p className="field-hint">
+                  {allowAudioPause
+                    ? "Students get a normal audio player they can pause, rewind, and replay — good for practice."
+                    : "Students get a locked player: audio plays once through with no pausing or rewinding — just like the real IELTS test. They can still test their headphones with a short beep before starting."}
+                </p>
+              )}
             </>
           )}
 
