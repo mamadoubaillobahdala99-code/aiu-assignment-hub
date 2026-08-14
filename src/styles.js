@@ -91,6 +91,7 @@ body { margin: 0; }
 .chev { color: var(--ink-soft); flex-shrink: 0; }
 .class-card-code { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--ink-soft); margin-top: 10px; letter-spacing: 0.04em; }
 .class-card-code span { color: var(--teal); font-weight: 600; }
+.class-card-teacher { display: flex; align-items: center; gap: 5px; font-size: 12.5px; color: var(--ink-soft); margin-top: 8px; }
 
 .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 20px; }
 .tab { background: none; border: none; padding: 10px 4px; margin-right: 22px; font-family: inherit; font-size: 13.5px; font-weight: 600; color: var(--ink-soft); cursor: pointer; border-bottom: 2px solid transparent; }
@@ -260,7 +261,7 @@ body { margin: 0; }
 .wf-zoom-btn:hover { border-color: var(--teal); color: var(--teal); }
 .wf-zoom-level { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--ink-soft); min-width: 38px; text-align: center; }
 .wf-zoom-reset { font-size: 11px; color: var(--teal); background: none; border: none; cursor: pointer; text-decoration: underline; padding: 0 2px; }
-.wf-image-scroll { overflow: auto; border: 1px solid var(--line); border-radius: 10px; background: #fff; max-height: 72vh; padding: 8px; }
+.wf-image-scroll { overflow: auto; border: 1px solid var(--line); border-radius: 10px; background: #fff; max-height: 72vh; padding: 8px; display: flex; align-items: flex-start; justify-content: center; }
 .wf-zoomable-image { display: block; width: 100%; height: auto; transform-origin: 0 0; transition: transform .12s ease; }
 .wf-editor-panel { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .wf-instructions { color: var(--ink-soft); font-size: 15px; line-height: 1.6; margin-bottom: 16px; padding: 14px 16px; background: var(--paper-raised); border-radius: 8px; border: 1px solid var(--line); white-space: pre-wrap; }
@@ -333,4 +334,24 @@ body { margin: 0; }
 @media (max-width: 1100px) {
   .rf-divider { display: none; }
 }
+
+/* Submission confirmation dialog — sits above every overlay */
+.confirm-overlay { position: fixed; inset: 0; z-index: 300; background: rgba(23,37,31,0.55); display: flex; align-items: center; justify-content: center; padding: 20px; }
+.confirm-box { background: #fff; border-radius: 14px; max-width: 380px; width: 100%; padding: 24px; text-align: center; }
+.confirm-title { font-family: 'Fraunces', serif; font-size: 18px; font-weight: 600; margin-bottom: 8px; }
+.confirm-text { font-size: 13.5px; color: var(--ink-soft); line-height: 1.5; margin-bottom: 20px; }
+.confirm-actions { display: flex; gap: 10px; justify-content: center; }
+.delete-assignment-btn { color: var(--rose); }
+.delete-assignment-btn:hover { background: var(--rose-soft); }
+
+/* Listening Focus Mode — narrow audio panel */
+.rf-audio-panel { min-width: 200px; background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 20px 16px; display: flex; flex-direction: column; align-items: center; text-align: center; }
+.rf-audio-icon { color: var(--teal); margin-bottom: 10px; }
+.test-beep-btn { font-size: 11.5px; padding: 6px 10px; }
+.locked-audio { width: 100%; }
+.locked-audio-playing { display: flex; align-items: center; justify-content: center; gap: 7px; font-size: 12.5px; color: var(--teal); background: var(--teal-soft); border-radius: 8px; padding: 10px 12px; }
+
+/* Checkbox row, used for "allow audio pause" and future toggle options */
+.checkbox-row { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--ink); cursor: pointer; }
+.checkbox-row input[type="checkbox"] { width: 15px; height: 15px; accent-color: var(--teal); cursor: pointer; }
 `;
