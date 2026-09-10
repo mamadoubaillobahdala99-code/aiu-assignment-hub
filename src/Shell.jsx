@@ -8,7 +8,7 @@ import { JoinClass } from "./features/assignment-hub/JoinClass";
 import { StudentHome } from "./features/assignment-hub/StudentHome";
 import { StudentClasses } from "./features/assignment-hub/StudentClasses";
 import { StudentClassDetail } from "./features/assignment-hub/StudentClassDetail";
-import { AssignmentStudent } from "./features/assignment-hub/AssignmentStudent";
+import { AssignmentOpenBridge } from "./features/question-engine/AssignmentOpenBridge";
 import { QuestionEngineLab } from "./features/question-engine/QuestionEngineLab";
 import { TeacherReadingBuilder } from "./features/question-engine/TeacherReadingBuilder";
 import "./features/question-engine/reading-builder.css";
@@ -102,7 +102,7 @@ export function Shell({ profile, userId, onSignOut, screen, setScreen, showToast
           <AssignmentTeacher classId={screen.classId} assignmentId={screen.assignmentId} setScreen={setScreen} showToast={showToast} />
         )}
         {screen.name === "assignment-student" && !isTeacher && (
-          <AssignmentStudent userId={userId} classId={screen.classId} assignmentId={screen.assignmentId} setScreen={setScreen} showToast={showToast} />
+          <AssignmentOpenBridge userId={userId} classId={screen.classId} assignmentId={screen.assignmentId} setScreen={setScreen} showToast={showToast} />
         )}
       </main>
     </div>
