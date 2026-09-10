@@ -53,6 +53,11 @@ export function Shell({ profile, userId, onSignOut, screen, setScreen, showToast
               <Timer size={17} /> Dashboard
             </button>
           )}
+          {isTeacher && (
+                  <button className={`nav-item ${screen.name === "question-lab" ? "active" : ""}`} onClick={() => setScreen({ name: "question-lab" })}>
+                    <FileText size={17} /> Question Lab
+                  </button>
+                )}
           <button className={`nav-item ${screen.name === "home" ? "active" : ""}`} onClick={() => setScreen({ name: "home" })}>
             {isTeacher ? <BookOpen size={17} /> : <ListChecks size={17} />}
             {isTeacher ? "My classes" : "My assignments"}
