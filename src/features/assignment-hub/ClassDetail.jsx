@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from "react";
 import { BookOpen, Users, Plus, Check, Clock, AlertTriangle, LogOut, GraduationCap, FileText, ChevronRight, X, Copy, CheckCircle2, Headphones, PenLine, Mic, ListChecks, ArrowLeft, Loader2, Timer, Highlighter } from "lucide-react";
 import { supabase } from "../../supabaseClient";
@@ -48,7 +49,14 @@ export function ClassDetail({ classId, setScreen, showToast }) {
       </div>
 
       {tab === "assignments" && (
-        <AssignmentsTab classId={classId} assignments={assignments} onCreated={load} onOpen={(a) => setScreen({ name: "assignment-teacher", classId, assignmentId: a.id })} />
+        <>
+          <div className="row-right">
+            <button className="btn-ghost" onClick={() => setScreen({ name: "reading-builder", classId })}>
+              <Plus size={13} /> Structured Reading
+            </button>
+          </div>
+          <AssignmentsTab classId={classId} assignments={assignments} onCreated={load} onOpen={(a) => setScreen({ name: "assignment-teacher", classId, assignmentId: a.id })} />
+        </>
       )}
 
       {tab === "roster" && (
