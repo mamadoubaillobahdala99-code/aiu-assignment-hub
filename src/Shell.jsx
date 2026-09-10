@@ -9,6 +9,7 @@ import { StudentHome } from "./features/assignment-hub/StudentHome";
 import { StudentClasses } from "./features/assignment-hub/StudentClasses";
 import { StudentClassDetail } from "./features/assignment-hub/StudentClassDetail";
 import { AssignmentStudent } from "./features/assignment-hub/AssignmentStudent";
+import { QuestionEngineLab } from "./features/question-engine/QuestionEngineLab";
 
 export function Shell({ profile, userId, onSignOut, screen, setScreen, showToast }) {
   const isTeacher = profile.role === "teacher";
