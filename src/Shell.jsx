@@ -86,6 +86,7 @@ export function Shell({ profile, userId, onSignOut, screen, setScreen, showToast
 
       <main className="main">
         {screen.name === "dashboard" && isTeacher && <TeacherDashboard userId={userId} setScreen={setScreen} />}
+        {screen.name === "question-lab" && isTeacher && <QuestionEngineLab userId={userId} />}
         {screen.name === "home" && isTeacher && <TeacherHome userId={userId} setScreen={setScreen} showToast={showToast} />}
         {screen.name === "home" && !isTeacher && <StudentHome userId={userId} setScreen={setScreen} showToast={showToast} />}
         {screen.name === "student-classes" && !isTeacher && <StudentClasses userId={userId} setScreen={setScreen} />}
