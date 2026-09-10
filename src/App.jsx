@@ -3,7 +3,7 @@ import { Loader2 } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import { CSS } from "./styles";
 import { AuthScreen } from "./features/auth/AuthScreen";
-import { Shell } from "./Shell";
+import { Shell } from "./Shell";import "./features/question-engine/question-engine.css";
 
 export default function App() {
   const [loading, setLoading] = useState(true);
