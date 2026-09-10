@@ -1,1 +1,10 @@
 
+.qe-question { margin: 16px 0; }
+.qe-prompt { font-size: 15px; line-height: 1.6; margin-bottom: 14px; }
+.qe-options { display: flex; flex-direction: column; gap: 8px; max-width: 280px; }
+.qe-option { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border: 1px solid var(--line); border-radius: 8px; cursor: pointer; font-size: 14px; }
+.qe-option-selected { border-color: var(--teal); background: var(--teal-soft); }
+.qe-option input { accent-color: var(--teal); width: 16px; height: 16px; }
+.qe-form { max-width: 480px; }
+.qe-incorrect { background: var(--rose-soft) !important; }
+.qe-incorrect .feedback-band { color: var(--rose) !important; }
