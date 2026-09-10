@@ -1,1 +1,4 @@
 
+.qe-question-list { display: flex; flex-direction: column; gap: 6px; }
+.qe-question-row { display: flex; align-items: center; gap: 8px; font-size: 13.5px; }
+.qe-question-check { color: var(--teal); flex-shrink: 0; }
