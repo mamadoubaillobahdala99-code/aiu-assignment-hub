@@ -1,4 +1,3 @@
-
 import React from "react";
 
 // text contains "___" (3+ underscores) marking each blank, in order.
@@ -23,8 +22,8 @@ export function SummaryCompletion({ text, questions, answers, onChange, results,
                   disabled={disabled}
                 />
                 {results && (
-                  <span className={results[question.id] ? "qe-result-correct" : "qe-result-incorrect"} style={{ marginLeft: 4 }}>
-                    {results[question.id] ? "✓" : "✗"}
+                  <span className={results[question.id]?.isCorrect ? "qe-result-correct" : "qe-result-incorrect"} style={{ marginLeft: 4 }}>
+                    {results[question.id]?.isCorrect ? "✓" : "✗"}
                   </span>
                 )}
               </span>
