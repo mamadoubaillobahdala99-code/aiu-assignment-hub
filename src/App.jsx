@@ -4,6 +4,7 @@ import { supabase } from "./supabaseClient";
 import { CSS } from "./styles";
 import { AuthScreen } from "./features/auth/AuthScreen";
 import { Shell } from "./Shell";import "./features/question-engine/question-engine.css";
+import "./features/question-engine/multiple-choice.css";
 
 export default function App() {
   const [loading, setLoading] = useState(true);
