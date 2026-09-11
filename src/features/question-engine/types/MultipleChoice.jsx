@@ -1,4 +1,3 @@
-
 import React from "react";
 
 // value: the letter of the chosen option, e.g. "A" | "B" | "C" | null
@@ -16,7 +15,8 @@ export function MultipleChoice({ prompt, choices = [], value, onChange, disabled
               disabled={disabled}
               onChange={() => onChange(choice.letter)}
             />
-            <span><strong>{choice.letter}.</strong> {choice.text}</span>
+            <span className="qe-letter-badge">{choice.letter}</span>
+            <span>{choice.text}</span>
           </label>
         ))}
       </div>
