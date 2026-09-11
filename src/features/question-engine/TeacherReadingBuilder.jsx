@@ -166,8 +166,9 @@ export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast
           </div>
 
           <label className="field-label">Instructions shown to students</label>
-          <input
-            className="field-input"
+          <textarea
+            className="field-input textarea"
+            style={{ minHeight: 90 }}
             placeholder="Appears automatically once you add the first question below"
             value={section.instruction}
             onChange={(e) => updateInstruction(section.localId, e.target.value)}
