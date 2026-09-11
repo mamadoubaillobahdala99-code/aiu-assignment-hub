@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from "react";
 import { ArrowLeft, Clock } from "lucide-react";
 import { supabase } from "../../supabaseClient";
@@ -27,7 +26,7 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
 
     const { data: sectionRows } = await supabase
       .from("exam_sections")
-      .select("id, title, order_index")
+      .select("id, title, instruction, order_index")
       .eq("assignment_id", assignmentId)
       .order("order_index");
 
@@ -38,7 +37,7 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
         .select("order_index, questions(*)")
         .eq("section_id", s.id)
         .order("order_index");
-      built.push({ id: s.id, title: s.title, questions: (links || []).map((l) => l.questions) });
+      built.push({ id: s.id, title: s.title, instruction: s.instruction, questions: (links || []).map((l) => l.questions) });
     }
     setSections(built);
 
@@ -147,6 +146,10 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
             <div className="feedback-panel" style={{ marginBottom: 16 }}>
               <div className="feedback-band">{correctCount} / {allQuestions.length} correct</div>
             </div>
+          )}
+
+          {activeSection.instruction && (
+            <p className="qe-section-instruction">{activeSection.instruction}</p>
           )}
 
           {activeSection.questions.map((q) => (
