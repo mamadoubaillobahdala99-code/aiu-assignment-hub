@@ -1,1 +1,5 @@
 
+.qe-completion-text { font-size: 14.5px; line-height: 2.1; color: var(--ink); }
+.qe-completion-blank-wrap { display: inline-flex; align-items: center; gap: 2px; margin: 0 2px; }
+.qe-completion-blank { display: inline-block; width: 130px; padding: 4px 8px; border: 1px solid var(--line); border-radius: 5px; font-family: inherit; font-size: 13.5px; background: #fff; }
+.qe-completion-blank:focus { border-color: var(--teal); outline: none; }
