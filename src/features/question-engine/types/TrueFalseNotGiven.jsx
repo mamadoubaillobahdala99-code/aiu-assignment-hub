@@ -1,10 +1,10 @@
-
 import React from "react";
 
 const LABEL_SETS = {
   true_false: { positive: "True", negative: "False", not_given: "Not Given" },
   yes_no: { positive: "Yes", negative: "No", not_given: "Not Given" },
 };
+const LETTERS = { positive: "A", negative: "B", not_given: "C" };
 
 // value: "positive" | "negative" | "not_given" | null
 export function TrueFalseNotGiven({ prompt, labelSet = "true_false", value, onChange, disabled }) {
@@ -23,6 +23,7 @@ export function TrueFalseNotGiven({ prompt, labelSet = "true_false", value, onCh
               disabled={disabled}
               onChange={() => onChange(key)}
             />
+            <span className="qe-letter-badge">{LETTERS[key]}</span>
             <span>{labels[key]}</span>
           </label>
         ))}
