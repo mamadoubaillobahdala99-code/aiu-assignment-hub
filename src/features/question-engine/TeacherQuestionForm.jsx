@@ -23,7 +23,13 @@ export function TeacherQuestionForm({ teacherId, skill = "reading", onCreated })
 
   // --- Multiple Choice — bulk paste state ---
   const [mcBulkText, setMcBulkText] = useState("");
-  const [mcBulkAnswers, setMcBulkAnswers] = useState({}); // { [itemKey]: letter }
+  const [mcBulkAnswers, setMcBulkAnswers] = useState({});
+
+  // --- Multiple Selection (choose N of M) state ---
+  const [msPrompt, setMsPrompt] = useState("");
+  const [msChoices, setMsChoices] = useState([{ letter: "A", text: "" }, { letter: "B", text: "" }, { letter: "C", text: "" }]);
+  const [msRequiredCount, setMsRequiredCount] = useState(2);
+  const [msCorrectLetters, setMsCorrectLetters] = useState([]); // { [itemKey]: letter }
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -157,6 +163,61 @@ export function TeacherQuestionForm({ teacherId, skill = "reading", onCreated })
     setMcBulkAnswers({});
   }
 
+  function addMsChoice() {
+    const nextLetter = String.fromCharCode(65 + msChoices.length);
+    setMsChoices((prev) => [...prev, { letter: nextLetter, text: "" }]);
+  }
+  function removeMsChoice(letter) {
+    setMsChoices((prev) =>
+      prev.filter((c) => c.letter !== letter).map((c, i) => ({ ...c, letter: String.fromCharCode(65 + i) }))
+    );
+    setMsCorrectLetters((prev) => prev.filter((l) => l !== letter));
+  }
+  function updateMsChoiceText(letter, text) {
+    setMsChoices((prev) => prev.map((c) => (c.letter === letter ? { ...c, text } : c)));
+  }
+  function toggleMsCorrect(letter) {
+    setMsCorrectLetters((prev) => {
+      if (prev.includes(letter)) return prev.filter((l) => l !== letter);
+      if (prev.length >= msRequiredCount) return prev; // capped, same limit shown to students
+      return [...prev, letter];
+    });
+  }
+
+  async function createMultipleSelection() {
+    const trimmedChoices = msChoices.map((c) => ({ ...c, text: c.text.trim() }));
+    if (!msPrompt.trim() || trimmedChoices.some((c) => !c.text) || msCorrectLetters.length !== msRequiredCount) return;
+    setBusy(true);
+    setError("");
+    const { data: question, error: qError } = await supabase
+      .from("questions")
+      .insert({
+        teacher_id: teacherId,
+        type: "multiple_selection",
+        skill,
+        prompt: msPrompt.trim(),
+        options: { choices: trimmedChoices, required_count: msRequiredCount },
+        points: msRequiredCount,
+      })
+      .select()
+      .single();
+    if (qError || !question) {
+      setBusy(false);
+      setError("Could not create question: " + (qError?.message || "unknown error"));
+      return;
+    }
+    const { error: kError } = await supabase.from("question_answer_key").insert({ question_id: question.id, correct_answer: msCorrectLetters });
+    setBusy(false);
+    if (kError) {
+      setError("Question created, but saving the answer key failed: " + kError.message);
+      return;
+    }
+    setMsPrompt("");
+    setMsChoices([{ letter: "A", text: "" }, { letter: "B", text: "" }, { letter: "C", text: "" }]);
+    setMsCorrectLetters([]);
+    onCreated?.(question);
+  }
+
   const tfLabels =
     labelSet === "yes_no"
       ? { positive: "Yes", negative: "No", not_given: "Not Given" }
@@ -171,6 +232,9 @@ export function TeacherQuestionForm({ teacherId, skill = "reading", onCreated })
         </button>
         <button type="button" className={`type-chip ${questionType === "multiple_choice" ? "active" : ""}`} onClick={() => setQuestionType("multiple_choice")}>
           Multiple Choice
+        </button>
+        <button type="button" className={`type-chip ${questionType === "multiple_selection" ? "active" : ""}`} onClick={() => setQuestionType("multiple_selection")}>
+          Choose Multiple Letters
         </button>
       </div>
 
@@ -305,6 +369,55 @@ export function TeacherQuestionForm({ teacherId, skill = "reading", onCreated })
               </button>
             </>
           )}
+        </>
+      )}
+
+      {questionType === "multiple_selection" && (
+        <>
+          <label className="field-label" style={{ marginTop: 14 }}>Question text</label>
+          <textarea className="field-input textarea" placeholder="e.g. Which TWO advantages of geothermal energy are mentioned?" value={msPrompt} onChange={(e) => setMsPrompt(e.target.value)} />
+
+          <label className="field-label" style={{ marginTop: 14 }}>How many correct answers?</label>
+          <input
+            type="number"
+            min="2"
+            max={msChoices.length}
+            className="field-input"
+            style={{ maxWidth: 100 }}
+            value={msRequiredCount}
+            onChange={(e) => {
+              const n = parseInt(e.target.value, 10) || 2;
+              setMsRequiredCount(n);
+              setMsCorrectLetters((prev) => prev.slice(0, n));
+            }}
+          />
+
+          <label className="field-label" style={{ marginTop: 14 }}>Choices</label>
+          {msChoices.map((choice) => (
+            <div key={choice.letter} className="qe-mc-choice-row">
+              <span className="qe-mc-letter">{choice.letter}</span>
+              <input className="field-input" placeholder={`Option ${choice.letter}…`} value={choice.text} onChange={(e) => updateMsChoiceText(choice.letter, e.target.value)} />
+              {msChoices.length > 2 && <button type="button" className="btn-ghost qe-mc-remove" onClick={() => removeMsChoice(choice.letter)}><X size={13} /></button>}
+            </div>
+          ))}
+          <button type="button" className="btn-ghost" style={{ marginTop: 6 }} onClick={addMsChoice}><Plus size={13} /> Add option</button>
+
+          <label className="field-label" style={{ marginTop: 14 }}>Correct answers ({msCorrectLetters.length} / {msRequiredCount} selected)</label>
+          <div className="type-row">
+            {msChoices.map((c) => (
+              <button key={c.letter} type="button" className={`type-chip ${msCorrectLetters.includes(c.letter) ? "active" : ""}`} onClick={() => toggleMsCorrect(c.letter)}>{c.letter}</button>
+            ))}
+          </div>
+
+          {error && <div className="field-error">{error}</div>}
+          <button
+            className="btn-primary"
+            style={{ marginTop: 16 }}
+            disabled={!msPrompt.trim() || msChoices.some((c) => !c.text.trim()) || msCorrectLetters.length !== msRequiredCount || busy}
+            onClick={createMultipleSelection}
+          >
+            {busy ? "Saving…" : "Save question"}
+          </button>
         </>
       )}
     </div>
