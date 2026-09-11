@@ -96,6 +96,8 @@ function joinLetters(letters) {
   return letters.slice(0, -1).join(", ") + " or " + letters[letters.length - 1];
 }
 
+const NUMBER_WORDS = { 2: "TWO", 3: "THREE", 4: "FOUR", 5: "FIVE", 6: "SIX", 7: "SEVEN", 8: "EIGHT", 9: "NINE", 10: "TEN" };
+
 export function defaultInstructionFor(type, options) {
   if (type === "true_false_not_given") {
     return options?.label_set === "yes_no"
@@ -105,6 +107,15 @@ export function defaultInstructionFor(type, options) {
   if (type === "multiple_choice") {
     const letters = (options?.choices || []).map((c) => c.letter);
     return letters.length > 0 ? `Choose the correct letter, ${joinLetters(letters)}.` : "Choose the correct letter.";
+  }
+  if (type === "multiple_selection") {
+    const choices = options?.choices || [];
+    const count = options?.required_count || 2;
+    const word = NUMBER_WORDS[count] || String(count);
+    if (choices.length === 0) return `Choose ${word} letters.`;
+    const first = choices[0].letter;
+    const last = choices[choices.length - 1].letter;
+    return `Choose ${word} letters, ${first}-${last}.`;
   }
   return "";
 }
