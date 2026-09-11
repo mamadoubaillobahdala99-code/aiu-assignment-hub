@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { ArrowLeft, Clock } from "lucide-react";
 import { supabase } from "../../supabaseClient";
 import { QuestionRenderer } from "./QuestionRenderer";
+import { SummaryCompletion } from "./SummaryCompletion";
 import { ReadingPassage } from "../assignment-hub/ReadingPassage";
 
 // KNOWN LIMITATION, stated honestly: the countdown shown here is a
@@ -12,7 +13,7 @@ import { ReadingPassage } from "../assignment-hub/ReadingPassage";
 
 export function StudentExamRunner({ userId, classId, assignmentId, setScreen, showToast }) {
   const [assignment, setAssignment] = useState(null);
-  const [sections, setSections] = useState([]); // [{ id, title, questions: [...] }]
+  const [sections, setSections] = useState([]); // [{ id, title, instruction, passageText, questions: [...] }]
   const [activeIndex, setActiveIndex] = useState(0);
   const [answers, setAnswers] = useState({}); // { [questionId]: value }
   const [results, setResults] = useState(null); // null | { [questionId]: boolean }
@@ -26,7 +27,7 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
 
     const { data: sectionRows } = await supabase
       .from("exam_sections")
-      .select("id, title, instruction, order_index")
+      .select("id, title, instruction, passage_text, order_index")
       .eq("assignment_id", assignmentId)
       .order("order_index");
 
@@ -37,11 +38,16 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
         .select("order_index, questions(*)")
         .eq("section_id", s.id)
         .order("order_index");
-      built.push({ id: s.id, title: s.title, instruction: s.instruction, questions: (links || []).map((l) => l.questions) });
+      built.push({
+        id: s.id,
+        title: s.title,
+        instruction: s.instruction,
+        passageText: s.passage_text, // present only for Summary Completion sections
+        questions: (links || []).map((l) => l.questions),
+      });
     }
     setSections(built);
 
-    // Restore any answers already given (e.g. if the student left and came back)
     const allQuestionIds = built.flatMap((s) => s.questions.map((q) => q.id));
     if (allQuestionIds.length > 0) {
       const { data: existing } = await supabase
@@ -68,7 +74,6 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
 
   useEffect(() => { load(); }, [load]);
 
-  // Visual countdown only — see limitation note above.
   useEffect(() => {
     if (remainingSec === null || results !== null) return;
     if (remainingSec <= 0) {
@@ -152,21 +157,32 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
             <p className="qe-section-instruction">{activeSection.instruction}</p>
           )}
 
-          {activeSection.questions.map((q) => (
-            <div key={q.id} style={{ marginBottom: 20 }}>
-              <QuestionRenderer
-                question={q}
-                value={answers[q.id] ?? null}
-                onChange={(val) => setAnswers((prev) => ({ ...prev, [q.id]: val }))}
-                disabled={results !== null}
-              />
-              {results && (
-                <div className={results[q.id] ? "qe-result-correct" : "qe-result-incorrect"}>
-                  {results[q.id] ? "Correct" : "Incorrect"}
-                </div>
-              )}
-            </div>
-          ))}
+          {activeSection.passageText ? (
+            <SummaryCompletion
+              text={activeSection.passageText}
+              questions={activeSection.questions}
+              answers={answers}
+              onChange={(qid, val) => setAnswers((prev) => ({ ...prev, [qid]: val }))}
+              results={results}
+              disabled={results !== null}
+            />
+          ) : (
+            activeSection.questions.map((q) => (
+              <div key={q.id} style={{ marginBottom: 20 }}>
+                <QuestionRenderer
+                  question={q}
+                  value={answers[q.id] ?? null}
+                  onChange={(val) => setAnswers((prev) => ({ ...prev, [q.id]: val }))}
+                  disabled={results !== null}
+                />
+                {results && (
+                  <div className={results[q.id] ? "qe-result-correct" : "qe-result-incorrect"}>
+                    {results[q.id] ? "Correct" : "Incorrect"}
+                  </div>
+                )}
+              </div>
+            ))
+          )}
 
           {results === null && (
             <button className="btn-primary" style={{ width: "100%", justifyContent: "center" }} disabled={!allAnswered || submitting} onClick={submitAll}>
