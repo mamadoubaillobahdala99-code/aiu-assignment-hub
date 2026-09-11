@@ -1,1 +1,4 @@
 
+.qe-bulk-preview { display: flex; flex-direction: column; gap: 14px; margin-top: 10px; }
+.qe-bulk-row { padding: 12px 14px; background: var(--paper-raised); border: 1px solid var(--line); border-radius: 8px; }
+.qe-bulk-text { font-size: 13.5px; margin-bottom: 8px; }
