@@ -1,1 +1,4 @@
 
+.qe-mc-choice-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.qe-mc-letter { width: 22px; flex-shrink: 0; font-weight: 700; font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: var(--teal); text-align: center; }
+.qe-mc-remove { padding: 6px; color: var(--rose); }
