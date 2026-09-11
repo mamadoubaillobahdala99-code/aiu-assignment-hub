@@ -1,33 +1,47 @@
-
 import React, { useState } from "react";
 import { Plus, X, Check } from "lucide-react";
 import { supabase } from "../../supabaseClient";
 import { TeacherQuestionForm } from "./TeacherQuestionForm";
+import { guessPassageTitle, defaultInstructionFor } from "./bulkParse";
 
-// Builds a real, published structured Reading assignment:
-// title + passage + sections (Part 1, Part 2...) + questions per section.
-// Reuses TeacherQuestionForm as-is (the exact same question creator
-// already proven in the Question Lab) — nothing about question
-// creation itself is rebuilt here.
 export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast }) {
   const [title, setTitle] = useState("");
+  const [titleTouched, setTitleTouched] = useState(false);
   const [dueDate, setDueDate] = useState("");
   const [timeLimit, setTimeLimit] = useState("60");
   const [passageText, setPassageText] = useState("");
-  const [sections, setSections] = useState([]); // [{ localId, title, questions: [] }]
-  const [addingQuestionFor, setAddingQuestionFor] = useState(null); // localId of section, or null
+  const [sections, setSections] = useState([]); // [{ localId, title, instruction, questions: [] }]
+  const [addingQuestionFor, setAddingQuestionFor] = useState(null);
   const [publishing, setPublishing] = useState(false);
   const [error, setError] = useState("");
+
+  function handlePassageChange(text) {
+    setPassageText(text);
+    // Only ever suggest a title if the teacher hasn't typed one themselves.
+    if (!titleTouched) {
+      const guess = guessPassageTitle(text);
+      if (guess) setTitle(guess);
+    }
+  }
+
+  function handleTitleChange(text) {
+    setTitle(text);
+    setTitleTouched(true);
+  }
 
   function addSection() {
     setSections((prev) => [
       ...prev,
-      { localId: crypto.randomUUID(), title: `Part ${prev.length + 1}`, questions: [] },
+      { localId: crypto.randomUUID(), title: `Part ${prev.length + 1}`, instruction: "", questions: [] },
     ]);
   }
 
   function renameSection(localId, newTitle) {
     setSections((prev) => prev.map((s) => (s.localId === localId ? { ...s, title: newTitle } : s)));
+  }
+
+  function updateInstruction(localId, text) {
+    setSections((prev) => prev.map((s) => (s.localId === localId ? { ...s, instruction: text } : s)));
   }
 
   function removeSection(localId) {
@@ -36,7 +50,15 @@ export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast
 
   function onQuestionCreated(localId, question) {
     setSections((prev) =>
-      prev.map((s) => (s.localId === localId ? { ...s, questions: [...s.questions, question] } : s))
+      prev.map((s) => {
+        if (s.localId !== localId) return s;
+        // The first question added to a section suggests that section's
+        // instruction line automatically — always editable afterwards.
+        const instruction = s.questions.length === 0 && !s.instruction
+          ? defaultInstructionFor(question.type, question.options)
+          : s.instruction;
+        return { ...s, instruction, questions: [...s.questions, question] };
+      })
     );
     setAddingQuestionFor(null);
   }
@@ -72,7 +94,7 @@ export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast
       const section = sections[i];
       const { data: sectionRow, error: sError } = await supabase
         .from("exam_sections")
-        .insert({ assignment_id: assignment.id, title: section.title, order_index: i })
+        .insert({ assignment_id: assignment.id, title: section.title, instruction: section.instruction || null, order_index: i })
         .select()
         .single();
 
@@ -106,7 +128,7 @@ export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast
       <h1 className="page-title">New Reading assignment</h1>
 
       <label className="field-label" style={{ marginTop: 16 }}>Title</label>
-      <input className="field-input" placeholder="e.g. Reading Passage — Renewable Energy" value={title} onChange={(e) => setTitle(e.target.value)} />
+      <input className="field-input" placeholder="e.g. Reading Passage — Renewable Energy" value={title} onChange={(e) => handleTitleChange(e.target.value)} />
 
       <div style={{ display: "flex", gap: 16, marginTop: 14 }}>
         <div style={{ flex: 1 }}>
@@ -120,12 +142,13 @@ export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast
       </div>
 
       <label className="field-label" style={{ marginTop: 14 }}>Passage text</label>
+      <p className="field-hint" style={{ marginTop: 0, marginBottom: 8 }}>If the first line looks like a title, it'll fill in the Title field above automatically — you can always change it.</p>
       <textarea
         className="field-input textarea"
         style={{ minHeight: 180 }}
         placeholder="Paste the full reading passage here…"
         value={passageText}
-        onChange={(e) => setPassageText(e.target.value)}
+        onChange={(e) => handlePassageChange(e.target.value)}
       />
 
       <h3 className="section-title" style={{ marginTop: 28 }}>Sections</h3>
@@ -142,18 +165,28 @@ export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast
             <button className="btn-ghost" onClick={() => removeSection(section.localId)}><X size={13} /> Remove section</button>
           </div>
 
-          {section.questions.length === 0 ? (
-            <p className="empty-inline">No questions yet in this section.</p>
-          ) : (
-            <div className="qe-question-list">
-              {section.questions.map((q, i) => (
-                <div key={q.id} className="qe-question-row">
-                  <Check size={14} className="qe-question-check" />
-                  <span>{i + 1}. {q.prompt}</span>
-                </div>
-              ))}
-            </div>
-          )}
+          <label className="field-label">Instructions shown to students</label>
+          <input
+            className="field-input"
+            placeholder="Appears automatically once you add the first question below"
+            value={section.instruction}
+            onChange={(e) => updateInstruction(section.localId, e.target.value)}
+          />
+
+          <div style={{ marginTop: 14 }}>
+            {section.questions.length === 0 ? (
+              <p className="empty-inline">No questions yet in this section.</p>
+            ) : (
+              <div className="qe-question-list">
+                {section.questions.map((q, i) => (
+                  <div key={q.id} className="qe-question-row">
+                    <Check size={14} className="qe-question-check" />
+                    <span>{i + 1}. {q.prompt}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
 
           {addingQuestionFor === section.localId ? (
             <div style={{ marginTop: 12 }}>
