@@ -1,6 +1,7 @@
 import React from "react";
 import { TrueFalseNotGiven } from "./types/TrueFalseNotGiven";
 import { MultipleChoice } from "./types/MultipleChoice";
+import { MultipleSelection } from "./types/MultipleSelection";
 
 // Add new question types here as they're built — this is the ONLY
 // place that needs to know about all the types. Everywhere else in
@@ -27,8 +28,18 @@ export function QuestionRenderer({ question, value, onChange, disabled }) {
           disabled={disabled}
         />
       );
+    case "multiple_selection":
+      return (
+        <MultipleSelection
+          prompt={question.prompt}
+          choices={question.options?.choices || []}
+          requiredCount={question.options?.required_count || 2}
+          value={value || []}
+          onChange={onChange}
+          disabled={disabled}
+        />
+      );
     default:
       return <p className="qe-prompt">Unsupported question type: {question.type}</p>;
   }
 }
-
