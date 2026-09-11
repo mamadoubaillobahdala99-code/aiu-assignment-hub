@@ -1,12 +1,11 @@
-
 // All parsing here is deliberately simple and predictable — never
 // guessing at meaning, only recognizing clear text patterns. The
 // teacher always sees a preview before anything is created.
 
 // ---------- True/False/Not Given bulk parsing ----------
 // Tries, in order: numbered lines → blank-line-separated blocks →
-// one statement per line. Returns { items, strategy } or null with
-// a guidance message if nothing could be confidently separated.
+// one statement per line. Returns { items, strategy } or empty items
+// with a guidance message shown to the teacher if nothing was found.
 
 function byNumbers(text) {
   const items = [];
@@ -41,9 +40,8 @@ export function parseBulkTrueFalse(text) {
 }
 
 // ---------- Multiple Choice bulk parsing ----------
-// Numbered questions only, for now — this is the one format that
-// reliably tells us where one question's options end and the next
-// question begins.
+// Numbered questions only — the one format that reliably tells us
+// where one question's options end and the next question begins.
 
 export function parseBulkMultipleChoice(text) {
   const lines = text.split("\n");
@@ -67,34 +65,46 @@ export function parseBulkMultipleChoice(text) {
   }
   if (current) questions.push(current);
 
-  // Only keep questions that actually got at least 2 options —
-  // anything else is too ambiguous to trust automatically.
   return questions.filter((q) => q.choices.length >= 2);
 }
 
 // ---------- Passage title guess ----------
-// Only ever a suggestion — always left editable by the teacher.
+// Two independent signals, either one is enough: a blank line right
+// after the first line, OR the first line simply being short (titles
+// are almost always short; real sentences usually aren't). Always
+// left editable by the teacher — this is only ever a starting point.
 
 export function guessPassageTitle(text) {
   const lines = text.split("\n");
   const firstLine = (lines[0] || "").trim();
   const secondLine = (lines[1] || "").trim();
-  if (!firstLine) return "";
-  const looksLikeTitle = firstLine.length > 0 && firstLine.length <= 90 && !firstLine.endsWith(".");
-  if (looksLikeTitle && secondLine === "") return firstLine;
-  return "";
+  if (!firstLine || firstLine.length > 90) return "";
+  if (firstLine.endsWith(".")) return ""; // real sentences almost always end with a period
+
+  const hasBlankLineAfter = secondLine === "";
+  const wordCount = firstLine.split(/\s+/).filter(Boolean).length;
+  const looksShort = wordCount > 0 && wordCount <= 12;
+
+  return hasBlankLineAfter || looksShort ? firstLine : "";
 }
 
 // ---------- Auto-generated section instructions ----------
 
+function joinLetters(letters) {
+  if (letters.length === 0) return "";
+  if (letters.length === 1) return letters[0];
+  return letters.slice(0, -1).join(", ") + " or " + letters[letters.length - 1];
+}
+
 export function defaultInstructionFor(type, options) {
   if (type === "true_false_not_given") {
     return options?.label_set === "yes_no"
-      ? "Do the following statements agree with the claims of the writer in the Reading Passage?"
-      : "Do the following statements agree with the information given in the Reading Passage?";
+      ? "Do the following statements agree with the views of the writer in the Reading Passage?\nYES if the statement agrees with the views of the writer\nNO if the statement contradicts the views of the writer\nNOT GIVEN if it is impossible to say what the writer thinks about this"
+      : "Do the following statements agree with the information given in the Reading Passage?\nTRUE if the statement agrees with the information\nFALSE if the statement contradicts the information\nNOT GIVEN if there is no information on this";
   }
   if (type === "multiple_choice") {
-    return "Choose the correct letter.";
+    const letters = (options?.choices || []).map((c) => c.letter);
+    return letters.length > 0 ? `Choose the correct letter, ${joinLetters(letters)}.` : "Choose the correct letter.";
   }
   return "";
 }
