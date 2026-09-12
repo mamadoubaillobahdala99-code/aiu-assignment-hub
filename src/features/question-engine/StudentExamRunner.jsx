@@ -121,6 +121,7 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
   // same kind of resize handle the older Reading Focus Mode had.
   function startResize(e) {
     e.preventDefault();
+    document.body.classList.add("qe-resizing");
     function onMove(ev) {
       if (!bodyRef.current) return;
       const rect = bodyRef.current.getBoundingClientRect();
@@ -129,6 +130,7 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
       setLeftWidthPct(pct);
     }
     function onUp() {
+      document.body.classList.remove("qe-resizing");
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
     }
@@ -166,7 +168,7 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
       </div>
 
       <div className="qe-exam-body" ref={bodyRef}>
-        <div className="qe-passage-panel" style={{ width: `${leftWidthPct}%` }}>
+        <div className="qe-passage-panel" style={{ flexBasis: `${leftWidthPct}%` }}>
           <div className="qe-passage-panel-inner">
             <ReadingPassage assignmentId={assignmentId} userId={userId} sectionId={activeSection.id} text={activePassageText} />
           </div>
@@ -176,7 +178,7 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
           <GripVertical size={14} />
         </div>
 
-        <div className="qe-questions-panel" style={{ width: `${100 - leftWidthPct}%` }}>
+        <div className="qe-questions-panel" style={{ flexBasis: `${100 - leftWidthPct}%` }}>
           {results && (
             <div className="feedback-panel" style={{ marginBottom: 16 }}>
               <div className="feedback-band">{totalPointsEarned} / {totalPointsPossible} points</div>
