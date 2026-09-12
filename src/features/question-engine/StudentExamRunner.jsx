@@ -13,7 +13,7 @@ import { ReadingPassage } from "../assignment-hub/ReadingPassage";
 
 export function StudentExamRunner({ userId, classId, assignmentId, setScreen, showToast }) {
   const [assignment, setAssignment] = useState(null);
-  const [sections, setSections] = useState([]); // [{ id, title, groups: [{ id, instruction, passageText, questions, startNumber, endNumber }] }]
+  const [sections, setSections] = useState([]); // [{ id, title, passageText, groups: [...] }]
   const [activeIndex, setActiveIndex] = useState(0);
   const [answers, setAnswers] = useState({});
   const [results, setResults] = useState(null);
@@ -27,11 +27,12 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
 
     const { data: sectionRows } = await supabase
       .from("exam_sections")
-      .select("id, title, order_index")
+      .select("id, title, passage_text, order_index")
       .eq("assignment_id", assignmentId)
       .order("order_index");
 
     const built = [];
+    let globalCounter = 0; // continues across every Part — never resets
     for (const s of sectionRows || []) {
       const { data: groupRows } = await supabase
         .from("question_groups")
@@ -39,7 +40,6 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
         .eq("section_id", s.id)
         .order("order_index");
 
-      let counter = 0;
       const groups = [];
       for (const g of groupRows || []) {
         const { data: links } = await supabase
@@ -48,11 +48,11 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
           .eq("group_id", g.id)
           .order("order_index");
         const questions = (links || []).map((l) => l.questions);
-        const startNumber = counter + 1;
-        counter += questions.length;
-        groups.push({ id: g.id, instruction: g.instruction, passageText: g.passage_text, questions, startNumber, endNumber: counter });
+        const startNumber = globalCounter + 1;
+        globalCounter += questions.length;
+        groups.push({ id: g.id, instruction: g.instruction, passageText: g.passage_text, questions, startNumber, endNumber: globalCounter });
       }
-      built.push({ id: s.id, title: s.title, groups });
+      built.push({ id: s.id, title: s.title, passageText: s.passage_text, groups });
     }
     setSections(built);
 
@@ -125,6 +125,10 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
   }
 
   const activeSection = sections[activeIndex];
+  // Older assignments (created before Parts had their own stored text)
+  // fall back to the assignment's single description field.
+  const activePassageText = activeSection.passageText || assignment.description || "";
+
   const totalPointsPossible = allQuestions.reduce((sum, q) => sum + (q.points || 1), 0);
   const totalPointsEarned = results ? Object.values(results).reduce((sum, r) => sum + (r.earned || 0), 0) : 0;
 
@@ -144,7 +148,7 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
 
       <div className="rf-body">
         <div className="rf-passage-panel">
-          <ReadingPassage assignmentId={assignmentId} userId={userId} text={assignment.description || ""} />
+          <ReadingPassage assignmentId={assignmentId} userId={userId} text={activePassageText} />
         </div>
 
         <div className="rf-answers-panel" style={{ flex: "0 0 45%", maxWidth: "none" }}>
@@ -181,7 +185,7 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
                   disabled={results !== null}
                 />
               ) : (
-                group.questions.map((q, i) => (
+                group.questions.map((q) => (
                   <div key={q.id} style={{ marginBottom: 20 }}>
                     <QuestionRenderer
                       question={q}
