@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Loader2, Eraser } from "lucide-react";
 import { supabase } from "../../supabaseClient";
