@@ -2,7 +2,7 @@ import React from "react";
 
 // text contains "___" (3+ underscores) marking each blank, in order.
 // questions is the ordered list of gap_fill questions, one per blank.
-export function SummaryCompletion({ text, questions, answers, onChange, results, disabled }) {
+export function SummaryCompletion({ text, questions, answers, onChange, results, disabled, startNumber = 1 }) {
   const parts = text.split(/_{3,}/);
 
   return (
@@ -13,8 +13,8 @@ export function SummaryCompletion({ text, questions, answers, onChange, results,
           <React.Fragment key={i}>
             {part}
             {question && (
-              <span className="qe-completion-blank-wrap">
-                <span className="rf-answer-num" style={{ marginRight: 4 }}>{i + 1}</span>
+              <span className="qe-completion-blank-wrap" id={`question-${startNumber + i}`}>
+                <span className="rf-answer-num" style={{ marginRight: 4 }}>{startNumber + i}</span>
                 <input
                   className="qe-completion-blank"
                   value={answers[question.id] ?? ""}
