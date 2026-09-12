@@ -10,9 +10,9 @@ export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast
   const [dueDate, setDueDate] = useState("");
   const [timeLimit, setTimeLimit] = useState("60");
   const [passageText, setPassageText] = useState("");
-  const [sections, setSections] = useState([]);
-  // section: { localId, title, instruction, mode: "questions"|"completion",
-  //            questions: [], summaryText: "" (completion mode only) }
+  const [groups, setGroups] = useState([]);
+  // group: { localId, instruction, mode: "questions"|"completion",
+  //          questions: [], summaryText: "" (completion mode only) }
   const [addingQuestionFor, setAddingQuestionFor] = useState(null);
   const [publishing, setPublishing] = useState(false);
   const [error, setError] = useState("");
@@ -30,51 +30,58 @@ export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast
     setTitleTouched(true);
   }
 
-  function addSection() {
-    setSections((prev) => [
+  function addGroup() {
+    setGroups((prev) => [
       ...prev,
-      { localId: crypto.randomUUID(), title: `Part ${prev.length + 1}`, instruction: "", mode: "questions", questions: [], summaryText: "" },
+      { localId: crypto.randomUUID(), instruction: "", mode: "questions", questions: [], summaryText: "" },
     ]);
   }
 
-  function renameSection(localId, newTitle) {
-    setSections((prev) => prev.map((s) => (s.localId === localId ? { ...s, title: newTitle } : s)));
-  }
-
   function updateInstruction(localId, text) {
-    setSections((prev) => prev.map((s) => (s.localId === localId ? { ...s, instruction: text } : s)));
+    setGroups((prev) => prev.map((g) => (g.localId === localId ? { ...g, instruction: text } : g)));
   }
 
-  function setSectionMode(localId, mode) {
-    setSections((prev) => prev.map((s) => (s.localId === localId ? { ...s, mode, questions: [], summaryText: "" } : s)));
+  function setGroupMode(localId, mode) {
+    setGroups((prev) => prev.map((g) => (g.localId === localId ? { ...g, mode, questions: [], summaryText: "" } : g)));
   }
 
   function updateSummaryText(localId, text) {
-    setSections((prev) => prev.map((s) => (s.localId === localId ? { ...s, summaryText: text } : s)));
+    setGroups((prev) => prev.map((g) => (g.localId === localId ? { ...g, summaryText: text } : g)));
   }
 
-  function removeSection(localId) {
-    setSections((prev) => prev.filter((s) => s.localId !== localId));
+  function removeGroup(localId) {
+    setGroups((prev) => prev.filter((g) => g.localId !== localId));
   }
 
   function onQuestionCreated(localId, question) {
-    setSections((prev) =>
-      prev.map((s) => {
-        if (s.localId !== localId) return s;
-        const instruction = s.questions.length === 0 && !s.instruction
+    setGroups((prev) =>
+      prev.map((g) => {
+        if (g.localId !== localId) return g;
+        const instruction = g.questions.length === 0 && !g.instruction
           ? defaultInstructionFor(question.type, question.options)
-          : s.instruction;
-        return { ...s, instruction, questions: [...s.questions, question] };
+          : g.instruction;
+        return { ...g, instruction, questions: [...g.questions, question] };
       })
     );
     setAddingQuestionFor(null);
   }
 
+  // Running question count so each group can preview its own
+  // "Questions X-Y" heading, exactly as it will appear to students.
+  const groupRanges = useMemo(() => {
+    let counter = 0;
+    return groups.map((g) => {
+      const start = counter + 1;
+      counter += g.questions.length;
+      return { start, end: counter };
+    });
+  }, [groups]);
+
   const canPublish =
     title.trim() &&
     passageText.trim() &&
-    sections.length > 0 &&
-    sections.every((s) => (s.mode === "completion" ? s.summaryText.trim() && s.questions.length > 0 : s.questions.length > 0));
+    groups.length > 0 &&
+    groups.every((g) => (g.mode === "completion" ? g.summaryText.trim() && g.questions.length > 0 : g.questions.length > 0));
 
   async function publish() {
     setError("");
@@ -100,28 +107,41 @@ export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast
       return;
     }
 
-    for (let i = 0; i < sections.length; i++) {
-      const section = sections[i];
-      const { data: sectionRow, error: sError } = await supabase
-        .from("exam_sections")
+    // One passage container for now (Step B will allow up to 3).
+    const { data: sectionRow, error: sError } = await supabase
+      .from("exam_sections")
+      .insert({ assignment_id: assignment.id, title: "Part 1", order_index: 0 })
+      .select()
+      .single();
+
+    if (sError || !sectionRow) {
+      setPublishing(false);
+      setError("Assignment created, but the passage failed to save: " + sError?.message);
+      return;
+    }
+
+    for (let i = 0; i < groups.length; i++) {
+      const group = groups[i];
+      const { data: groupRow, error: gError } = await supabase
+        .from("question_groups")
         .insert({
-          assignment_id: assignment.id,
-          title: section.title,
-          instruction: section.instruction || null,
-          passage_text: section.mode === "completion" ? section.summaryText.trim() : null,
+          section_id: sectionRow.id,
+          instruction: group.instruction || null,
+          passage_text: group.mode === "completion" ? group.summaryText.trim() : null,
           order_index: i,
         })
         .select()
         .single();
 
-      if (sError || !sectionRow) {
+      if (gError || !groupRow) {
         setPublishing(false);
-        setError("Assignment created, but a section failed to save: " + sError?.message);
+        setError("Assignment created, but a question group failed to save: " + gError?.message);
         return;
       }
 
-      const links = section.questions.map((q, qi) => ({
-        section_id: sectionRow.id,
+      const links = group.questions.map((q, qi) => ({
+        section_id: sectionRow.id, // kept for backward compatibility
+        group_id: groupRow.id,
         question_id: q.id,
         order_index: qi,
       }));
@@ -167,18 +187,20 @@ export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast
         onChange={(e) => handlePassageChange(e.target.value)}
       />
 
-      <h3 className="section-title" style={{ marginTop: 28 }}>Sections</h3>
+      <h3 className="section-title" style={{ marginTop: 28 }}>Question groups</h3>
+      <p className="field-hint" style={{ marginTop: 0 }}>Add as many groups as you need — each can be a different question type with its own instruction, stacked one after another, just like a real IELTS passage.</p>
 
-      {sections.map((section) => (
-        <div key={section.localId} className="feedback-panel" style={{ marginBottom: 14 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-            <input
-              className="field-input"
-              style={{ maxWidth: 220 }}
-              value={section.title}
-              onChange={(e) => renameSection(section.localId, e.target.value)}
-            />
-            <button className="btn-ghost" onClick={() => removeSection(section.localId)}><X size={13} /> Remove section</button>
+      {groups.map((group, gi) => (
+        <div key={group.localId} className="feedback-panel" style={{ marginBottom: 14 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+            <span className="qe-group-heading-preview">
+              {group.questions.length > 0
+                ? group.questions.length === 1
+                  ? `Question ${groupRanges[gi].start}`
+                  : `Questions ${groupRanges[gi].start}-${groupRanges[gi].end}`
+                : "New group"}
+            </span>
+            <button className="btn-ghost" onClick={() => removeGroup(group.localId)}><X size={13} /> Remove group</button>
           </div>
 
           <label className="field-label">Instructions shown to students</label>
@@ -186,61 +208,61 @@ export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast
             className="field-input textarea"
             style={{ minHeight: 90 }}
             placeholder="Appears automatically once you add the first question below"
-            value={section.instruction}
-            onChange={(e) => updateInstruction(section.localId, e.target.value)}
+            value={group.instruction}
+            onChange={(e) => updateInstruction(group.localId, e.target.value)}
           />
 
-          {section.questions.length === 0 && (
+          {group.questions.length === 0 && (
             <>
-              <label className="field-label" style={{ marginTop: 14 }}>Section type</label>
+              <label className="field-label" style={{ marginTop: 14 }}>Group type</label>
               <div className="type-row">
-                <button type="button" className={`type-chip ${section.mode === "questions" ? "active" : ""}`} onClick={() => setSectionMode(section.localId, "questions")}>
+                <button type="button" className={`type-chip ${group.mode === "questions" ? "active" : ""}`} onClick={() => setGroupMode(group.localId, "questions")}>
                   Question list
                 </button>
-                <button type="button" className={`type-chip ${section.mode === "completion" ? "active" : ""}`} onClick={() => setSectionMode(section.localId, "completion")}>
+                <button type="button" className={`type-chip ${group.mode === "completion" ? "active" : ""}`} onClick={() => setGroupMode(group.localId, "completion")}>
                   Summary Completion
                 </button>
               </div>
             </>
           )}
 
-          {section.mode === "completion" ? (
+          {group.mode === "completion" ? (
             <SummaryCompletionBuilder
-              section={section}
+              group={group}
               teacherId={teacherId}
-              onSummaryTextChange={(text) => updateSummaryText(section.localId, text)}
+              onSummaryTextChange={(text) => updateSummaryText(group.localId, text)}
               onBlanksCreated={(questions) =>
-                setSections((prev) => prev.map((s) => (s.localId === section.localId ? { ...s, questions } : s)))
+                setGroups((prev) => prev.map((g) => (g.localId === group.localId ? { ...g, questions } : g)))
               }
             />
           ) : (
             <>
               <div style={{ marginTop: 14 }}>
-                {section.questions.length === 0 ? (
-                  <p className="empty-inline">No questions yet in this section.</p>
+                {group.questions.length === 0 ? (
+                  <p className="empty-inline">No questions yet in this group.</p>
                 ) : (
                   <div className="qe-question-list">
-                    {section.questions.map((q, i) => (
+                    {group.questions.map((q, i) => (
                       <div key={q.id} className="qe-question-row">
                         <Check size={14} className="qe-question-check" />
-                        <span>{i + 1}. {q.prompt}</span>
+                        <span>{groupRanges[gi].start + i}. {q.prompt}</span>
                       </div>
                     ))}
                   </div>
                 )}
               </div>
 
-              {addingQuestionFor === section.localId ? (
+              {addingQuestionFor === group.localId ? (
                 <div style={{ marginTop: 12 }}>
                   <TeacherQuestionForm
                     teacherId={teacherId}
                     skill="reading"
-                    onCreated={(q) => onQuestionCreated(section.localId, q)}
+                    onCreated={(q) => onQuestionCreated(group.localId, q)}
                   />
                   <button className="btn-ghost" style={{ marginTop: 8 }} onClick={() => setAddingQuestionFor(null)}>Cancel</button>
                 </div>
               ) : (
-                <button className="btn-ghost" style={{ marginTop: 10 }} onClick={() => setAddingQuestionFor(section.localId)}>
+                <button className="btn-ghost" style={{ marginTop: 10 }} onClick={() => setAddingQuestionFor(group.localId)}>
                   <Plus size={13} /> Add question
                 </button>
               )}
@@ -249,7 +271,7 @@ export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast
         </div>
       ))}
 
-      <button className="btn-ghost" onClick={addSection}><Plus size={14} /> Add section</button>
+      <button className="btn-ghost" onClick={addGroup}><Plus size={14} /> Add question group</button>
 
       {error && <div className="field-error" style={{ marginTop: 16 }}>{error}</div>}
 
@@ -261,17 +283,14 @@ export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast
 }
 
 // ---------- Summary Completion builder, local to this file ----------
-// Handles: pasting the gapped text, detecting blanks, letting the
-// teacher enter accepted answers, and creating the underlying
-// gap_fill questions (once) when the teacher confirms.
-function SummaryCompletionBuilder({ section, teacherId, onSummaryTextChange, onBlanksCreated }) {
-  const [localText, setLocalText] = useState(section.summaryText);
-  const [accepted, setAccepted] = useState({}); // { [blankIndex]: "answer1, answer2" }
+function SummaryCompletionBuilder({ group, teacherId, onSummaryTextChange, onBlanksCreated }) {
+  const [localText, setLocalText] = useState(group.summaryText);
+  const [accepted, setAccepted] = useState({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
   const blankCount = useMemo(() => Math.max(0, localText.split(/_{3,}/).length - 1), [localText]);
-  const alreadyCreated = section.questions.length > 0;
+  const alreadyCreated = group.questions.length > 0;
   const allFilled = blankCount > 0 && Array.from({ length: blankCount }).every((_, i) => (accepted[i] || "").trim());
 
   function handleTextChange(text) {
@@ -311,9 +330,9 @@ function SummaryCompletionBuilder({ section, teacherId, onSummaryTextChange, onB
   if (alreadyCreated) {
     return (
       <div style={{ marginTop: 14 }}>
-        <p className="qe-completion-text" style={{ marginBottom: 8 }}>{section.summaryText}</p>
+        <p className="qe-completion-text" style={{ marginBottom: 8 }}>{group.summaryText}</p>
         <div className="qe-question-list">
-          {section.questions.map((q, i) => <div key={q.id} className="qe-question-row"><Check size={14} className="qe-question-check" /><span>Blank {i + 1} — answer saved</span></div>)}
+          {group.questions.map((q, i) => <div key={q.id} className="qe-question-row"><Check size={14} className="qe-question-check" /><span>Blank {i + 1} — answer saved</span></div>)}
         </div>
       </div>
     );
