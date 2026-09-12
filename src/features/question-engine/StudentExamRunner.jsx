@@ -148,7 +148,7 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
 
       <div className="rf-body">
         <div className="rf-passage-panel">
-          <ReadingPassage assignmentId={assignmentId} userId={userId} text={activePassageText} />
+          <ReadingPassage assignmentId={assignmentId} userId={userId} sectionId={activeSection.id} text={activePassageText} />
         </div>
 
         <div className="rf-answers-panel" style={{ flex: "0 0 45%", maxWidth: "none" }}>
