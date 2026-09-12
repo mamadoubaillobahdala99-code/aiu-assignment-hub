@@ -29,7 +29,11 @@ export function TeacherQuestionForm({ teacherId, skill = "reading", onCreated })
   const [msPrompt, setMsPrompt] = useState("");
   const [msChoices, setMsChoices] = useState([{ letter: "A", text: "" }, { letter: "B", text: "" }, { letter: "C", text: "" }]);
   const [msRequiredCount, setMsRequiredCount] = useState(2);
-  const [msCorrectLetters, setMsCorrectLetters] = useState([]); // { [itemKey]: letter }
+  const [msCorrectLetters, setMsCorrectLetters] = useState([]);
+
+  // --- Multiple Selection — bulk paste state ---
+  const [msBulkText, setMsBulkText] = useState("");
+  const [msBulkConfig, setMsBulkConfig] = useState({}); // { [itemKey]: { requiredCount, correctLetters: [] } } // { [itemKey]: letter }
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -40,6 +44,14 @@ export function TeacherQuestionForm({ teacherId, skill = "reading", onCreated })
 
   const mcBulkItems = useMemo(() => parseBulkMultipleChoice(mcBulkText), [mcBulkText]);
   const allMcBulkAnswered = mcBulkItems.length > 0 && mcBulkItems.every((item) => mcBulkAnswers[item.key]);
+
+  const msBulkItems = useMemo(() => parseBulkMultipleChoice(msBulkText), [msBulkText]);
+  const allMsBulkConfigured =
+    msBulkItems.length > 0 &&
+    msBulkItems.every((item) => {
+      const cfg = msBulkConfig[item.key];
+      return cfg && cfg.requiredCount > 0 && cfg.correctLetters.length === cfg.requiredCount;
+    });
 
   function addChoice() {
     const nextLetter = String.fromCharCode(65 + choices.length);
@@ -182,6 +194,60 @@ export function TeacherQuestionForm({ teacherId, skill = "reading", onCreated })
       if (prev.length >= msRequiredCount) return prev; // capped, same limit shown to students
       return [...prev, letter];
     });
+  }
+
+  function updateMsBulkRequiredCount(key, count) {
+    setMsBulkConfig((prev) => ({
+      ...prev,
+      [key]: { requiredCount: count, correctLetters: (prev[key]?.correctLetters || []).slice(0, count) },
+    }));
+  }
+  function toggleMsBulkCorrect(key, letter) {
+    setMsBulkConfig((prev) => {
+      const cfg = prev[key] || { requiredCount: 2, correctLetters: [] };
+      const already = cfg.correctLetters.includes(letter);
+      let correctLetters;
+      if (already) correctLetters = cfg.correctLetters.filter((l) => l !== letter);
+      else if (cfg.correctLetters.length >= cfg.requiredCount) return prev; // capped
+      else correctLetters = [...cfg.correctLetters, letter];
+      return { ...prev, [key]: { ...cfg, correctLetters } };
+    });
+  }
+
+  async function createBulkMultipleSelection() {
+    if (!allMsBulkConfigured) return;
+    setBusy(true);
+    setError("");
+    for (const item of msBulkItems) {
+      const cfg = msBulkConfig[item.key];
+      const { data: question, error: qError } = await supabase
+        .from("questions")
+        .insert({
+          teacher_id: teacherId,
+          type: "multiple_selection",
+          skill,
+          prompt: item.prompt,
+          options: { choices: item.choices, required_count: cfg.requiredCount },
+          points: cfg.requiredCount,
+        })
+        .select()
+        .single();
+      if (qError || !question) {
+        setBusy(false);
+        setError(`Stopped at "${item.prompt.slice(0, 30)}…": ` + (qError?.message || "unknown error"));
+        return;
+      }
+      const { error: kError } = await supabase.from("question_answer_key").insert({ question_id: question.id, correct_answer: cfg.correctLetters });
+      if (kError) {
+        setBusy(false);
+        setError("A question was created, but its answer key failed: " + kError.message);
+        return;
+      }
+      onCreated?.(question);
+    }
+    setBusy(false);
+    setMsBulkText("");
+    setMsBulkConfig({});
   }
 
   async function createMultipleSelection() {
@@ -374,50 +440,112 @@ export function TeacherQuestionForm({ teacherId, skill = "reading", onCreated })
 
       {questionType === "multiple_selection" && (
         <>
-          <label className="field-label" style={{ marginTop: 14 }}>Question text</label>
-          <textarea className="field-input textarea" placeholder="e.g. Which TWO advantages of geothermal energy are mentioned?" value={msPrompt} onChange={(e) => setMsPrompt(e.target.value)} />
-
-          <label className="field-label" style={{ marginTop: 14 }}>How many correct answers?</label>
-          <input
-            type="number"
-            min="2"
-            max={msChoices.length}
-            className="field-input"
-            style={{ maxWidth: 100 }}
-            value={msRequiredCount}
-            onChange={(e) => {
-              const n = parseInt(e.target.value, 10) || 2;
-              setMsRequiredCount(n);
-              setMsCorrectLetters((prev) => prev.slice(0, n));
-            }}
-          />
-
-          <label className="field-label" style={{ marginTop: 14 }}>Choices</label>
-          {msChoices.map((choice) => (
-            <div key={choice.letter} className="qe-mc-choice-row">
-              <span className="qe-mc-letter">{choice.letter}</span>
-              <input className="field-input" placeholder={`Option ${choice.letter}…`} value={choice.text} onChange={(e) => updateMsChoiceText(choice.letter, e.target.value)} />
-              {msChoices.length > 2 && <button type="button" className="btn-ghost qe-mc-remove" onClick={() => removeMsChoice(choice.letter)}><X size={13} /></button>}
-            </div>
-          ))}
-          <button type="button" className="btn-ghost" style={{ marginTop: 6 }} onClick={addMsChoice}><Plus size={13} /> Add option</button>
-
-          <label className="field-label" style={{ marginTop: 14 }}>Correct answers ({msCorrectLetters.length} / {msRequiredCount} selected)</label>
+          <label className="field-label" style={{ marginTop: 14 }}>Add questions</label>
           <div className="type-row">
-            {msChoices.map((c) => (
-              <button key={c.letter} type="button" className={`type-chip ${msCorrectLetters.includes(c.letter) ? "active" : ""}`} onClick={() => toggleMsCorrect(c.letter)}>{c.letter}</button>
-            ))}
+            <button type="button" className={`type-chip ${!bulkMode ? "active" : ""}`} onClick={() => setBulkMode(false)}>One at a time</button>
+            <button type="button" className={`type-chip ${bulkMode ? "active" : ""}`} onClick={() => setBulkMode(true)}>Paste several at once</button>
           </div>
 
-          {error && <div className="field-error">{error}</div>}
-          <button
-            className="btn-primary"
-            style={{ marginTop: 16 }}
-            disabled={!msPrompt.trim() || msChoices.some((c) => !c.text.trim()) || msCorrectLetters.length !== msRequiredCount || busy}
-            onClick={createMultipleSelection}
-          >
-            {busy ? "Saving…" : "Save question"}
-          </button>
+          {!bulkMode ? (
+            <>
+              <label className="field-label" style={{ marginTop: 14 }}>Question text</label>
+              <textarea className="field-input textarea" placeholder="e.g. Which TWO advantages of geothermal energy are mentioned?" value={msPrompt} onChange={(e) => setMsPrompt(e.target.value)} />
+
+              <label className="field-label" style={{ marginTop: 14 }}>How many correct answers?</label>
+              <input
+                type="number"
+                min="2"
+                max={msChoices.length}
+                className="field-input"
+                style={{ maxWidth: 100 }}
+                value={msRequiredCount}
+                onChange={(e) => {
+                  const n = parseInt(e.target.value, 10) || 2;
+                  setMsRequiredCount(n);
+                  setMsCorrectLetters((prev) => prev.slice(0, n));
+                }}
+              />
+
+              <label className="field-label" style={{ marginTop: 14 }}>Choices</label>
+              {msChoices.map((choice) => (
+                <div key={choice.letter} className="qe-mc-choice-row">
+                  <span className="qe-mc-letter">{choice.letter}</span>
+                  <input className="field-input" placeholder={`Option ${choice.letter}…`} value={choice.text} onChange={(e) => updateMsChoiceText(choice.letter, e.target.value)} />
+                  {msChoices.length > 2 && <button type="button" className="btn-ghost qe-mc-remove" onClick={() => removeMsChoice(choice.letter)}><X size={13} /></button>}
+                </div>
+              ))}
+              <button type="button" className="btn-ghost" style={{ marginTop: 6 }} onClick={addMsChoice}><Plus size={13} /> Add option</button>
+
+              <label className="field-label" style={{ marginTop: 14 }}>Correct answers ({msCorrectLetters.length} / {msRequiredCount} selected)</label>
+              <div className="type-row">
+                {msChoices.map((c) => (
+                  <button key={c.letter} type="button" className={`type-chip ${msCorrectLetters.includes(c.letter) ? "active" : ""}`} onClick={() => toggleMsCorrect(c.letter)}>{c.letter}</button>
+                ))}
+              </div>
+
+              {error && <div className="field-error">{error}</div>}
+              <button
+                className="btn-primary"
+                style={{ marginTop: 16 }}
+                disabled={!msPrompt.trim() || msChoices.some((c) => !c.text.trim()) || msCorrectLetters.length !== msRequiredCount || busy}
+                onClick={createMultipleSelection}
+              >
+                {busy ? "Saving…" : "Save question"}
+              </button>
+            </>
+          ) : (
+            <>
+              <label className="field-label" style={{ marginTop: 14 }}>Paste your questions</label>
+              <p className="field-hint" style={{ marginTop: 0, marginBottom: 8 }}>
+                Number each question, with its options listed right below it. The number of correct answers can be different for each question.
+              </p>
+              <textarea className="field-input textarea" style={{ minHeight: 200 }} placeholder={"20. Which TWO pieces of information are mentioned?\nA Not everyone used gold as payment.\nB Items were placed near royal burials.\nC The most valuable item was a sceptre.\nD A decoration style was shared with another kingdom.\nE Working with gold was respected."} value={msBulkText} onChange={(e) => setMsBulkText(e.target.value)} />
+
+              {msBulkText.trim() && msBulkItems.length === 0 && (
+                <div className="field-error">Couldn't detect any questions with their options. Make sure each question starts with a number, and its options follow right below, starting with a letter.</div>
+              )}
+
+              {msBulkItems.length > 0 && (
+                <div className="qe-bulk-preview">
+                  <div className="field-label" style={{ marginTop: 14 }}>{msBulkItems.length} question{msBulkItems.length > 1 ? "s" : ""} detected</div>
+                  {msBulkItems.map((item) => {
+                    const cfg = msBulkConfig[item.key] || { requiredCount: 2, correctLetters: [] };
+                    return (
+                      <div key={item.key} className="qe-bulk-row">
+                        <div className="qe-bulk-text">{item.prompt}</div>
+                        {item.choices.map((c) => (
+                          <div key={c.letter} className="qe-bulk-choice-line">{c.letter}. {c.text}</div>
+                        ))}
+                        <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 10 }}>
+                          <span className="field-label" style={{ margin: 0 }}>Correct answers needed:</span>
+                          <input
+                            type="number"
+                            min="2"
+                            max={item.choices.length}
+                            className="field-input"
+                            style={{ maxWidth: 70 }}
+                            value={cfg.requiredCount}
+                            onChange={(e) => updateMsBulkRequiredCount(item.key, parseInt(e.target.value, 10) || 2)}
+                          />
+                        </div>
+                        <div className="type-row" style={{ marginTop: 8 }}>
+                          {item.choices.map((c) => (
+                            <button key={c.letter} type="button" className={`type-chip ${cfg.correctLetters.includes(c.letter) ? "active" : ""}`} onClick={() => toggleMsBulkCorrect(item.key, c.letter)}>{c.letter}</button>
+                          ))}
+                        </div>
+                        <div className="field-hint" style={{ marginTop: 4 }}>{cfg.correctLetters.length} / {cfg.requiredCount} selected</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {error && <div className="field-error">{error}</div>}
+              <button className="btn-primary" style={{ marginTop: 16 }} disabled={!allMsBulkConfigured || busy} onClick={createBulkMultipleSelection}>
+                {busy ? "Saving…" : `Create ${msBulkItems.length || ""} question${msBulkItems.length > 1 ? "s" : ""}`}
+              </button>
+            </>
+          )}
         </>
       )}
     </div>
