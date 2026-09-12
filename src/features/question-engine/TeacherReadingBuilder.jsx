@@ -8,7 +8,7 @@ function newGroup() {
   return { localId: crypto.randomUUID(), instruction: "", mode: "questions", questions: [], summaryText: "" };
 }
 function newPart() {
-  return { localId: crypto.randomUUID(), passageText: "", groups: [newGroup()] };
+  return { localId: crypto.randomUUID(), passageText: "", passageTitle: "", titleTouched: false, groups: [newGroup()] };
 }
 
 export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast }) {
@@ -22,12 +22,22 @@ export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast
   const [error, setError] = useState("");
 
   function handlePassageChange(partLocalId, text) {
-    setParts((prev) => prev.map((p) => (p.localId === partLocalId ? { ...p, passageText: text } : p)));
-    // Only the very first passage suggests the overall assignment title.
+    setParts((prev) =>
+      prev.map((p) => {
+        if (p.localId !== partLocalId) return p;
+        const guess = !p.titleTouched ? guessPassageTitle(text) : p.passageTitle;
+        return { ...p, passageText: text, passageTitle: guess || p.passageTitle };
+      })
+    );
+    // The very first passage also suggests the overall assignment name, separately.
     if (partLocalId === parts[0].localId && !titleTouched) {
       const guess = guessPassageTitle(text);
       if (guess) setTitle(guess);
     }
+  }
+
+  function handlePassageTitleChange(partLocalId, text) {
+    setParts((prev) => prev.map((p) => (p.localId === partLocalId ? { ...p, passageTitle: text, titleTouched: true } : p)));
   }
 
   function handleTitleChange(text) {
@@ -150,7 +160,7 @@ export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast
       const part = parts[pi];
       const { data: sectionRow, error: sError } = await supabase
         .from("exam_sections")
-        .insert({ assignment_id: assignment.id, title: `Part ${pi + 1}`, passage_text: part.passageText.trim(), order_index: pi })
+        .insert({ assignment_id: assignment.id, title: `Part ${pi + 1}`, passage_title: part.passageTitle.trim() || null, passage_text: part.passageText.trim(), order_index: pi })
         .select()
         .single();
 
@@ -227,8 +237,16 @@ export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast
             )}
           </div>
 
+          <label className="field-label" style={{ marginTop: 14 }}>Passage title (shown to students above this passage)</label>
+          <input
+            className="field-input"
+            placeholder="e.g. The Rise of Vertical Farming"
+            value={part.passageTitle}
+            onChange={(e) => handlePassageTitleChange(part.localId, e.target.value)}
+          />
+
           <label className="field-label" style={{ marginTop: 14 }}>Passage text</label>
-          {pi === 0 && <p className="field-hint" style={{ marginTop: 0, marginBottom: 8 }}>If the first line looks like a title, it'll fill in the Title field above automatically.</p>}
+          {pi === 0 && <p className="field-hint" style={{ marginTop: 0, marginBottom: 8 }}>If the first line looks like a title, it'll fill in both the title above and the assignment name automatically.</p>}
           <textarea
             className="field-input textarea"
             style={{ minHeight: 160 }}
