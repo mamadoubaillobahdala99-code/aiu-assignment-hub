@@ -22,22 +22,26 @@
 
 .qe-exam-shell { display: flex; flex-direction: column; }
 
-.qe-exam-body { flex: 1; min-height: 0; display: flex; overflow: hidden; }
+.qe-exam-body { flex: 1; min-height: 0; display: flex; overflow: hidden; width: 100%; }
 
-.qe-passage-panel { min-width: 0; height: 100%; overflow-y: auto; padding: 24px 28px; }
-.qe-passage-panel-inner { max-width: 720px; }
+.qe-passage-panel { flex: 0 0 auto; min-width: 0; height: 100%; overflow-y: auto; padding: 24px 28px; box-sizing: border-box; }
+.qe-passage-panel-inner { width: 100%; }
 
-/* Scoped override so the passage doesn't look like a small floating
-   card in this full-screen context — the original .reading-passage
-   and .asg-desc rules elsewhere in the app are left untouched. */
-.qe-passage-panel-inner .reading-passage { background: transparent; box-shadow: none; border: none; padding: 0; }
+/* .asg-desc is the class that actually produces the "small card" look
+   (background/border/radius/padding) — scoped override here only;
+   every other screen that uses .asg-desc elsewhere is untouched. */
+.qe-passage-panel-inner .asg-desc { background: transparent; border: none; border-radius: 0; padding: 0; }
 
-.qe-resizer { flex-shrink: 0; width: 14px; cursor: col-resize; display: flex; align-items: center; justify-content: center; color: var(--ink-soft); background: var(--line); }
+.qe-resizer { flex-shrink: 0; width: 14px; cursor: col-resize; display: flex; align-items: center; justify-content: center; color: var(--ink-soft); background: var(--line); touch-action: none; }
 .qe-resizer:hover { color: var(--teal); }
 
-.qe-questions-panel { min-width: 0; height: 100%; overflow-y: auto; padding: 24px 28px; background: var(--paper-raised); }
+.qe-questions-panel { flex: 0 0 auto; min-width: 0; height: 100%; overflow-y: auto; padding: 24px 28px; background: var(--paper-raised); box-sizing: border-box; }
 
-.qe-nav-bar { flex-shrink: 0; display: flex; align-items: center; gap: 10px; padding: 10px 24px; background: var(--paper); border-top: 1px solid var(--line); overflow-x: auto; }
+.qe-nav-bar { flex-shrink: 0; width: 100%; display: flex; align-items: center; gap: 10px; padding: 10px 24px; background: var(--paper); border-top: 1px solid var(--line); overflow-x: auto; box-sizing: border-box; }
+
+/* Applied to <body> only while the divider is being dragged — stops
+   text selection from firing during fast mouse movement. */
+body.qe-resizing { user-select: none; cursor: col-resize; }
 .qe-nav-active-part { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
 .qe-nav-part-label { font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 700; color: var(--teal); text-transform: uppercase; margin-right: 6px; flex-shrink: 0; }
 .qe-nav-part-pill { flex-shrink: 0; padding: 6px 14px; border-radius: 999px; border: 1px solid var(--line); background: #fff; font-size: 12.5px; font-weight: 600; color: var(--ink-soft); cursor: pointer; }
