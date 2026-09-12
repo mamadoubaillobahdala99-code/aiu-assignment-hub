@@ -8,7 +8,7 @@ const COLORS = [
   { key: "red", label: "Red" },
 ];
 
-export function ReadingPassage({ assignmentId, userId, text }) {
+export function ReadingPassage({ assignmentId, userId, sectionId, text }) {
   const [colors, setColors] = useState({}); // { [wordIndex]: "yellow" | "green" | "red" }
   const [selectedColor, setSelectedColor] = useState("yellow");
   const [loaded, setLoaded] = useState(false);
@@ -17,13 +17,20 @@ export function ReadingPassage({ assignmentId, userId, text }) {
   const tokens = React.useMemo(() => text.split(/(\s+)/), [text]);
 
   useEffect(() => {
+    setLoaded(false);
+    setColors({});
     (async () => {
-      const { data } = await supabase
+      let query = supabase
         .from("reading_highlights")
         .select("word_indices, word_colors")
         .eq("assignment_id", assignmentId)
-        .eq("student_id", userId)
-        .maybeSingle();
+        .eq("student_id", userId);
+
+      // sectionId distinguishes Part 1 / Part 2 / Part 3 — without it,
+      // highlights from different passages would overwrite each other.
+      query = sectionId ? query.eq("section_id", sectionId) : query.is("section_id", null);
+
+      const { data } = await query.maybeSingle();
 
       // Backward compatible: older highlights only have word_indices (no color info) —
       // treat those as yellow by default.
@@ -34,18 +41,19 @@ export function ReadingPassage({ assignmentId, userId, text }) {
       setColors(map);
       setLoaded(true);
     })();
-  }, [assignmentId, userId]);
+  }, [assignmentId, userId, sectionId]);
 
   async function persist(nextMap) {
     await supabase.from("reading_highlights").upsert(
       {
         assignment_id: assignmentId,
         student_id: userId,
+        section_id: sectionId || null,
         word_indices: Object.keys(nextMap).map(Number),
         word_colors: nextMap,
         updated_at: new Date().toISOString(),
       },
-      { onConflict: "assignment_id,student_id" }
+      { onConflict: "assignment_id,student_id,section_id" }
     );
   }
 
