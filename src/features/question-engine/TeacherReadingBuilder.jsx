@@ -4,22 +4,27 @@ import { supabase } from "../../supabaseClient";
 import { TeacherQuestionForm } from "./TeacherQuestionForm";
 import { guessPassageTitle, defaultInstructionFor } from "./bulkParse";
 
+function newGroup() {
+  return { localId: crypto.randomUUID(), instruction: "", mode: "questions", questions: [], summaryText: "" };
+}
+function newPart() {
+  return { localId: crypto.randomUUID(), passageText: "", groups: [newGroup()] };
+}
+
 export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast }) {
   const [title, setTitle] = useState("");
   const [titleTouched, setTitleTouched] = useState(false);
   const [dueDate, setDueDate] = useState("");
   const [timeLimit, setTimeLimit] = useState("60");
-  const [passageText, setPassageText] = useState("");
-  const [groups, setGroups] = useState([]);
-  // group: { localId, instruction, mode: "questions"|"completion",
-  //          questions: [], summaryText: "" (completion mode only) }
-  const [addingQuestionFor, setAddingQuestionFor] = useState(null);
+  const [parts, setParts] = useState([newPart()]);
+  const [addingQuestionFor, setAddingQuestionFor] = useState(null); // groupLocalId
   const [publishing, setPublishing] = useState(false);
   const [error, setError] = useState("");
 
-  function handlePassageChange(text) {
-    setPassageText(text);
-    if (!titleTouched) {
+  function handlePassageChange(partLocalId, text) {
+    setParts((prev) => prev.map((p) => (p.localId === partLocalId ? { ...p, passageText: text } : p)));
+    // Only the very first passage suggests the overall assignment title.
+    if (partLocalId === parts[0].localId && !titleTouched) {
       const guess = guessPassageTitle(text);
       if (guess) setTitle(guess);
     }
@@ -30,58 +35,92 @@ export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast
     setTitleTouched(true);
   }
 
-  function addGroup() {
-    setGroups((prev) => [
-      ...prev,
-      { localId: crypto.randomUUID(), instruction: "", mode: "questions", questions: [], summaryText: "" },
-    ]);
+  function addPart() {
+    if (parts.length >= 3) return;
+    setParts((prev) => [...prev, newPart()]);
+  }
+  function removePart(partLocalId) {
+    setParts((prev) => (prev.length > 1 ? prev.filter((p) => p.localId !== partLocalId) : prev));
   }
 
-  function updateInstruction(localId, text) {
-    setGroups((prev) => prev.map((g) => (g.localId === localId ? { ...g, instruction: text } : g)));
+  function addGroup(partLocalId) {
+    setParts((prev) => prev.map((p) => (p.localId === partLocalId ? { ...p, groups: [...p.groups, newGroup()] } : p)));
   }
-
-  function setGroupMode(localId, mode) {
-    setGroups((prev) => prev.map((g) => (g.localId === localId ? { ...g, mode, questions: [], summaryText: "" } : g)));
+  function removeGroup(partLocalId, groupLocalId) {
+    setParts((prev) =>
+      prev.map((p) => (p.localId === partLocalId ? { ...p, groups: p.groups.filter((g) => g.localId !== groupLocalId) } : p))
+    );
   }
-
-  function updateSummaryText(localId, text) {
-    setGroups((prev) => prev.map((g) => (g.localId === localId ? { ...g, summaryText: text } : g)));
+  function updateInstruction(partLocalId, groupLocalId, text) {
+    setParts((prev) =>
+      prev.map((p) =>
+        p.localId !== partLocalId ? p : { ...p, groups: p.groups.map((g) => (g.localId === groupLocalId ? { ...g, instruction: text } : g)) }
+      )
+    );
   }
-
-  function removeGroup(localId) {
-    setGroups((prev) => prev.filter((g) => g.localId !== localId));
+  function setGroupMode(partLocalId, groupLocalId, mode) {
+    setParts((prev) =>
+      prev.map((p) =>
+        p.localId !== partLocalId ? p : { ...p, groups: p.groups.map((g) => (g.localId === groupLocalId ? { ...g, mode, questions: [], summaryText: "" } : g)) }
+      )
+    );
   }
-
-  function onQuestionCreated(localId, question) {
-    setGroups((prev) =>
-      prev.map((g) => {
-        if (g.localId !== localId) return g;
-        const instruction = g.questions.length === 0 && !g.instruction
-          ? defaultInstructionFor(question.type, question.options)
-          : g.instruction;
-        return { ...g, instruction, questions: [...g.questions, question] };
-      })
+  function updateSummaryText(partLocalId, groupLocalId, text) {
+    setParts((prev) =>
+      prev.map((p) =>
+        p.localId !== partLocalId ? p : { ...p, groups: p.groups.map((g) => (g.localId === groupLocalId ? { ...g, summaryText: text } : g)) }
+      )
+    );
+  }
+  function onQuestionCreated(partLocalId, groupLocalId, question) {
+    setParts((prev) =>
+      prev.map((p) =>
+        p.localId !== partLocalId
+          ? p
+          : {
+              ...p,
+              groups: p.groups.map((g) => {
+                if (g.localId !== groupLocalId) return g;
+                const instruction = g.questions.length === 0 && !g.instruction ? defaultInstructionFor(question.type, question.options) : g.instruction;
+                return { ...g, instruction, questions: [...g.questions, question] };
+              }),
+            }
+      )
     );
     setAddingQuestionFor(null);
   }
+  function onBlanksCreated(partLocalId, groupLocalId, questions) {
+    setParts((prev) =>
+      prev.map((p) =>
+        p.localId !== partLocalId ? p : { ...p, groups: p.groups.map((g) => (g.localId === groupLocalId ? { ...g, questions } : g)) }
+      )
+    );
+  }
 
-  // Running question count so each group can preview its own
-  // "Questions X-Y" heading, exactly as it will appear to students.
-  const groupRanges = useMemo(() => {
+  // Continuous numbering across every part, in order — never resets.
+  const numbering = useMemo(() => {
     let counter = 0;
-    return groups.map((g) => {
-      const start = counter + 1;
-      counter += g.questions.length;
-      return { start, end: counter };
-    });
-  }, [groups]);
+    const perPart = [];
+    for (const part of parts) {
+      const perGroup = [];
+      for (const group of part.groups) {
+        const start = counter + 1;
+        counter += group.questions.length;
+        perGroup.push({ start, end: counter });
+      }
+      perPart.push(perGroup);
+    }
+    return perPart;
+  }, [parts]);
 
   const canPublish =
     title.trim() &&
-    passageText.trim() &&
-    groups.length > 0 &&
-    groups.every((g) => (g.mode === "completion" ? g.summaryText.trim() && g.questions.length > 0 : g.questions.length > 0));
+    parts.every(
+      (p) =>
+        p.passageText.trim() &&
+        p.groups.length > 0 &&
+        p.groups.every((g) => (g.mode === "completion" ? g.summaryText.trim() && g.questions.length > 0 : g.questions.length > 0))
+    );
 
   async function publish() {
     setError("");
@@ -94,7 +133,7 @@ export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast
         class_id: classId,
         title: title.trim(),
         type: "Reading",
-        description: passageText.trim(),
+        description: parts[0].passageText.trim(), // kept for lists/dashboards that show a short preview
         due_date: dueDate || null,
         time_limit_minutes: timeLimit ? parseInt(timeLimit, 10) : null,
       })
@@ -107,49 +146,51 @@ export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast
       return;
     }
 
-    // One passage container for now (Step B will allow up to 3).
-    const { data: sectionRow, error: sError } = await supabase
-      .from("exam_sections")
-      .insert({ assignment_id: assignment.id, title: "Part 1", order_index: 0 })
-      .select()
-      .single();
-
-    if (sError || !sectionRow) {
-      setPublishing(false);
-      setError("Assignment created, but the passage failed to save: " + sError?.message);
-      return;
-    }
-
-    for (let i = 0; i < groups.length; i++) {
-      const group = groups[i];
-      const { data: groupRow, error: gError } = await supabase
-        .from("question_groups")
-        .insert({
-          section_id: sectionRow.id,
-          instruction: group.instruction || null,
-          passage_text: group.mode === "completion" ? group.summaryText.trim() : null,
-          order_index: i,
-        })
+    for (let pi = 0; pi < parts.length; pi++) {
+      const part = parts[pi];
+      const { data: sectionRow, error: sError } = await supabase
+        .from("exam_sections")
+        .insert({ assignment_id: assignment.id, title: `Part ${pi + 1}`, passage_text: part.passageText.trim(), order_index: pi })
         .select()
         .single();
 
-      if (gError || !groupRow) {
+      if (sError || !sectionRow) {
         setPublishing(false);
-        setError("Assignment created, but a question group failed to save: " + gError?.message);
+        setError(`Assignment created, but Part ${pi + 1} failed to save: ` + sError?.message);
         return;
       }
 
-      const links = group.questions.map((q, qi) => ({
-        section_id: sectionRow.id, // kept for backward compatibility
-        group_id: groupRow.id,
-        question_id: q.id,
-        order_index: qi,
-      }));
-      const { error: linkError } = await supabase.from("assignment_questions").insert(links);
-      if (linkError) {
-        setPublishing(false);
-        setError("Assignment created, but linking questions failed: " + linkError.message);
-        return;
+      for (let gi = 0; gi < part.groups.length; gi++) {
+        const group = part.groups[gi];
+        const { data: groupRow, error: gError } = await supabase
+          .from("question_groups")
+          .insert({
+            section_id: sectionRow.id,
+            instruction: group.instruction || null,
+            passage_text: group.mode === "completion" ? group.summaryText.trim() : null,
+            order_index: gi,
+          })
+          .select()
+          .single();
+
+        if (gError || !groupRow) {
+          setPublishing(false);
+          setError(`Assignment created, but a question group in Part ${pi + 1} failed to save: ` + gError?.message);
+          return;
+        }
+
+        const links = group.questions.map((q, qi) => ({
+          section_id: sectionRow.id,
+          group_id: groupRow.id,
+          question_id: q.id,
+          order_index: qi,
+        }));
+        const { error: linkError } = await supabase.from("assignment_questions").insert(links);
+        if (linkError) {
+          setPublishing(false);
+          setError("Assignment created, but linking questions failed: " + linkError.message);
+          return;
+        }
       }
     }
 
@@ -164,7 +205,7 @@ export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast
       <h1 className="page-title">New Reading assignment</h1>
 
       <label className="field-label" style={{ marginTop: 16 }}>Title</label>
-      <input className="field-input" placeholder="e.g. Reading Passage — Renewable Energy" value={title} onChange={(e) => handleTitleChange(e.target.value)} />
+      <input className="field-input" placeholder="e.g. IELTS Reading Practice Test 1" value={title} onChange={(e) => handleTitleChange(e.target.value)} />
 
       <div style={{ display: "flex", gap: 16, marginTop: 14 }}>
         <div style={{ flex: 1 }}>
@@ -177,101 +218,100 @@ export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast
         </div>
       </div>
 
-      <label className="field-label" style={{ marginTop: 14 }}>Passage text</label>
-      <p className="field-hint" style={{ marginTop: 0, marginBottom: 8 }}>If the first line looks like a title, it'll fill in the Title field above automatically — you can always change it.</p>
-      <textarea
-        className="field-input textarea"
-        style={{ minHeight: 180 }}
-        placeholder="Paste the full reading passage here…"
-        value={passageText}
-        onChange={(e) => handlePassageChange(e.target.value)}
-      />
-
-      <h3 className="section-title" style={{ marginTop: 28 }}>Question groups</h3>
-      <p className="field-hint" style={{ marginTop: 0 }}>Add as many groups as you need — each can be a different question type with its own instruction, stacked one after another, just like a real IELTS passage.</p>
-
-      {groups.map((group, gi) => (
-        <div key={group.localId} className="feedback-panel" style={{ marginBottom: 14 }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-            <span className="qe-group-heading-preview">
-              {group.questions.length > 0
-                ? group.questions.length === 1
-                  ? `Question ${groupRanges[gi].start}`
-                  : `Questions ${groupRanges[gi].start}-${groupRanges[gi].end}`
-                : "New group"}
-            </span>
-            <button className="btn-ghost" onClick={() => removeGroup(group.localId)}><X size={13} /> Remove group</button>
+      {parts.map((part, pi) => (
+        <div key={part.localId} className="qe-part-block">
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 28 }}>
+            <h3 className="section-title" style={{ margin: 0 }}>Part {pi + 1}</h3>
+            {parts.length > 1 && (
+              <button className="btn-ghost" onClick={() => removePart(part.localId)}><X size={13} /> Remove this passage</button>
+            )}
           </div>
 
-          <label className="field-label">Instructions shown to students</label>
+          <label className="field-label" style={{ marginTop: 14 }}>Passage text</label>
+          {pi === 0 && <p className="field-hint" style={{ marginTop: 0, marginBottom: 8 }}>If the first line looks like a title, it'll fill in the Title field above automatically.</p>}
           <textarea
             className="field-input textarea"
-            style={{ minHeight: 90 }}
-            placeholder="Appears automatically once you add the first question below"
-            value={group.instruction}
-            onChange={(e) => updateInstruction(group.localId, e.target.value)}
+            style={{ minHeight: 160 }}
+            placeholder="Paste this passage's text here…"
+            value={part.passageText}
+            onChange={(e) => handlePassageChange(part.localId, e.target.value)}
           />
 
-          {group.questions.length === 0 && (
-            <>
-              <label className="field-label" style={{ marginTop: 14 }}>Group type</label>
-              <div className="type-row">
-                <button type="button" className={`type-chip ${group.mode === "questions" ? "active" : ""}`} onClick={() => setGroupMode(group.localId, "questions")}>
-                  Question list
-                </button>
-                <button type="button" className={`type-chip ${group.mode === "completion" ? "active" : ""}`} onClick={() => setGroupMode(group.localId, "completion")}>
-                  Summary Completion
-                </button>
-              </div>
-            </>
-          )}
+          <h4 className="section-title" style={{ marginTop: 20, fontSize: 14 }}>Question groups</h4>
 
-          {group.mode === "completion" ? (
-            <SummaryCompletionBuilder
-              group={group}
-              teacherId={teacherId}
-              onSummaryTextChange={(text) => updateSummaryText(group.localId, text)}
-              onBlanksCreated={(questions) =>
-                setGroups((prev) => prev.map((g) => (g.localId === group.localId ? { ...g, questions } : g)))
-              }
-            />
-          ) : (
-            <>
-              <div style={{ marginTop: 14 }}>
-                {group.questions.length === 0 ? (
-                  <p className="empty-inline">No questions yet in this group.</p>
-                ) : (
-                  <div className="qe-question-list">
-                    {group.questions.map((q, i) => (
-                      <div key={q.id} className="qe-question-row">
-                        <Check size={14} className="qe-question-check" />
-                        <span>{groupRanges[gi].start + i}. {q.prompt}</span>
-                      </div>
-                    ))}
+          {part.groups.map((group, gi) => (
+            <div key={group.localId} className="feedback-panel" style={{ marginBottom: 14 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                <span className="qe-group-heading-preview">
+                  {group.questions.length > 0
+                    ? group.questions.length === 1
+                      ? `Question ${numbering[pi][gi].start}`
+                      : `Questions ${numbering[pi][gi].start}-${numbering[pi][gi].end}`
+                    : "New group"}
+                </span>
+                <button className="btn-ghost" onClick={() => removeGroup(part.localId, group.localId)}><X size={13} /> Remove group</button>
+              </div>
+
+              <label className="field-label">Instructions shown to students</label>
+              <textarea
+                className="field-input textarea"
+                style={{ minHeight: 90 }}
+                placeholder="Appears automatically once you add the first question below"
+                value={group.instruction}
+                onChange={(e) => updateInstruction(part.localId, group.localId, e.target.value)}
+              />
+
+              {group.questions.length === 0 && (
+                <>
+                  <label className="field-label" style={{ marginTop: 14 }}>Group type</label>
+                  <div className="type-row">
+                    <button type="button" className={`type-chip ${group.mode === "questions" ? "active" : ""}`} onClick={() => setGroupMode(part.localId, group.localId, "questions")}>Question list</button>
+                    <button type="button" className={`type-chip ${group.mode === "completion" ? "active" : ""}`} onClick={() => setGroupMode(part.localId, group.localId, "completion")}>Summary Completion</button>
                   </div>
-                )}
-              </div>
-
-              {addingQuestionFor === group.localId ? (
-                <div style={{ marginTop: 12 }}>
-                  <TeacherQuestionForm
-                    teacherId={teacherId}
-                    skill="reading"
-                    onCreated={(q) => onQuestionCreated(group.localId, q)}
-                  />
-                  <button className="btn-ghost" style={{ marginTop: 8 }} onClick={() => setAddingQuestionFor(null)}>Cancel</button>
-                </div>
-              ) : (
-                <button className="btn-ghost" style={{ marginTop: 10 }} onClick={() => setAddingQuestionFor(group.localId)}>
-                  <Plus size={13} /> Add question
-                </button>
+                </>
               )}
-            </>
-          )}
+
+              {group.mode === "completion" ? (
+                <SummaryCompletionBuilder
+                  group={group}
+                  teacherId={teacherId}
+                  onSummaryTextChange={(text) => updateSummaryText(part.localId, group.localId, text)}
+                  onBlanksCreated={(questions) => onBlanksCreated(part.localId, group.localId, questions)}
+                />
+              ) : (
+                <>
+                  <div style={{ marginTop: 14 }}>
+                    {group.questions.length === 0 ? (
+                      <p className="empty-inline">No questions yet in this group.</p>
+                    ) : (
+                      <div className="qe-question-list">
+                        {group.questions.map((q, i) => (
+                          <div key={q.id} className="qe-question-row"><Check size={14} className="qe-question-check" /><span>{numbering[pi][gi].start + i}. {q.prompt}</span></div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {addingQuestionFor === group.localId ? (
+                    <div style={{ marginTop: 12 }}>
+                      <TeacherQuestionForm teacherId={teacherId} skill="reading" onCreated={(q) => onQuestionCreated(part.localId, group.localId, q)} />
+                      <button className="btn-ghost" style={{ marginTop: 8 }} onClick={() => setAddingQuestionFor(null)}>Cancel</button>
+                    </div>
+                  ) : (
+                    <button className="btn-ghost" style={{ marginTop: 10 }} onClick={() => setAddingQuestionFor(group.localId)}><Plus size={13} /> Add question</button>
+                  )}
+                </>
+              )}
+            </div>
+          ))}
+
+          <button className="btn-ghost" onClick={() => addGroup(part.localId)}><Plus size={14} /> Add question group</button>
         </div>
       ))}
 
-      <button className="btn-ghost" onClick={addGroup}><Plus size={14} /> Add question group</button>
+      {parts.length < 3 && (
+        <button className="btn-ghost" style={{ marginTop: 20 }} onClick={addPart}><Plus size={14} /> Add another passage (Part {parts.length + 1})</button>
+      )}
 
       {error && <div className="field-error" style={{ marginTop: 16 }}>{error}</div>}
 
@@ -350,12 +390,7 @@ function SummaryCompletionBuilder({ group, teacherId, onSummaryTextChange, onBla
           {Array.from({ length: blankCount }).map((_, i) => (
             <div key={i} className="qe-bulk-row">
               <div className="qe-bulk-text">Blank {i + 1}</div>
-              <input
-                className="field-input"
-                placeholder="e.g. prosperity, size (comma-separated if more than one is accepted)"
-                value={accepted[i] || ""}
-                onChange={(e) => setAccepted((prev) => ({ ...prev, [i]: e.target.value }))}
-              />
+              <input className="field-input" placeholder="e.g. prosperity, size (comma-separated if more than one is accepted)" value={accepted[i] || ""} onChange={(e) => setAccepted((prev) => ({ ...prev, [i]: e.target.value }))} />
             </div>
           ))}
         </div>
