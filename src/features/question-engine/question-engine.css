@@ -12,6 +12,8 @@
 .qe-group-block:last-of-type { border-bottom: none; }
 .qe-group-heading { font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 700; color: var(--teal); text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 8px; }
 .qe-group-heading-preview { font-size: 13px; font-weight: 600; color: var(--ink-soft); }
+.qe-part-block { padding-top: 8px; border-top: 2px solid var(--line); margin-top: 20px; }
+.qe-part-block:first-of-type { border-top: none; margin-top: 0; }
 .qe-section-instruction { font-size: 13.5px; color: var(--ink-soft); font-style: italic; margin: 0 0 18px; padding-bottom: 12px; border-bottom: 1px dashed var(--line); white-space: pre-line; }
 .qe-form { max-width: 480px; }
 .qe-incorrect { background: var(--rose-soft) !important; }
