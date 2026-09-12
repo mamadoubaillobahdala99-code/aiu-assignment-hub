@@ -31,7 +31,7 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
 
     const { data: sectionRows } = await supabase
       .from("exam_sections")
-      .select("id, title, passage_text, order_index")
+      .select("id, title, passage_title, passage_text, order_index")
       .eq("assignment_id", assignmentId)
       .order("order_index");
 
@@ -56,7 +56,7 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
         globalCounter += questions.length;
         groups.push({ id: g.id, instruction: g.instruction, passageText: g.passage_text, questions, startNumber, endNumber: globalCounter });
       }
-      built.push({ id: s.id, title: s.title, passageText: s.passage_text, groups });
+      built.push({ id: s.id, title: s.title, passageTitle: s.passage_title, passageText: s.passage_text, groups });
     }
     setSections(built);
 
@@ -173,6 +173,12 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
 
   const activeSection = sections[activeIndex];
   const activePassageText = activeSection.passageText || assignment.description || "";
+  const activeTitle = activeSection.passageTitle || assignment.title;
+
+  const perPartMinutes = assignment.time_limit_minutes ? Math.max(1, Math.round(assignment.time_limit_minutes / sections.length)) : null;
+  const partQuestionNumbers = activeSection.groups.flatMap((g) => [g.startNumber, g.endNumber]);
+  const partRangeStart = partQuestionNumbers.length ? Math.min(...partQuestionNumbers) : null;
+  const partRangeEnd = partQuestionNumbers.length ? Math.max(...partQuestionNumbers) : null;
 
   const totalPointsPossible = allQuestions.reduce((sum, q) => sum + (q.points || 1), 0);
   const totalPointsEarned = results ? Object.values(results).reduce((sum, r) => sum + (r.earned || 0), 0) : 0;
@@ -184,16 +190,18 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
     <div className="wf-overlay qe-exam-shell">
       <div className="wf-topbar">
         <button className="back-link" onClick={() => setScreen({ name: "home" })}><ArrowLeft size={14} /> Exit</button>
-        <div className="wf-title-group">
-          <div className="asg-type">Reading</div>
-          <div className="wf-title">{assignment.title}</div>
-        </div>
         {mm !== null && results === null ? <div className="wf-timer"><Clock size={15} /> {mm}:{ss}</div> : <div />}
       </div>
 
       <div className="qe-exam-body" ref={bodyRef}>
         <div className="qe-passage-panel" style={{ flexBasis: `${leftWidthPct}%` }}>
           <div className="qe-passage-panel-inner">
+            {perPartMinutes !== null && partRangeStart !== null && (
+              <p className="qe-passage-meta">
+                You should spend about {perPartMinutes} minutes on Questions {partRangeStart}-{partRangeEnd}, which are based on Reading Passage {activeIndex + 1} below.
+              </p>
+            )}
+            {activeTitle && <h2 className="qe-passage-title">{activeTitle}</h2>}
             <ReadingPassage assignmentId={assignmentId} userId={userId} sectionId={activeSection.id} text={activePassageText} />
           </div>
         </div>
