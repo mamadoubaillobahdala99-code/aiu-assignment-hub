@@ -18,9 +18,34 @@
 .qe-numbered-question { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 16px; }
 .qe-question-badge { flex-shrink: 0; margin-top: 2px; }
 
-.qe-question-nav { position: sticky; bottom: 0; left: 0; right: 0; display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 24px; background: var(--paper); border-top: 1px solid var(--line); }
-.qe-question-nav-item { width: 28px; height: 28px; border-radius: 5px; border: 1px solid var(--line); background: #fff; font-size: 12px; font-weight: 600; cursor: pointer; }
+/* ---------- Full-screen exam layout (IELTS Computer-Delivered style) ---------- */
+
+.qe-exam-shell { display: flex; flex-direction: column; }
+
+.qe-exam-body { flex: 1; min-height: 0; display: flex; overflow: hidden; }
+
+.qe-passage-panel { min-width: 0; height: 100%; overflow-y: auto; padding: 24px 28px; }
+.qe-passage-panel-inner { max-width: 720px; }
+
+/* Scoped override so the passage doesn't look like a small floating
+   card in this full-screen context — the original .reading-passage
+   and .asg-desc rules elsewhere in the app are left untouched. */
+.qe-passage-panel-inner .reading-passage { background: transparent; box-shadow: none; border: none; padding: 0; }
+
+.qe-resizer { flex-shrink: 0; width: 14px; cursor: col-resize; display: flex; align-items: center; justify-content: center; color: var(--ink-soft); background: var(--line); }
+.qe-resizer:hover { color: var(--teal); }
+
+.qe-questions-panel { min-width: 0; height: 100%; overflow-y: auto; padding: 24px 28px; background: var(--paper-raised); }
+
+.qe-nav-bar { flex-shrink: 0; display: flex; align-items: center; gap: 10px; padding: 10px 24px; background: var(--paper); border-top: 1px solid var(--line); overflow-x: auto; }
+.qe-nav-active-part { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.qe-nav-part-label { font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 700; color: var(--teal); text-transform: uppercase; margin-right: 6px; flex-shrink: 0; }
+.qe-nav-part-pill { flex-shrink: 0; padding: 6px 14px; border-radius: 999px; border: 1px solid var(--line); background: #fff; font-size: 12.5px; font-weight: 600; color: var(--ink-soft); cursor: pointer; }
+.qe-nav-part-pill:hover { border-color: var(--teal); color: var(--teal); }
+
+.qe-question-nav-item { flex-shrink: 0; width: 28px; height: 28px; border-radius: 5px; border: 1px solid var(--line); background: #fff; font-size: 12px; font-weight: 600; cursor: pointer; }
 .qe-question-nav-item:hover { border-color: var(--teal); color: var(--teal); }
+
 .qe-section-instruction { font-size: 13.5px; color: var(--ink-soft); font-style: italic; margin: 0 0 18px; padding-bottom: 12px; border-bottom: 1px dashed var(--line); white-space: pre-line; }
 .qe-form { max-width: 480px; }
 .qe-incorrect { background: var(--rose-soft) !important; }
