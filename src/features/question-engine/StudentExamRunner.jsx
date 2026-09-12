@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from "react";
-import { ArrowLeft, Clock } from "lucide-react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
+import { ArrowLeft, Clock, GripVertical } from "lucide-react";
 import { supabase } from "../../supabaseClient";
 import { QuestionRenderer } from "./QuestionRenderer";
 import { SummaryCompletion } from "./SummaryCompletion";
@@ -19,6 +19,8 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
   const [results, setResults] = useState(null);
   const [remainingSec, setRemainingSec] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  const [leftWidthPct, setLeftWidthPct] = useState(56);
+  const bodyRef = useRef(null);
 
   const load = useCallback(async () => {
     const { data: a } = await supabase.from("assignments").select("*").eq("id", assignmentId).single();
@@ -115,6 +117,25 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
     showToast?.("Submitted");
   }
 
+  // Draggable divider between the passage and the questions — the
+  // same kind of resize handle the older Reading Focus Mode had.
+  function startResize(e) {
+    e.preventDefault();
+    function onMove(ev) {
+      if (!bodyRef.current) return;
+      const rect = bodyRef.current.getBoundingClientRect();
+      let pct = ((ev.clientX - rect.left) / rect.width) * 100;
+      pct = Math.min(75, Math.max(30, pct));
+      setLeftWidthPct(pct);
+    }
+    function onUp() {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    }
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }
+
   if (!assignment || sections.length === 0) {
     return (
       <div className="page">
@@ -125,8 +146,6 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
   }
 
   const activeSection = sections[activeIndex];
-  // Older assignments (created before Parts had their own stored text)
-  // fall back to the assignment's single description field.
   const activePassageText = activeSection.passageText || assignment.description || "";
 
   const totalPointsPossible = allQuestions.reduce((sum, q) => sum + (q.points || 1), 0);
@@ -136,7 +155,7 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
   const ss = remainingSec !== null ? String(Math.max(0, remainingSec) % 60).padStart(2, "0") : null;
 
   return (
-    <div className="wf-overlay">
+    <div className="wf-overlay qe-exam-shell">
       <div className="wf-topbar">
         <button className="back-link" onClick={() => setScreen({ name: "home" })}><ArrowLeft size={14} /> Exit</button>
         <div className="wf-title-group">
@@ -146,22 +165,18 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
         {mm !== null && results === null ? <div className="wf-timer"><Clock size={15} /> {mm}:{ss}</div> : <div />}
       </div>
 
-      <div className="rf-body">
-        <div className="rf-passage-panel">
-          <ReadingPassage assignmentId={assignmentId} userId={userId} sectionId={activeSection.id} text={activePassageText} />
+      <div className="qe-exam-body" ref={bodyRef}>
+        <div className="qe-passage-panel" style={{ width: `${leftWidthPct}%` }}>
+          <div className="qe-passage-panel-inner">
+            <ReadingPassage assignmentId={assignmentId} userId={userId} sectionId={activeSection.id} text={activePassageText} />
+          </div>
         </div>
 
-        <div className="rf-answers-panel" style={{ flex: "0 0 45%", maxWidth: "none" }}>
-          {sections.length > 1 && (
-            <div className="tabs" style={{ marginBottom: 16 }}>
-              {sections.map((s, i) => (
-                <button key={s.id} className={`tab ${i === activeIndex ? "active" : ""}`} onClick={() => setActiveIndex(i)}>
-                  {s.title}
-                </button>
-              ))}
-            </div>
-          )}
+        <div className="qe-resizer" onMouseDown={startResize}>
+          <GripVertical size={14} />
+        </div>
 
+        <div className="qe-questions-panel" style={{ width: `${100 - leftWidthPct}%` }}>
           {results && (
             <div className="feedback-panel" style={{ marginBottom: 16 }}>
               <div className="feedback-band">{totalPointsEarned} / {totalPointsPossible} points</div>
@@ -218,21 +233,32 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
         </div>
       </div>
 
-      {activeSection.groups.length > 0 && (
-        <div className="qe-question-nav">
-          {activeSection.groups.flatMap((group) =>
-            Array.from({ length: group.questions.length }, (_, i) => group.startNumber + i)
-          ).map((num) => (
-            <button
-              key={num}
-              className="qe-question-nav-item"
-              onClick={() => document.getElementById(`question-${num}`)?.scrollIntoView({ behavior: "smooth", block: "center" })}
-            >
-              {num}
-            </button>
-          ))}
-        </div>
-      )}
+      <div className="qe-nav-bar">
+        {sections.map((s, i) => {
+          const total = s.groups.reduce((sum, g) => sum + g.questions.length, 0);
+          if (i !== activeIndex) {
+            return (
+              <button key={s.id} className="qe-nav-part-pill" onClick={() => setActiveIndex(i)}>
+                {s.title}: {total} question{total !== 1 ? "s" : ""}
+              </button>
+            );
+          }
+          return (
+            <div key={s.id} className="qe-nav-active-part">
+              <span className="qe-nav-part-label">{s.title}</span>
+              {s.groups.flatMap((group) => Array.from({ length: group.questions.length }, (_, idx) => group.startNumber + idx)).map((num) => (
+                <button
+                  key={num}
+                  className="qe-question-nav-item"
+                  onClick={() => document.getElementById(`question-${num}`)?.scrollIntoView({ behavior: "smooth", block: "center" })}
+                >
+                  {num}
+                </button>
+              ))}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
