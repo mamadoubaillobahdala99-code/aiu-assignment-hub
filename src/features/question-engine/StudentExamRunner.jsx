@@ -3,7 +3,7 @@ import { ArrowLeft, Clock, GripVertical } from "lucide-react";
 import { supabase } from "../../supabaseClient";
 import { QuestionRenderer } from "./QuestionRenderer";
 import { SummaryCompletion } from "./SummaryCompletion";
-import { ReadingPassage } from "../assignment-hub/ReadingPassage";
+import { HighlightableText } from "./HighlightableText";
 
 // KNOWN LIMITATION, stated honestly: the countdown shown here is a
 // visual guide only — unlike the older AssignmentStudent timer, it
@@ -196,13 +196,17 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
       <div className="qe-exam-body" ref={bodyRef}>
         <div className="qe-passage-panel" style={{ flexBasis: `${leftWidthPct}%` }}>
           <div className="qe-passage-panel-inner">
+            <p className="qe-part-tag">{activeSection.title}</p>
+            {partRangeStart !== null && (
+              <p className="qe-part-quicksummary">Read the text and answer questions {partRangeStart}-{partRangeEnd}</p>
+            )}
             {perPartMinutes !== null && partRangeStart !== null && (
               <p className="qe-passage-meta">
                 You should spend about {perPartMinutes} minutes on Questions {partRangeStart}-{partRangeEnd}, which are based on Reading Passage {activeIndex + 1} below.
               </p>
             )}
             {activeTitle && <h2 className="qe-passage-title">{activeTitle}</h2>}
-            <ReadingPassage assignmentId={assignmentId} userId={userId} sectionId={activeSection.id} text={activePassageText} />
+            <HighlightableText assignmentId={assignmentId} userId={userId} scopeType="passage" scopeId={activeSection.id} text={activePassageText} />
           </div>
         </div>
 
@@ -244,6 +248,8 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
                         value={answers[q.id] ?? null}
                         onChange={(val) => setAnswers((prev) => ({ ...prev, [q.id]: val }))}
                         disabled={results !== null}
+                        assignmentId={assignmentId}
+                        userId={userId}
                       />
                       {results && (
                         <div className={results[q.id]?.isCorrect ? "qe-result-correct" : "qe-result-incorrect"}>
@@ -278,20 +284,18 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
             );
           }
           return (
-            <div key={s.id} className="qe-nav-part-segment">
+            <div key={s.id} className="qe-nav-part-segment" style={{ flex: 3 }}>
               <div className="qe-nav-active-part">
                 <span className="qe-nav-part-label">{s.title}</span>
-                <div className="qe-nav-numbers">
-                  {s.groups.flatMap((group) => Array.from({ length: group.questions.length }, (_, idx) => group.startNumber + idx)).map((num) => (
-                    <button
-                      key={num}
-                      className={`qe-question-nav-item ${num === visibleNum ? "qe-nav-item-visible" : ""}`}
-                      onClick={() => document.getElementById(`question-${num}`)?.scrollIntoView({ behavior: "smooth", block: "center" })}
-                    >
-                      {num}
-                    </button>
-                  ))}
-                </div>
+                {s.groups.flatMap((group) => Array.from({ length: group.questions.length }, (_, idx) => group.startNumber + idx)).map((num) => (
+                  <button
+                    key={num}
+                    className={`qe-question-nav-item ${num === visibleNum ? "qe-nav-item-visible" : ""}`}
+                    onClick={() => document.getElementById(`question-${num}`)?.scrollIntoView({ behavior: "smooth", block: "center" })}
+                  >
+                    {num}
+                  </button>
+                ))}
               </div>
             </div>
           );
