@@ -1,7 +1,7 @@
 import React from "react";
+import { HighlightableText } from "../HighlightableText";
 
-// value: the letter of the chosen option, e.g. "A" | "B" | "C" | null
-export function MultipleChoice({ questionId, choices = [], value, onChange, disabled }) {
+export function MultipleChoice({ questionId, choices = [], value, onChange, disabled, assignmentId, userId }) {
   return (
     <div className="qe-question">
       <div className="qe-options">
@@ -15,7 +15,11 @@ export function MultipleChoice({ questionId, choices = [], value, onChange, disa
               onChange={() => onChange(choice.letter)}
             />
             <span className="qe-letter-badge">{choice.letter}</span>
-            <span>{choice.text}</span>
+            {assignmentId && userId ? (
+              <HighlightableText assignmentId={assignmentId} userId={userId} scopeType="question" scopeId={questionId} optionKey={choice.letter} text={choice.text} inline />
+            ) : (
+              <span>{choice.text}</span>
+            )}
           </label>
         ))}
       </div>
