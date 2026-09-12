@@ -183,23 +183,27 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
                   onChange={(qid, val) => setAnswers((prev) => ({ ...prev, [qid]: val }))}
                   results={results}
                   disabled={results !== null}
+                  startNumber={group.startNumber}
                 />
               ) : (
-                group.questions.map((q) => (
-                  <div key={q.id} style={{ marginBottom: 20 }}>
-                    <QuestionRenderer
-                      question={q}
-                      value={answers[q.id] ?? null}
-                      onChange={(val) => setAnswers((prev) => ({ ...prev, [q.id]: val }))}
-                      disabled={results !== null}
-                    />
-                    {results && (
-                      <div className={results[q.id]?.isCorrect ? "qe-result-correct" : "qe-result-incorrect"}>
-                        {q.points > 1
-                          ? `${results[q.id]?.earned ?? 0} / ${q.points} points`
-                          : results[q.id]?.isCorrect ? "Correct" : "Incorrect"}
-                      </div>
-                    )}
+                group.questions.map((q, i) => (
+                  <div key={q.id} id={`question-${group.startNumber + i}`} className="qe-numbered-question">
+                    <span className="rf-answer-num qe-question-badge">{group.startNumber + i}</span>
+                    <div style={{ flex: 1 }}>
+                      <QuestionRenderer
+                        question={q}
+                        value={answers[q.id] ?? null}
+                        onChange={(val) => setAnswers((prev) => ({ ...prev, [q.id]: val }))}
+                        disabled={results !== null}
+                      />
+                      {results && (
+                        <div className={results[q.id]?.isCorrect ? "qe-result-correct" : "qe-result-incorrect"}>
+                          {q.points > 1
+                            ? `${results[q.id]?.earned ?? 0} / ${q.points} points`
+                            : results[q.id]?.isCorrect ? "Correct" : "Incorrect"}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 ))
               )}
@@ -213,6 +217,22 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
           )}
         </div>
       </div>
+
+      {activeSection.groups.length > 0 && (
+        <div className="qe-question-nav">
+          {activeSection.groups.flatMap((group) =>
+            Array.from({ length: group.questions.length }, (_, i) => group.startNumber + i)
+          ).map((num) => (
+            <button
+              key={num}
+              className="qe-question-nav-item"
+              onClick={() => document.getElementById(`question-${num}`)?.scrollIntoView({ behavior: "smooth", block: "center" })}
+            >
+              {num}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
