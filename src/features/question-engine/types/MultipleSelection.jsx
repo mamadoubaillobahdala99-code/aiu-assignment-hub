@@ -1,8 +1,7 @@
-
 import React from "react";
 
 // value: array of selected letters, e.g. ["B", "D"]
-export function MultipleSelection({ prompt, choices = [], requiredCount = 2, value = [], onChange, disabled }) {
+export function MultipleSelection({ questionId, choices = [], requiredCount = 2, value = [], onChange, disabled }) {
   const atLimit = value.length >= requiredCount;
 
   function toggle(letter) {
@@ -15,7 +14,6 @@ export function MultipleSelection({ prompt, choices = [], requiredCount = 2, val
 
   return (
     <div className="qe-question">
-      <p className="qe-prompt">{prompt}</p>
       <p className="qe-ms-hint">Choose {requiredCount} — {value.length} of {requiredCount} selected</p>
       <div className="qe-options">
         {choices.map((choice) => {
