@@ -21,6 +21,8 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
   const [submitting, setSubmitting] = useState(false);
   const [leftWidthPct, setLeftWidthPct] = useState(56);
   const bodyRef = useRef(null);
+  const questionsPanelRef = useRef(null);
+  const [visibleNum, setVisibleNum] = useState(null);
 
   const load = useCallback(async () => {
     const { data: a } = await supabase.from("assignments").select("*").eq("id", assignmentId).single();
@@ -94,6 +96,28 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [remainingSec, results]);
+
+  // Highlights the question the student is currently reading, in the
+  // bottom nav bar — recomputed whenever the active Part changes.
+  useEffect(() => {
+    const panel = questionsPanelRef.current;
+    if (!panel) return;
+    const targets = panel.querySelectorAll('[id^="question-"]');
+    if (targets.length === 0) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries.filter((e) => e.isIntersecting);
+        if (visible.length === 0) return;
+        const topMost = visible.reduce((a, b) => (a.boundingClientRect.top < b.boundingClientRect.top ? a : b));
+        const num = parseInt(topMost.target.id.replace("question-", ""), 10);
+        if (!isNaN(num)) setVisibleNum(num);
+      },
+      { root: panel, threshold: 0.4 }
+    );
+    targets.forEach((el) => observer.observe(el));
+    return () => observer.disconnect();
+  }, [activeIndex, sections]);
 
   const allQuestions = sections.flatMap((s) => s.groups.flatMap((g) => g.questions));
   const allAnswered = allQuestions.length > 0 && allQuestions.every((q) => answers[q.id] !== undefined);
@@ -178,7 +202,7 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
           <GripVertical size={14} />
         </div>
 
-        <div className="qe-questions-panel" style={{ flexBasis: `${100 - leftWidthPct}%` }}>
+        <div className="qe-questions-panel" ref={questionsPanelRef} style={{ flexBasis: `${100 - leftWidthPct}%` }}>
           {results && (
             <div className="feedback-panel" style={{ marginBottom: 16 }}>
               <div className="feedback-band">{totalPointsEarned} / {totalPointsPossible} points</div>
@@ -240,23 +264,25 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
           const total = s.groups.reduce((sum, g) => sum + g.questions.length, 0);
           if (i !== activeIndex) {
             return (
-              <button key={s.id} className="qe-nav-part-pill" onClick={() => setActiveIndex(i)}>
-                {s.title}: {total} question{total !== 1 ? "s" : ""}
-              </button>
+              <div key={s.id} className="qe-nav-part-segment inactive-part" onClick={() => setActiveIndex(i)}>
+                <button className="qe-nav-part-pill">{s.title}: {total} question{total !== 1 ? "s" : ""}</button>
+              </div>
             );
           }
           return (
-            <div key={s.id} className="qe-nav-active-part">
-              <span className="qe-nav-part-label">{s.title}</span>
-              {s.groups.flatMap((group) => Array.from({ length: group.questions.length }, (_, idx) => group.startNumber + idx)).map((num) => (
-                <button
-                  key={num}
-                  className="qe-question-nav-item"
-                  onClick={() => document.getElementById(`question-${num}`)?.scrollIntoView({ behavior: "smooth", block: "center" })}
-                >
-                  {num}
-                </button>
-              ))}
+            <div key={s.id} className="qe-nav-part-segment" style={{ flex: 3 }}>
+              <div className="qe-nav-active-part">
+                <span className="qe-nav-part-label">{s.title}</span>
+                {s.groups.flatMap((group) => Array.from({ length: group.questions.length }, (_, idx) => group.startNumber + idx)).map((num) => (
+                  <button
+                    key={num}
+                    className={`qe-question-nav-item ${num === visibleNum ? "qe-nav-item-visible" : ""}`}
+                    onClick={() => document.getElementById(`question-${num}`)?.scrollIntoView({ behavior: "smooth", block: "center" })}
+                  >
+                    {num}
+                  </button>
+                ))}
+              </div>
             </div>
           );
         })}
