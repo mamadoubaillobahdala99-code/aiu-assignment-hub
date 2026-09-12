@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { Loader2, Eraser } from "lucide-react";
+import { Eraser } from "lucide-react";
 import { supabase } from "../../supabaseClient";
 
 const COLORS = [
@@ -8,10 +8,13 @@ const COLORS = [
   { key: "red", label: "Red" },
 ];
 
-// scopeType: "passage" | "question" — decides which column (section_id
-// or question_id) the highlight is filed under, so a passage's
-// highlights never mix with a question's, or with another passage's.
-export function HighlightableText({ assignmentId, userId, scopeType, scopeId, text, className }) {
+// scopeType: "passage" | "question"
+// optionKey: only for scopeType="question" — distinguishes an option's
+// own highlight (e.g. "A", "B") from the question's prompt (undefined)
+// and from every other option, so none of them ever mix.
+// inline: renders a plain <span> instead of a full paragraph block —
+// use this for text that sits inside an answer row (options, labels).
+export function HighlightableText({ assignmentId, userId, scopeType, scopeId, optionKey, text, className, inline }) {
   const [colors, setColors] = useState({});
   const [loaded, setLoaded] = useState(false);
   const [toolbar, setToolbar] = useState(null); // { lo, hi, top, left } | null
@@ -30,7 +33,14 @@ export function HighlightableText({ assignmentId, userId, scopeType, scopeId, te
         .eq("assignment_id", assignmentId)
         .eq("student_id", userId)
         .eq("scope_type", scopeType);
-      query = scopeType === "passage" ? query.eq("section_id", scopeId) : query.eq("question_id", scopeId);
+
+      if (scopeType === "passage") {
+        query = query.eq("section_id", scopeId).is("question_id", null).is("option_key", null);
+      } else {
+        query = query.is("section_id", null).eq("question_id", scopeId);
+        query = optionKey ? query.eq("option_key", optionKey) : query.is("option_key", null);
+      }
+
       const { data } = await query.maybeSingle();
 
       const map = {};
@@ -40,7 +50,7 @@ export function HighlightableText({ assignmentId, userId, scopeType, scopeId, te
       setColors(map);
       setLoaded(true);
     })();
-  }, [assignmentId, userId, scopeType, scopeId]);
+  }, [assignmentId, userId, scopeType, scopeId, optionKey]);
 
   const persist = useCallback(
     async (nextMap) => {
@@ -51,17 +61,18 @@ export function HighlightableText({ assignmentId, userId, scopeType, scopeId, te
           scope_type: scopeType,
           section_id: scopeType === "passage" ? scopeId : null,
           question_id: scopeType === "question" ? scopeId : null,
+          option_key: scopeType === "question" ? optionKey || null : null,
           word_indices: Object.keys(nextMap).map(Number),
           word_colors: nextMap,
           updated_at: new Date().toISOString(),
         },
-        { onConflict: "assignment_id,student_id,scope_type,section_id,question_id" }
+        { onConflict: "assignment_id,student_id,scope_type,section_id,question_id,option_key" }
       );
     },
-    [assignmentId, userId, scopeType, scopeId]
+    [assignmentId, userId, scopeType, scopeId, optionKey]
   );
 
-  function wordIndexFromNode(node) {
+  function anchorIndexFromNode(node) {
     const el = node.nodeType === 3 ? node.parentElement : node;
     const span = el?.closest("[data-idx]");
     return span ? parseInt(span.dataset.idx, 10) : null;
@@ -73,8 +84,8 @@ export function HighlightableText({ assignmentId, userId, scopeType, scopeId, te
     const range = sel.getRangeAt(0);
     if (!containerRef.current || !containerRef.current.contains(range.commonAncestorContainer)) return;
 
-    const a = wordIndexFromNode(range.startContainer);
-    const b = wordIndexFromNode(range.endContainer);
+    const a = anchorIndexFromNode(range.startContainer);
+    const b = anchorIndexFromNode(range.endContainer);
     if (a === null || b === null) return;
 
     const lo = Math.min(a, b);
@@ -86,23 +97,21 @@ export function HighlightableText({ assignmentId, userId, scopeType, scopeId, te
 
   useEffect(() => {
     function onDocMouseDown(e) {
-      if (toolbarRef.current && !toolbarRef.current.contains(e.target)) {
-        // Let a genuine new selection's own mouseup reopen the toolbar;
-        // just close the current one when clicking away.
-        setToolbar(null);
-      }
+      if (toolbarRef.current && !toolbarRef.current.contains(e.target)) setToolbar(null);
     }
     document.addEventListener("mousedown", onDocMouseDown);
     return () => document.removeEventListener("mousedown", onDocMouseDown);
   }, []);
 
+  // Every token in the range gets the color — including the spaces
+  // between words — so a highlighted phrase reads as one continuous
+  // band, exactly like a real exam, instead of word-by-word chunks
+  // with white gaps at each space.
   function applyColor(color) {
     if (!toolbar) return;
     setColors((prev) => {
       const next = { ...prev };
-      for (let i = toolbar.lo; i <= toolbar.hi; i++) {
-        if (tokens[i] !== undefined && !/^\s+$/.test(tokens[i])) next[i] = color;
-      }
+      for (let i = toolbar.lo; i <= toolbar.hi; i++) if (tokens[i] !== undefined) next[i] = color;
       persist(next);
       return next;
     });
@@ -122,31 +131,32 @@ export function HighlightableText({ assignmentId, userId, scopeType, scopeId, te
     setToolbar(null);
   }
 
-  if (!loaded) return <div className="asg-desc"><Loader2 className="spin" size={14} /></div>;
+  const body = loaded ? (
+    tokens.map((tok, i) => (
+      <span key={i} data-idx={i} className={colors[i] ? `hl-word hl-${colors[i]}` : "hl-word"}>
+        {tok}
+      </span>
+    ))
+  ) : (
+    <span>{text}</span>
+  );
+
+  const Wrapper = inline ? "span" : "p";
+  const wrapperClass = inline ? "qe-hl-inline" : "asg-desc reading-text";
 
   return (
-    <div className={`qe-highlightable ${className || ""}`} ref={containerRef} onMouseUp={handleMouseUp} style={{ position: "relative" }}>
+    <span className={`qe-highlightable ${className || ""}`} ref={containerRef} onMouseUp={handleMouseUp} style={{ position: "relative", display: inline ? "inline" : "block" }}>
       {toolbar && (
-        <div ref={toolbarRef} className="qe-hl-toolbar" style={{ top: toolbar.top, left: toolbar.left }}>
+        <span ref={toolbarRef} className="qe-hl-toolbar" style={{ top: toolbar.top, left: toolbar.left }}>
           {COLORS.map((c) => (
             <button key={c.key} type="button" title={c.label} className={`qe-hl-swatch swatch-${c.key}`} onClick={() => applyColor(c.key)} />
           ))}
           <button type="button" title="Remove highlight" className="qe-hl-erase" onClick={eraseSelection}>
             <Eraser size={13} />
           </button>
-        </div>
+        </span>
       )}
-      <p className="asg-desc reading-text">
-        {tokens.map((tok, i) =>
-          /^\s+$/.test(tok) ? (
-            tok
-          ) : (
-            <span key={i} data-idx={i} className={`hl-word ${colors[i] ? `hl-${colors[i]}` : ""}`}>
-              {tok}
-            </span>
-          )
-        )}
-      </p>
-    </div>
+      <Wrapper className={wrapperClass}>{body}</Wrapper>
+    </span>
   );
 }
