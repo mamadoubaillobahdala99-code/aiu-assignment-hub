@@ -1,7 +1,7 @@
 import React from "react";
+import { HighlightableText } from "../HighlightableText";
 
-// value: array of selected letters, e.g. ["B", "D"]
-export function MultipleSelection({ questionId, choices = [], requiredCount = 2, value = [], onChange, disabled }) {
+export function MultipleSelection({ questionId, choices = [], requiredCount = 2, value = [], onChange, disabled, assignmentId, userId }) {
   const atLimit = value.length >= requiredCount;
 
   function toggle(letter) {
@@ -28,7 +28,11 @@ export function MultipleSelection({ questionId, choices = [], requiredCount = 2,
                 onChange={() => toggle(choice.letter)}
               />
               <span className="qe-letter-badge">{choice.letter}</span>
-              <span>{choice.text}</span>
+              {assignmentId && userId ? (
+                <HighlightableText assignmentId={assignmentId} userId={userId} scopeType="question" scopeId={questionId} optionKey={choice.letter} text={choice.text} inline />
+              ) : (
+                <span>{choice.text}</span>
+              )}
             </label>
           );
         })}
