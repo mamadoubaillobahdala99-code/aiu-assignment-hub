@@ -278,18 +278,20 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
             );
           }
           return (
-            <div key={s.id} className="qe-nav-part-segment" style={{ flex: 3 }}>
+            <div key={s.id} className="qe-nav-part-segment">
               <div className="qe-nav-active-part">
                 <span className="qe-nav-part-label">{s.title}</span>
-                {s.groups.flatMap((group) => Array.from({ length: group.questions.length }, (_, idx) => group.startNumber + idx)).map((num) => (
-                  <button
-                    key={num}
-                    className={`qe-question-nav-item ${num === visibleNum ? "qe-nav-item-visible" : ""}`}
-                    onClick={() => document.getElementById(`question-${num}`)?.scrollIntoView({ behavior: "smooth", block: "center" })}
-                  >
-                    {num}
-                  </button>
-                ))}
+                <div className="qe-nav-numbers">
+                  {s.groups.flatMap((group) => Array.from({ length: group.questions.length }, (_, idx) => group.startNumber + idx)).map((num) => (
+                    <button
+                      key={num}
+                      className={`qe-question-nav-item ${num === visibleNum ? "qe-nav-item-visible" : ""}`}
+                      onClick={() => document.getElementById(`question-${num}`)?.scrollIntoView({ behavior: "smooth", block: "center" })}
+                    >
+                      {num}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
           );
