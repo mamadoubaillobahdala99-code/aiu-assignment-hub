@@ -1,4 +1,5 @@
 import React from "react";
+import { HighlightableText } from "../HighlightableText";
 
 const LABEL_SETS = {
   true_false: { positive: "True", negative: "False", not_given: "Not Given" },
@@ -6,8 +7,7 @@ const LABEL_SETS = {
 };
 const LETTERS = { positive: "A", negative: "B", not_given: "C" };
 
-// value: "positive" | "negative" | "not_given" | null
-export function TrueFalseNotGiven({ questionId, labelSet = "true_false", value, onChange, disabled }) {
+export function TrueFalseNotGiven({ questionId, labelSet = "true_false", value, onChange, disabled, assignmentId, userId }) {
   const labels = LABEL_SETS[labelSet] || LABEL_SETS.true_false;
 
   return (
@@ -23,7 +23,11 @@ export function TrueFalseNotGiven({ questionId, labelSet = "true_false", value, 
               onChange={() => onChange(key)}
             />
             <span className="qe-letter-badge">{LETTERS[key]}</span>
-            <span>{labels[key]}</span>
+            {assignmentId && userId ? (
+              <HighlightableText assignmentId={assignmentId} userId={userId} scopeType="question" scopeId={questionId} optionKey={key} text={labels[key]} inline />
+            ) : (
+              <span>{labels[key]}</span>
+            )}
           </label>
         ))}
       </div>
