@@ -1,23 +1,69 @@
-
 /* Listening layout — a single centered panel instead of Reading's
-   resizable split, matching the reference exam software: fixed width,
-   margin on both sides, no passage panel at all. */
-.qe-listening-body { justify-content: center; overflow-y: auto; background: var(--paper); }
-.qe-listening-panel { width: 100%; max-width: 760px; margin: 0 auto; padding: 28px 28px 40px; box-sizing: border-box; }
+   resizable split. IMPORTANT: this selector must stay compound
+   (.qe-exam-body.qe-listening-body), not just .qe-listening-body —
+   .qe-exam-body's own "overflow: hidden" (question-engine.css) has
+   equal specificity to a single-class rule, and depending on CSS
+   import order it can win and silently freeze the screen. A compound
+   selector always wins regardless of load order. */
+.qe-exam-body.qe-listening-body { justify-content: flex-start; overflow-y: auto; background: var(--paper); }
 
-/* Audio player */
-.qe-audio-player { border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; background: var(--paper-raised); margin: 14px 0 24px; }
-.qe-audio-header { display: flex; align-items: center; gap: 8px; font-size: 13.5px; font-weight: 600; color: var(--ink); margin-bottom: 10px; }
-.qe-audio-filename { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* A visibly distinct "card" so the question area reads as its own
+   surface against the page background, and scrolls internally so every
+   question stays reachable no matter how many there are. */
+.qe-listening-panel {
+  width: 100%;
+  max-width: 760px;
+  margin: 24px auto 40px;
+  padding: 28px 28px 40px;
+  box-sizing: border-box;
+  background: var(--paper-raised);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+
+/* Floating, draggable audio player — deliberately NOT part of the
+   scrolling panel above, so it never scrolls out of view. Fixed to the
+   viewport; the header bar is the drag handle. */
+.qe-audio-player {
+  position: fixed;
+  top: 90px;
+  right: 24px;
+  width: 300px;
+  z-index: 40;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0 18px 16px;
+  background: var(--paper-raised);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.12);
+}
+.qe-audio-drag-handle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink);
+  padding: 12px 0 10px;
+  cursor: grab;
+  user-select: none;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 12px;
+}
+.qe-audio-drag-handle:active { cursor: grabbing; }
+.qe-audio-filename { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
 .qe-audio-plays-count { font-size: 12.5px; color: var(--ink-soft); margin-bottom: 10px; }
 .qe-audio-controls { display: flex; align-items: center; gap: 10px; }
 .qe-audio-play-btn { flex-shrink: 0; width: 34px; height: 34px; border-radius: 50%; border: 1px solid var(--line); background: #fff; color: var(--ink); display: flex; align-items: center; justify-content: center; cursor: pointer; }
 .qe-audio-play-btn:hover { border-color: var(--teal); color: var(--teal); }
 .qe-audio-play-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-.qe-audio-seek { flex: 1; accent-color: var(--teal); }
-.qe-audio-time { font-size: 12px; color: var(--ink-soft); flex-shrink: 0; min-width: 88px; text-align: right; }
-.qe-audio-volume { display: flex; align-items: center; gap: 8px; margin-top: 10px; color: var(--ink-soft); }
-.qe-audio-volume input { width: 90px; accent-color: var(--teal); }
+.qe-audio-seek { flex: 1; accent-color: var(--teal); height: 6px; }
+.qe-audio-time { font-size: 12px; color: var(--ink-soft); flex-shrink: 0; min-width: 80px; text-align: right; }
+
+/* Wider, taller volume control — an easier target to click and drag,
+   per feedback that the original 90px slider was too small. */
+.qe-audio-volume { display: flex; align-items: center; gap: 10px; margin-top: 12px; color: var(--ink-soft); }
+.qe-audio-volume input[type="range"] { width: 180px; height: 8px; accent-color: var(--teal); cursor: pointer; }
+
 .qe-audio-locked-note { font-size: 12.5px; color: var(--ink-soft); font-style: italic; margin: 10px 0 0; }
 
 /* Teacher-side audio picker */
@@ -27,4 +73,6 @@
 .qe-audio-library-item:hover { border-color: var(--teal); }
 .qe-audio-library-item.active { border-color: var(--teal); background: var(--teal-soft); }
 .qe-audio-library-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.qe-audio-selected { display: flex; align-items: center; gap: 6px; margin-top: 10px; font-size: 12.5px; color: var(--ink-soft); }
+.qe-audio-selected { display: flex; align-items: center; gap: 10px; margin-top: 10px; font-size: 12.5px; color: var(--ink-soft); }
+.qe-audio-remove-btn { display: inline-flex; align-items: center; gap: 4px; border: none; background: none; color: var(--ink-soft); cursor: pointer; font-size: 12.5px; text-decoration: underline; padding: 0; }
+.qe-audio-remove-btn:hover { color: var(--ink); }
