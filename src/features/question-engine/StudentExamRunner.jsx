@@ -5,6 +5,7 @@ import { QuestionRenderer } from "./QuestionRenderer";
 import { SummaryCompletion } from "./SummaryCompletion";
 import { NotesCompletion } from "./NotesCompletion";
 import { TableCompletion } from "./TableCompletion";
+import { AudioPlayer } from "./AudioPlayer";
 import { parseCompletionPayload } from "./bulkParse";
 import { HighlightableText } from "./HighlightableText";
 
@@ -34,7 +35,7 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
 
     const { data: sectionRows } = await supabase
       .from("exam_sections")
-      .select("id, title, passage_title, passage_text, order_index")
+      .select("id, title, passage_title, passage_text, audio_url, max_plays, order_index")
       .eq("assignment_id", assignmentId)
       .order("order_index");
 
@@ -59,7 +60,7 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
         globalCounter += questions.length;
         groups.push({ id: g.id, instruction: g.instruction, passageText: g.passage_text, questions, startNumber, endNumber: globalCounter });
       }
-      built.push({ id: s.id, title: s.title, passageTitle: s.passage_title, passageText: s.passage_text, groups });
+      built.push({ id: s.id, title: s.title, passageTitle: s.passage_title, passageText: s.passage_text, audioUrl: s.audio_url, maxPlays: s.max_plays, groups });
     }
     setSections(built);
 
@@ -189,6 +190,73 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
   const mm = remainingSec !== null ? String(Math.floor(Math.max(0, remainingSec) / 60)).padStart(2, "0") : null;
   const ss = remainingSec !== null ? String(Math.max(0, remainingSec) % 60).padStart(2, "0") : null;
 
+  const isListening = assignment.type === "Listening";
+
+  const questionsContent = (
+    <>
+      {results && (
+        <div className="feedback-panel" style={{ marginBottom: 16 }}>
+          <div className="feedback-band">{totalPointsEarned} / {totalPointsPossible} points</div>
+        </div>
+      )}
+
+      {activeSection.groups.map((group) => (
+        <div key={group.id} className="qe-group-block">
+          <div className="qe-group-heading">
+            {group.questions.length === 1 ? `Question ${group.startNumber}` : `Questions ${group.startNumber}-${group.endNumber}`}
+          </div>
+          {group.instruction && <p className="qe-section-instruction">{group.instruction}</p>}
+
+          {group.passageText ? (
+            (() => {
+              const payload = parseCompletionPayload(group.passageText);
+              const commonProps = {
+                questions: group.questions,
+                answers,
+                onChange: (qid, val) => setAnswers((prev) => ({ ...prev, [qid]: val })),
+                results,
+                disabled: results !== null,
+                startNumber: group.startNumber,
+              };
+              if (payload.style === "notes") return <NotesCompletion blocks={payload.blocks || []} {...commonProps} />;
+              if (payload.style === "table") return <TableCompletion headers={payload.headers || []} rows={payload.rows || []} {...commonProps} />;
+              return <SummaryCompletion text={payload.text} {...commonProps} />;
+            })()
+          ) : (
+            group.questions.map((q, i) => (
+              <div key={q.id} id={`question-${group.startNumber + i}`} className="qe-numbered-question">
+                <span className="rf-answer-num qe-question-badge">{group.startNumber + i}</span>
+                <div style={{ flex: 1 }}>
+                  <QuestionRenderer
+                    question={q}
+                    value={answers[q.id] ?? null}
+                    onChange={(val) => setAnswers((prev) => ({ ...prev, [q.id]: val }))}
+                    disabled={results !== null}
+                    assignmentId={assignmentId}
+                    userId={userId}
+                  />
+                  {results && (
+                    <div className={results[q.id]?.isCorrect ? "qe-result-correct" : "qe-result-incorrect"}>
+                      {q.points > 1
+                        ? `${results[q.id]?.earned ?? 0} / ${q.points} points`
+                        : results[q.id]?.isCorrect ? "Correct" : "Incorrect"}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      ))}
+
+      {results === null && (
+        <button className="btn-primary" style={{ width: "100%", justifyContent: "center" }} disabled={!allAnswered || submitting} onClick={submitAll}>
+          {submitting ? "Submitting…" : "Submit assignment"}
+        </button>
+      )}
+    </>
+  );
+
   return (
     <div className="wf-overlay qe-exam-shell">
       <div className="wf-topbar">
@@ -196,90 +264,46 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
         {mm !== null && results === null ? <div className="wf-timer"><Clock size={15} /> {mm}:{ss}</div> : <div />}
       </div>
 
-      <div className="qe-exam-body" ref={bodyRef}>
-        <div className="qe-passage-panel" style={{ flexBasis: `${leftWidthPct}%` }}>
-          <div className="qe-passage-panel-inner">
+      {isListening ? (
+        <div className="qe-exam-body qe-listening-body" ref={bodyRef}>
+          <div className="qe-listening-panel" ref={questionsPanelRef}>
             <p className="qe-part-tag">{activeSection.title}</p>
             {partRangeStart !== null && (
-              <p className="qe-part-quicksummary">Read the text and answer questions {partRangeStart}-{partRangeEnd}</p>
+              <p className="qe-part-quicksummary">Listen and answer questions {partRangeStart}-{partRangeEnd}</p>
             )}
-            {perPartMinutes !== null && partRangeStart !== null && (
-              <p className="qe-passage-meta">
-                You should spend about {perPartMinutes} minutes on Questions {partRangeStart}-{partRangeEnd}, which are based on Reading Passage {activeIndex + 1} below.
-              </p>
+            {activeSection.audioUrl && (
+              <AudioPlayer url={activeSection.audioUrl} maxPlays={activeSection.maxPlays} />
             )}
-            {activeTitle && <h2 className="qe-passage-title">{activeTitle}</h2>}
-            <HighlightableText assignmentId={assignmentId} userId={userId} scopeType="passage" scopeId={activeSection.id} text={activePassageText} />
+            {questionsContent}
           </div>
         </div>
-
-        <div className="qe-resizer" onMouseDown={startResize}>
-          <GripVertical size={14} />
-        </div>
-
-        <div className="qe-questions-panel" ref={questionsPanelRef} style={{ flexBasis: `${100 - leftWidthPct}%` }}>
-          {results && (
-            <div className="feedback-panel" style={{ marginBottom: 16 }}>
-              <div className="feedback-band">{totalPointsEarned} / {totalPointsPossible} points</div>
-            </div>
-          )}
-
-          {activeSection.groups.map((group) => (
-            <div key={group.id} className="qe-group-block">
-              <div className="qe-group-heading">
-                {group.questions.length === 1 ? `Question ${group.startNumber}` : `Questions ${group.startNumber}-${group.endNumber}`}
-              </div>
-              {group.instruction && <p className="qe-section-instruction">{group.instruction}</p>}
-
-              {group.passageText ? (
-                (() => {
-                  const payload = parseCompletionPayload(group.passageText);
-                  const commonProps = {
-                    questions: group.questions,
-                    answers,
-                    onChange: (qid, val) => setAnswers((prev) => ({ ...prev, [qid]: val })),
-                    results,
-                    disabled: results !== null,
-                    startNumber: group.startNumber,
-                  };
-                  if (payload.style === "notes") return <NotesCompletion blocks={payload.blocks || []} {...commonProps} />;
-                  if (payload.style === "table") return <TableCompletion headers={payload.headers || []} rows={payload.rows || []} {...commonProps} />;
-                  return <SummaryCompletion text={payload.text} {...commonProps} />;
-                })()
-              ) : (
-                group.questions.map((q, i) => (
-                  <div key={q.id} id={`question-${group.startNumber + i}`} className="qe-numbered-question">
-                    <span className="rf-answer-num qe-question-badge">{group.startNumber + i}</span>
-                    <div style={{ flex: 1 }}>
-                      <QuestionRenderer
-                        question={q}
-                        value={answers[q.id] ?? null}
-                        onChange={(val) => setAnswers((prev) => ({ ...prev, [q.id]: val }))}
-                        disabled={results !== null}
-                        assignmentId={assignmentId}
-                        userId={userId}
-                      />
-                      {results && (
-                        <div className={results[q.id]?.isCorrect ? "qe-result-correct" : "qe-result-incorrect"}>
-                          {q.points > 1
-                            ? `${results[q.id]?.earned ?? 0} / ${q.points} points`
-                            : results[q.id]?.isCorrect ? "Correct" : "Incorrect"}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ))
+      ) : (
+        <div className="qe-exam-body" ref={bodyRef}>
+          <div className="qe-passage-panel" style={{ flexBasis: `${leftWidthPct}%` }}>
+            <div className="qe-passage-panel-inner">
+              <p className="qe-part-tag">{activeSection.title}</p>
+              {partRangeStart !== null && (
+                <p className="qe-part-quicksummary">Read the text and answer questions {partRangeStart}-{partRangeEnd}</p>
               )}
+              {perPartMinutes !== null && partRangeStart !== null && (
+                <p className="qe-passage-meta">
+                  You should spend about {perPartMinutes} minutes on Questions {partRangeStart}-{partRangeEnd}, which are based on Reading Passage {activeIndex + 1} below.
+                </p>
+              )}
+              {activeTitle && <h2 className="qe-passage-title">{activeTitle}</h2>}
+              <HighlightableText assignmentId={assignmentId} userId={userId} scopeType="passage" scopeId={activeSection.id} text={activePassageText} />
             </div>
-          ))}
+          </div>
 
-          {results === null && (
-            <button className="btn-primary" style={{ width: "100%", justifyContent: "center" }} disabled={!allAnswered || submitting} onClick={submitAll}>
-              {submitting ? "Submitting…" : "Submit assignment"}
-            </button>
-          )}
+          <div className="qe-resizer" onMouseDown={startResize}>
+            <GripVertical size={14} />
+          </div>
+
+          <div className="qe-questions-panel" ref={questionsPanelRef} style={{ flexBasis: `${100 - leftWidthPct}%` }}>
+            {questionsContent}
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="qe-nav-bar">
         {sections.map((s, i) => {
