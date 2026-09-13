@@ -379,7 +379,7 @@ export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast
 }
 
 // ---------- Summary Completion builder, local to this file ----------
-function SummaryCompletionBuilder({ group, teacherId, onSummaryTextChange, onBlanksCreated }) {
+export function SummaryCompletionBuilder({ group, teacherId, skill = "reading", onSummaryTextChange, onBlanksCreated }) {
   const [localText, setLocalText] = useState(group.summaryText);
   const [accepted, setAccepted] = useState({});
   const [busy, setBusy] = useState(false);
@@ -403,7 +403,7 @@ function SummaryCompletionBuilder({ group, teacherId, onSummaryTextChange, onBla
       const alternatives = accepted[i].split(",").map((a) => a.trim()).filter(Boolean);
       const { data: question, error: qError } = await supabase
         .from("questions")
-        .insert({ teacher_id: teacherId, type: "gap_fill", skill: "reading", prompt: `Gap ${i + 1}`, options: {} })
+        .insert({ teacher_id: teacherId, type: "gap_fill", skill, prompt: `Gap ${i + 1}`, options: {} })
         .select()
         .single();
       if (qError || !question) {
@@ -467,7 +467,7 @@ function SummaryCompletionBuilder({ group, teacherId, onSummaryTextChange, onBla
 // switch to a small visual builder that never loses what was already
 // typed. Either path produces the same { style: "notes", blocks } payload,
 // saved into passage_text only once every blank has an accepted answer.
-function NotesCompletionBuilder({ group, teacherId, onSummaryTextChange, onBlanksCreated }) {
+export function NotesCompletionBuilder({ group, teacherId, skill = "reading", onSummaryTextChange, onBlanksCreated }) {
   const [inputMode, setInputMode] = useState("markdown"); // "markdown" | "visual"
   const [markdownText, setMarkdownText] = useState("");
   const [visualBlocks, setVisualBlocks] = useState([{ type: "bullet", text: "" }]);
@@ -506,7 +506,7 @@ function NotesCompletionBuilder({ group, teacherId, onSummaryTextChange, onBlank
       const alternatives = accepted[i].split(",").map((a) => a.trim()).filter(Boolean);
       const { data: question, error: qError } = await supabase
         .from("questions")
-        .insert({ teacher_id: teacherId, type: "gap_fill", skill: "reading", prompt: `Gap ${i + 1}`, options: {} })
+        .insert({ teacher_id: teacherId, type: "gap_fill", skill, prompt: `Gap ${i + 1}`, options: {} })
         .select()
         .single();
       if (qError || !question) {
@@ -609,7 +609,7 @@ function NotesCompletionBuilder({ group, teacherId, onSummaryTextChange, onBlank
 // column plus N data columns, each cell a small textarea that accepts
 // "- " bullet lines and "___" blanks, detected in the same reading order
 // the student will see: row by row, column by column within a row.
-function TableCompletionBuilder({ group, teacherId, onSummaryTextChange, onBlanksCreated }) {
+export function TableCompletionBuilder({ group, teacherId, skill = "reading", onSummaryTextChange, onBlanksCreated }) {
   const [headers, setHeaders] = useState(["Column 1"]);
   const [rows, setRows] = useState([{ label: "", cells: [""] }]);
   const [accepted, setAccepted] = useState({});
@@ -654,7 +654,7 @@ function TableCompletionBuilder({ group, teacherId, onSummaryTextChange, onBlank
       const alternatives = accepted[i].split(",").map((a) => a.trim()).filter(Boolean);
       const { data: question, error: qError } = await supabase
         .from("questions")
-        .insert({ teacher_id: teacherId, type: "gap_fill", skill: "reading", prompt: `Gap ${i + 1}`, options: {} })
+        .insert({ teacher_id: teacherId, type: "gap_fill", skill, prompt: `Gap ${i + 1}`, options: {} })
         .select()
         .single();
       if (qError || !question) {
