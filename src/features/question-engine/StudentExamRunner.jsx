@@ -3,6 +3,9 @@ import { ArrowLeft, Clock, GripVertical } from "lucide-react";
 import { supabase } from "../../supabaseClient";
 import { QuestionRenderer } from "./QuestionRenderer";
 import { SummaryCompletion } from "./SummaryCompletion";
+import { NotesCompletion } from "./NotesCompletion";
+import { TableCompletion } from "./TableCompletion";
+import { parseCompletionPayload } from "./bulkParse";
 import { HighlightableText } from "./HighlightableText";
 
 // KNOWN LIMITATION, stated honestly: the countdown shown here is a
@@ -229,15 +232,20 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
               {group.instruction && <p className="qe-section-instruction">{group.instruction}</p>}
 
               {group.passageText ? (
-                <SummaryCompletion
-                  text={group.passageText}
-                  questions={group.questions}
-                  answers={answers}
-                  onChange={(qid, val) => setAnswers((prev) => ({ ...prev, [qid]: val }))}
-                  results={results}
-                  disabled={results !== null}
-                  startNumber={group.startNumber}
-                />
+                (() => {
+                  const payload = parseCompletionPayload(group.passageText);
+                  const commonProps = {
+                    questions: group.questions,
+                    answers,
+                    onChange: (qid, val) => setAnswers((prev) => ({ ...prev, [qid]: val })),
+                    results,
+                    disabled: results !== null,
+                    startNumber: group.startNumber,
+                  };
+                  if (payload.style === "notes") return <NotesCompletion blocks={payload.blocks || []} {...commonProps} />;
+                  if (payload.style === "table") return <TableCompletion headers={payload.headers || []} rows={payload.rows || []} {...commonProps} />;
+                  return <SummaryCompletion text={payload.text} {...commonProps} />;
+                })()
               ) : (
                 group.questions.map((q, i) => (
                   <div key={q.id} id={`question-${group.startNumber + i}`} className="qe-numbered-question">
