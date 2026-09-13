@@ -1,24 +1,49 @@
-
 import React from "react";
+import { HighlightableText } from "./HighlightableText";
 
 // blocks: [{ type: "h2" | "h3" | "bullet" | "p", text }], produced by
 // parseNotesMarkdown or the visual builder. Any block's text may contain
 // "___" (3+ underscores) marking a blank, in reading order across all
 // blocks. questions is the ordered list of gap_fill questions, one per
 // blank, in that same order.
-export function NotesCompletion({ blocks, questions, answers, onChange, results, disabled, startNumber = 1 }) {
+//
+// Highlighting: reading_highlights.question_id has a foreign key into
+// questions, so every static text segment is scoped under the group's
+// first blank's question id (always present — a Notes group can't be
+// saved with zero blanks) with a unique optionKey per segment. That
+// keeps each segment's highlights independent without needing a
+// question row that doesn't exist for the surrounding prose itself.
+export function NotesCompletion({ blocks, questions, answers, onChange, results, disabled, startNumber = 1, assignmentId, userId }) {
   let blankCursor = 0;
+  const anchorId = questions[0]?.id;
+  const canHighlight = Boolean(assignmentId && userId && anchorId);
 
   function renderText(text, keyPrefix) {
     const parts = text.split(/_{3,}/);
     return parts.map((part, i) => {
-      if (i === parts.length - 1) return <React.Fragment key={`${keyPrefix}-${i}`}>{part}</React.Fragment>;
+      const segment = part ? (
+        canHighlight ? (
+          <HighlightableText
+            inline
+            assignmentId={assignmentId}
+            userId={userId}
+            scopeType="question"
+            scopeId={anchorId}
+            optionKey={`${keyPrefix}-${i}`}
+            text={part}
+          />
+        ) : (
+          <React.Fragment>{part}</React.Fragment>
+        )
+      ) : null;
+
+      if (i === parts.length - 1) return <React.Fragment key={`${keyPrefix}-${i}`}>{segment}</React.Fragment>;
       const question = questions[blankCursor];
       const num = startNumber + blankCursor;
       blankCursor += 1;
       return (
         <React.Fragment key={`${keyPrefix}-${i}`}>
-          {part}
+          {segment}
           {question && (
             <span className="qe-completion-blank-wrap" id={`question-${num}`}>
               <span className="rf-answer-num" style={{ marginRight: 4 }}>{num}</span>
