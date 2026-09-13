@@ -21,6 +21,11 @@
 .qe-hl-erase { width: 24px; height: 24px; border-radius: 6px; border: 1px solid var(--line); background: #fff; color: var(--ink-soft); cursor: pointer; display: flex; align-items: center; justify-content: center; margin-left: 2px; }
 .qe-hl-erase:hover { color: var(--rose); border-color: var(--rose); }
 .qe-hl-inline { display: inline; }
+
+.qe-hl-word { cursor: text; }
+.qe-hl-yellow { background: #F2D24B; color: var(--ink); }
+.qe-hl-green { background: #A9DDAB; color: var(--ink); }
+.qe-hl-red { background: #F0B4B4; color: var(--ink); }
 .qe-option-locked { opacity: 0.45; cursor: not-allowed; }
 .qe-ms-hint { font-size: 12px; color: var(--ink-soft); margin: -6px 0 10px; }
 .qe-group-block { margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid var(--line); }
