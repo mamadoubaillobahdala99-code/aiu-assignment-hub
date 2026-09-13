@@ -221,7 +221,7 @@ export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast
   }
 
   return (
-    <div className="page">
+    <div className="page page-wide">
       <div className="eyebrow">Structured Reading</div>
       <h1 className="page-title">New Reading assignment</h1>
 
@@ -558,6 +558,16 @@ export function NotesCompletionBuilder({ group, teacherId, skill = "reading", on
             <div className="field-error" style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
               <span>Couldn't recognize a title or bullet structure. Make sure lines start with "## ", "### " or "- ".</span>
               <button type="button" className="btn-ghost" onClick={switchToVisual}>Switch to visual builder</button>
+            </div>
+          )}
+          {parsedMarkdown.warnings.length > 0 && (
+            <div className="field-error" style={{ marginTop: 8 }}>
+              <div>These line(s) look like a title/bullet marker but are missing the space right after it, so they'll show up as plain text with the symbol still in it:</div>
+              <ul style={{ margin: "6px 0 0 18px" }}>
+                {parsedMarkdown.warnings.map((w, i) => (
+                  <li key={i}><code>{w}</code></li>
+                ))}
+              </ul>
             </div>
           )}
         </>
