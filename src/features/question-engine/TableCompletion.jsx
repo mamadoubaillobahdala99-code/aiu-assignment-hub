@@ -1,5 +1,5 @@
-
 import React from "react";
+import { HighlightableText } from "./HighlightableText";
 
 // headers: column titles for the data columns (row-label column is implicit).
 // rows: [{ label, cells: [cellText, ...] }]. A cell's text may hold several
@@ -7,19 +7,40 @@ import React from "react";
 // contain "___" (3+ underscores) marking a blank. Blanks are numbered in
 // reading order: row by row, top to bottom, then column by column within
 // a row, matching how a person reads the table left to right.
-export function TableCompletion({ headers, rows, questions, answers, onChange, results, disabled, startNumber = 1 }) {
+//
+// Highlighting uses the same anchor-question technique as NotesCompletion
+// — see the comment there for why.
+export function TableCompletion({ headers, rows, questions, answers, onChange, results, disabled, startNumber = 1, assignmentId, userId }) {
   let blankCursor = 0;
+  const anchorId = questions[0]?.id;
+  const canHighlight = Boolean(assignmentId && userId && anchorId);
 
   function renderLine(line, keyPrefix) {
     const parts = line.split(/_{3,}/);
     return parts.map((part, i) => {
-      if (i === parts.length - 1) return <React.Fragment key={`${keyPrefix}-${i}`}>{part}</React.Fragment>;
+      const segment = part ? (
+        canHighlight ? (
+          <HighlightableText
+            inline
+            assignmentId={assignmentId}
+            userId={userId}
+            scopeType="question"
+            scopeId={anchorId}
+            optionKey={`${keyPrefix}-${i}`}
+            text={part}
+          />
+        ) : (
+          <React.Fragment>{part}</React.Fragment>
+        )
+      ) : null;
+
+      if (i === parts.length - 1) return <React.Fragment key={`${keyPrefix}-${i}`}>{segment}</React.Fragment>;
       const question = questions[blankCursor];
       const num = startNumber + blankCursor;
       blankCursor += 1;
       return (
         <React.Fragment key={`${keyPrefix}-${i}`}>
-          {part}
+          {segment}
           {question && (
             <span className="qe-completion-blank-wrap" id={`question-${num}`}>
               <span className="rf-answer-num" style={{ marginRight: 4 }}>{num}</span>
