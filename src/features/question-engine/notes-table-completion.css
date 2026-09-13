@@ -1,1 +1,21 @@
 
+
+.qe-notes-completion { font-size: 14.5px; line-height: 1.9; color: var(--ink); }
+.qe-notes-h2 { font-size: 15.5px; font-weight: 600; margin: 18px 0 6px; }
+.qe-notes-h3 { font-size: 14.5px; font-weight: 600; margin: 12px 0 4px; color: var(--ink); }
+.qe-notes-p { margin: 6px 0; }
+.qe-notes-list { margin: 4px 0 4px 20px; padding: 0; }
+.qe-notes-list li { margin: 4px 0; }
+
+.qe-completion-table { border-collapse: collapse; width: 100%; font-size: 14px; margin-top: 8px; }
+.qe-completion-table th, .qe-completion-table td { border: 1px solid var(--line); padding: 8px 10px; text-align: left; vertical-align: top; }
+.qe-completion-table thead th { background: rgba(0, 0, 0, 0.03); font-weight: 600; }
+.qe-table-row-label { font-weight: 600; white-space: nowrap; }
+.qe-table-cell-list { margin: 0; padding-left: 18px; }
+.qe-table-cell-list li { margin: 4px 0; }
+
+.qe-notes-block-row select { flex-shrink: 0; }
+
+.qe-table-builder-grid { border-collapse: collapse; width: 100%; }
+.qe-table-builder-grid th, .qe-table-builder-grid td { border: 1px solid var(--line); padding: 6px; vertical-align: top; }
+.qe-table-builder-grid th { text-align: left; }
