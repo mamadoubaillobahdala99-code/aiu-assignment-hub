@@ -217,6 +217,8 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
                 results,
                 disabled: results !== null,
                 startNumber: group.startNumber,
+                assignmentId,
+                userId,
               };
               if (payload.style === "notes") return <NotesCompletion blocks={payload.blocks || []} {...commonProps} />;
               if (payload.style === "table") return <TableCompletion headers={payload.headers || []} rows={payload.rows || []} {...commonProps} />;
