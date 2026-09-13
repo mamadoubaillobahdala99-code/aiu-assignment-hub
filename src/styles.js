@@ -73,6 +73,10 @@ body { margin: 0; }
 .main { flex: 1; padding: 40px 44px; min-width: 0; }
 .page { max-width: 880px; }
 .page.narrow { max-width: 560px; }
+/* Wider, centered variant used only by the Reading/Listening builder
+   screens — .page itself stays untouched since 8+ other screens
+   (dashboards, class lists...) share that base class. */
+.page.page-wide { max-width: 1040px; margin: 0 auto; }
 
 .page-header { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 26px; gap: 16px; flex-wrap: wrap; }
 .eyebrow { font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.08em; color: var(--teal); margin-bottom: 4px; text-transform: uppercase; }
