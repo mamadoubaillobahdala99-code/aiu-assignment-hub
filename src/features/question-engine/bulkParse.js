@@ -119,3 +119,69 @@ export function defaultInstructionFor(type, options) {
   }
   return "";
 }
+
+// ---------- Shared blank counting ----------
+// Used by every completion style (plain paragraph, Notes, Table) so a
+// blank is always exactly "three or more underscores", counted in the
+// same order the teacher reads the content, top to bottom, left to right.
+
+export function countBlanksInTexts(texts) {
+  return texts.reduce((sum, t) => sum + ((t.match(/_{3,}/g) || []).length), 0);
+}
+
+// ---------- Notes (titles + bullets) markdown parsing ----------
+// Deliberately tiny: "## " -> title, "### " -> subtitle, "- " -> bullet,
+// anything else -> plain paragraph line. Recognized is true only if at
+// least one heading or bullet marker was found, so a plain pasted
+// paragraph with no markers never gets mistaken for a structured Notes
+// completion — the teacher gets a clear "switch to visual builder" exit
+// instead of a silently wrong render.
+
+export function parseNotesMarkdown(text) {
+  const lines = text.split("\n");
+  const blocks = [];
+  let recognized = false;
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    if (line.startsWith("### ")) {
+      blocks.push({ type: "h3", text: line.slice(4).trim() });
+      recognized = true;
+    } else if (line.startsWith("## ")) {
+      blocks.push({ type: "h2", text: line.slice(3).trim() });
+      recognized = true;
+    } else if (line.startsWith("- ")) {
+      blocks.push({ type: "bullet", text: line.slice(2).trim() });
+      recognized = true;
+    } else {
+      blocks.push({ type: "p", text: line });
+    }
+  }
+
+  return { blocks, recognized };
+}
+
+// ---------- Completion payload envelope ----------
+// question_groups.passage_text stores one of:
+//  - a plain string (legacy Reading paragraph completion, unchanged)
+//  - a JSON string { style: "notes", blocks: [...] }
+//  - a JSON string { style: "table", headers: [...], rows: [...] }
+// Parsing is always tried as JSON first; anything that isn't valid JSON,
+// or is JSON without a recognized "style", falls back to the original
+// plain-paragraph behavior. This means every one of the reading
+// assignments already published keeps rendering exactly as before —
+// nothing about existing data changes.
+
+export function parseCompletionPayload(raw) {
+  if (!raw) return { style: "paragraph", text: "" };
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object" && (parsed.style === "notes" || parsed.style === "table")) {
+      return parsed;
+    }
+  } catch {
+    // Not JSON — this is the existing plain-paragraph format.
+  }
+  return { style: "paragraph", text: raw };
+}
