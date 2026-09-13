@@ -140,6 +140,7 @@ export function countBlanksInTexts(texts) {
 export function parseNotesMarkdown(text) {
   const lines = text.split("\n");
   const blocks = [];
+  const warnings = [];
   let recognized = false;
 
   for (const rawLine of lines) {
@@ -156,10 +157,19 @@ export function parseNotesMarkdown(text) {
       recognized = true;
     } else {
       blocks.push({ type: "p", text: line });
+      // This line starts with a marker character but doesn't match the
+      // exact "## ", "### " or "- " format — most likely a missing
+      // space ("###Features", "-the buses"), which used to fall
+      // through silently as plain text with the symbols still showing.
+      // Flagged individually so a fix to one line doesn't require
+      // hunting through a whole block that otherwise parsed correctly.
+      if (/^#{1,3}(?!\s)/.test(line) || /^-(?!\s)/.test(line)) {
+        warnings.push(line);
+      }
     }
   }
 
-  return { blocks, recognized };
+  return { blocks, recognized, warnings };
 }
 
 // ---------- Completion payload envelope ----------
