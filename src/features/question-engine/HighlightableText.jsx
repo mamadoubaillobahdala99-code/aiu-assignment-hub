@@ -133,7 +133,7 @@ export function HighlightableText({ assignmentId, userId, scopeType, scopeId, op
 
   const body = loaded ? (
     tokens.map((tok, i) => (
-      <span key={i} data-idx={i} className={colors[i] ? `hl-word hl-${colors[i]}` : "hl-word"}>
+      <span key={i} data-idx={i} className={colors[i] ? `qe-hl-word qe-hl-${colors[i]}` : "qe-hl-word"}>
         {tok}
       </span>
     ))
