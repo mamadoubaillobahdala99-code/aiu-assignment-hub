@@ -1,6 +1,5 @@
-
 import React, { useState, useEffect, useCallback } from "react";
-import { Upload, Music, Check } from "lucide-react";
+import { Upload, Music, Check, X } from "lucide-react";
 import { supabase } from "../../supabaseClient";
 import { uid } from "../../lib/utils";
 
@@ -98,6 +97,9 @@ export function AudioFilePicker({ teacherId, value, onChange }) {
       {value?.url && (
         <div className="qe-audio-selected">
           <Music size={13} /> Selected: {value.filename || "audio file"}
+          <button type="button" className="qe-audio-remove-btn" onClick={() => onChange(null)}>
+            <X size={12} /> Remove
+          </button>
         </div>
       )}
     </div>
