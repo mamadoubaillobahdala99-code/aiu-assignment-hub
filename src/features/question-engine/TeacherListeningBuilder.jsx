@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from "react";
 import { Plus, X, Check } from "lucide-react";
 import { supabase } from "../../supabaseClient";
@@ -25,8 +24,8 @@ export function TeacherListeningBuilder({ classId, teacherId, setScreen, showToa
   const [publishing, setPublishing] = useState(false);
   const [error, setError] = useState("");
 
-  function handleAudioChange(partLocalId, { url, filename }) {
-    setParts((prev) => prev.map((p) => (p.localId === partLocalId ? { ...p, audioUrl: url, audioFilename: filename } : p)));
+  function handleAudioChange(partLocalId, f) {
+    setParts((prev) => prev.map((p) => (p.localId === partLocalId ? { ...p, audioUrl: f?.url || "", audioFilename: f?.filename || "" } : p)));
   }
   function handleMaxPlaysChange(partLocalId, value) {
     setParts((prev) => prev.map((p) => (p.localId === partLocalId ? { ...p, maxPlays: value } : p)));
@@ -210,7 +209,7 @@ export function TeacherListeningBuilder({ classId, teacherId, setScreen, showToa
   }
 
   return (
-    <div className="page">
+    <div className="page page-wide">
       <div className="eyebrow">Structured Listening</div>
       <h1 className="page-title">New Listening assignment</h1>
 
