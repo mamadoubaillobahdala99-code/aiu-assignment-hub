@@ -1,1 +1,31 @@
 
+.qe-review-shell { max-width: 900px; margin: 0 auto; padding: 8px 0 60px; }
+.qe-review-header { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin: 20px 0 16px; flex-wrap: wrap; }
+.qe-review-counts { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; font-size: 13.5px; flex-wrap: wrap; }
+.qe-review-nav { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 24px; }
+.qe-review-nav-pill { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 8px; font-size: 12.5px; font-weight: 600; text-decoration: none; border: 1px solid var(--line); color: var(--ink); }
+.qe-review-nav-pill.correct { background: var(--color-success-soft); color: var(--color-success); border-color: transparent; }
+.qe-review-nav-pill.incorrect { background: var(--color-error-soft); color: var(--color-error); border-color: transparent; }
+.qe-review-content { background: var(--paper-raised); border: 1px solid var(--line); border-radius: 14px; padding: 24px 28px; margin-bottom: 24px; }
+.qe-review-part { margin-bottom: 24px; }
+.qe-review-part:last-child { margin-bottom: 0; }
+.qe-review-question { padding-bottom: 14px; margin-bottom: 14px; border-bottom: 1px solid var(--line); }
+.qe-review-question:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+.qe-review-correct-answer { font-size: 12.5px; color: var(--ink-soft); margin-top: 4px; }
+.qe-review-correct-inline { font-size: 12px; color: var(--ink-soft); font-style: italic; }
+.qe-review-feedback-panel { background: var(--paper-raised); border: 1px solid var(--line); border-radius: 14px; padding: 22px 26px; }
+
+/* Shared score ring */
+.qe-score-ring { position: relative; flex-shrink: 0; }
+.qe-score-ring-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.qe-score-ring-value { font-family: 'Fraunces', serif; font-size: 20px; font-weight: 600; color: var(--ink); }
+.qe-score-ring-band { font-size: 11.5px; color: var(--ink-soft); margin-top: 2px; }
+
+/* Student feedback screen — separate page, same card language as the
+   Listening layout, but always scrollable regardless of length. */
+.qe-feedback-shell { max-width: 760px; margin: 0 auto; padding: 24px 0 60px; }
+.qe-feedback-top { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 10px; margin-bottom: 28px; }
+.qe-feedback-teacher-note { background: var(--color-info-soft); border: 1px solid var(--line); border-radius: 12px; padding: 16px 20px; margin-bottom: 24px; }
+.qe-feedback-teacher-note .field-label { color: var(--info); }
+.qe-feedback-content { background: var(--paper-raised); border: 1px solid var(--line); border-radius: 14px; padding: 24px 28px; }
+.qe-feedback-locked { text-align: center; padding: 60px 20px; color: var(--ink-soft); }
