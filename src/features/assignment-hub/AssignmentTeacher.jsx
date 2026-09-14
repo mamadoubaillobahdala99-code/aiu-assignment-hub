@@ -19,7 +19,7 @@ function averageScore(vals) {
   return Math.round(avg * 2) / 2; // rounded to nearest 0.5, IELTS-style
 }
 
-export function AssignmentTeacher({ classId, assignmentId, setScreen, showToast }) {
+export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen, showToast }) {
   const [assignment, setAssignment] = useState(null);
   const [roster, setRoster] = useState([]);
   const [submissions, setSubmissions] = useState([]);
@@ -32,6 +32,10 @@ export function AssignmentTeacher({ classId, assignmentId, setScreen, showToast 
   const [feedbackDraft, setFeedbackDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [myClasses, setMyClasses] = useState([]);
+  const [showDuplicate, setShowDuplicate] = useState(false);
+  const [duplicateTargetClass, setDuplicateTargetClass] = useState("");
+  const [duplicating, setDuplicating] = useState(false);
 
   const load = useCallback(async () => {
     const { data: a } = await supabase.from("assignments").select("*").eq("id", assignmentId).single();
@@ -58,7 +62,12 @@ export function AssignmentTeacher({ classId, assignmentId, setScreen, showToast 
       const { data: s } = await supabase.from("submissions").select("*").eq("assignment_id", assignmentId);
       setSubmissions(s || []);
     }
-  }, [classId, assignmentId]);
+
+    if (teacherId) {
+      const { data: classes } = await supabase.from("classes").select("id, name").eq("teacher_id", teacherId).order("name");
+      setMyClasses(classes || []);
+    }
+  }, [classId, assignmentId, teacherId]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -78,32 +87,135 @@ export function AssignmentTeacher({ classId, assignmentId, setScreen, showToast 
   }
 
   async function handleDelete() {
-    setDeleting(true);
-    const { count } = await supabase
-      .from("submissions")
-      .select("id", { count: "exact", head: true })
-      .eq("assignment_id", assignmentId)
-      .not("submitted_at", "is", null);
-
-    if (count && count > 0) {
-      setDeleting(false);
-      showToast(`Cannot delete: ${count} student${count > 1 ? "s have" : " has"} already submitted.`);
-      return;
+    let warningCount = 0;
+    if (isStructured) {
+      warningCount = structuredStudentIds.size;
+    } else {
+      warningCount = submissions.filter((s) => s.submitted_at).length;
     }
 
-    if (!window.confirm("Delete this assignment? This cannot be undone.")) {
-      setDeleting(false);
-      return;
+    const msg =
+      warningCount > 0
+        ? `${warningCount} student${warningCount === 1 ? " has" : "s have"} already submitted this assignment. Deleting it will permanently remove their work too. Delete anyway?`
+        : "Delete this assignment? This cannot be undone.";
+    if (!window.confirm(msg)) return;
+
+    setDeleting(true);
+
+    // Clean up orphaned questions first, same pattern as editing a
+    // published assignment — deleting exam_sections alone would leave
+    // their questions behind with nothing pointing at them.
+    if (isStructured) {
+      const { data: sections } = await supabase.from("exam_sections").select("id").eq("assignment_id", assignmentId);
+      const sectionIds = (sections || []).map((s) => s.id);
+      if (sectionIds.length > 0) {
+        const { data: links } = await supabase.from("assignment_questions").select("question_id").in("section_id", sectionIds);
+        const questionIds = [...new Set((links || []).map((l) => l.question_id))];
+        if (questionIds.length > 0) {
+          await supabase.from("questions").delete().in("id", questionIds);
+        }
+      }
     }
 
     const { error } = await supabase.from("assignments").delete().eq("id", assignmentId);
     setDeleting(false);
     if (error) {
-      showToast("Could not delete assignment");
+      showToast("Could not delete assignment: " + error.message);
       return;
     }
     showToast("Assignment deleted");
     setScreen({ name: "class", classId });
+  }
+
+  // Deep-copies the whole assignment — Parts, groups, questions, answer
+  // keys — into a brand new assignment under the chosen class. Every
+  // copied question is a fresh row, never shared with the original, so
+  // editing or deleting either assignment later can never affect the
+  // other (see the "one question belongs to exactly one assignment"
+  // rule the rest of the app already depends on).
+  async function duplicateToClass() {
+    if (!duplicateTargetClass) return;
+    setDuplicating(true);
+
+    const { data: newAssignment, error: aError } = await supabase
+      .from("assignments")
+      .insert({
+        class_id: duplicateTargetClass,
+        title: assignment.title,
+        type: assignment.type,
+        description: assignment.description,
+        time_limit_minutes: assignment.time_limit_minutes,
+        auto_release_score: assignment.auto_release_score,
+        show_answer_review: assignment.show_answer_review,
+        reading_test_type: assignment.reading_test_type,
+        due_date: null,
+      })
+      .select()
+      .single();
+
+    if (aError || !newAssignment) {
+      setDuplicating(false);
+      showToast("Could not duplicate: " + (aError?.message || "unknown error"));
+      return;
+    }
+
+    const { data: sourceSections } = await supabase.from("exam_sections").select("*").eq("assignment_id", assignmentId).order("order_index");
+
+    for (const section of sourceSections || []) {
+      const { data: newSection, error: sError } = await supabase
+        .from("exam_sections")
+        .insert({
+          assignment_id: newAssignment.id,
+          title: section.title,
+          passage_title: section.passage_title,
+          passage_text: section.passage_text,
+          audio_url: section.audio_url,
+          max_plays: section.max_plays,
+          order_index: section.order_index,
+        })
+        .select()
+        .single();
+      if (sError || !newSection) continue;
+
+      const { data: sourceGroups } = await supabase.from("question_groups").select("*").eq("section_id", section.id).order("order_index");
+      for (const group of sourceGroups || []) {
+        const { data: newGroup, error: gError } = await supabase
+          .from("question_groups")
+          .insert({ section_id: newSection.id, instruction: group.instruction, passage_text: group.passage_text, order_index: group.order_index })
+          .select()
+          .single();
+        if (gError || !newGroup) continue;
+
+        const { data: links } = await supabase.from("assignment_questions").select("order_index, questions(*)").eq("group_id", group.id).order("order_index");
+        for (const link of links || []) {
+          const q = link.questions;
+          if (!q) continue;
+          const { data: newQuestion, error: qError } = await supabase
+            .from("questions")
+            .insert({ teacher_id: teacherId, type: q.type, skill: q.skill, prompt: q.prompt, options: q.options, points: q.points })
+            .select()
+            .single();
+          if (qError || !newQuestion) continue;
+
+          const { data: key } = await supabase.from("question_answer_key").select("correct_answer").eq("question_id", q.id).single();
+          if (key) {
+            await supabase.from("question_answer_key").insert({ question_id: newQuestion.id, correct_answer: key.correct_answer });
+          }
+
+          await supabase.from("assignment_questions").insert({
+            section_id: newSection.id,
+            group_id: newGroup.id,
+            question_id: newQuestion.id,
+            order_index: link.order_index,
+          });
+        }
+      }
+    }
+
+    setDuplicating(false);
+    setShowDuplicate(false);
+    showToast("Duplicated — set a due date in the new class when you're ready");
+    setScreen({ name: "assignment-teacher", classId: duplicateTargetClass, assignmentId: newAssignment.id });
   }
 
   async function saveGrade() {
@@ -181,7 +293,7 @@ export function AssignmentTeacher({ classId, assignmentId, setScreen, showToast 
   }
 
   return (
-    <div className="page">
+    <div className="page page-wide">
       <div className="row-right" style={{ justifyContent: "space-between", marginBottom: 4 }}>
         <button className="back-link" onClick={() => setScreen({ name: "class", classId })}><ArrowLeft size={14} /> Back to class</button>
         <div style={{ display: "flex", gap: 8 }}>
@@ -199,11 +311,34 @@ export function AssignmentTeacher({ classId, assignmentId, setScreen, showToast 
               <Pencil size={13} /> Edit assignment
             </button>
           )}
+          {isStructured && (
+            <button className="btn-ghost" onClick={() => setShowDuplicate((v) => !v)}>
+              <Copy size={13} /> Duplicate to another class
+            </button>
+          )}
           <button className="btn-ghost delete-assignment-btn" disabled={deleting} onClick={handleDelete}>
             <Trash2 size={13} /> {deleting ? "Checking…" : "Delete assignment"}
           </button>
         </div>
       </div>
+
+      {showDuplicate && (
+        <div className="feedback-panel" style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <span className="field-label" style={{ margin: 0 }}>Duplicate this assignment to:</span>
+          <select className="field-input" style={{ maxWidth: 220 }} value={duplicateTargetClass} onChange={(e) => setDuplicateTargetClass(e.target.value)}>
+            <option value="">Choose a class…</option>
+            {myClasses.map((c) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+          <button className="btn-primary" disabled={!duplicateTargetClass || duplicating} onClick={duplicateToClass}>
+            {duplicating ? "Duplicating…" : "Duplicate"}
+          </button>
+          <span className="field-hint" style={{ margin: 0, flexBasis: "100%" }}>
+            Creates a completely independent copy — editing or deleting one afterwards never affects the other.
+          </span>
+        </div>
+      )}
 
       <div className="asg-header">
         <div className="asg-icon" style={{ color: meta.color }}><Icon size={22} /></div>
