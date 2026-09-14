@@ -18,6 +18,9 @@ export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast
   const [titleTouched, setTitleTouched] = useState(false);
   const [dueDate, setDueDate] = useState("");
   const [timeLimit, setTimeLimit] = useState("60");
+  const [autoReleaseScore, setAutoReleaseScore] = useState(true);
+  const [showAnswerReview, setShowAnswerReview] = useState(true);
+  const [readingTestType, setReadingTestType] = useState("academic");
   const [parts, setParts] = useState([newPart()]);
   const [addingQuestionFor, setAddingQuestionFor] = useState(null); // groupLocalId
   const [publishing, setPublishing] = useState(false);
@@ -33,12 +36,15 @@ export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast
   useEffect(() => {
     if (!editAssignmentId) return;
     (async () => {
-      const { data: a } = await supabase.from("assignments").select("title, due_date, time_limit_minutes").eq("id", editAssignmentId).single();
+      const { data: a } = await supabase.from("assignments").select("title, due_date, time_limit_minutes, auto_release_score, show_answer_review, reading_test_type").eq("id", editAssignmentId).single();
       if (a) {
         setTitle(a.title || "");
         setTitleTouched(true);
         setDueDate(a.due_date || "");
         setTimeLimit(a.time_limit_minutes ? String(a.time_limit_minutes) : "");
+        setAutoReleaseScore(a.auto_release_score ?? true);
+        setShowAnswerReview(a.show_answer_review ?? true);
+        setReadingTestType(a.reading_test_type || "academic");
       }
       const { count } = await supabase.from("student_answers").select("id", { count: "exact", head: true }).eq("assignment_id", editAssignmentId);
       setExistingAnswerCount(count || 0);
@@ -224,6 +230,9 @@ export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast
           description: parts[0].passageText.trim(),
           due_date: dueDate || null,
           time_limit_minutes: timeLimit ? parseInt(timeLimit, 10) : null,
+          auto_release_score: autoReleaseScore,
+          show_answer_review: showAnswerReview,
+          reading_test_type: readingTestType,
         })
         .eq("id", editAssignmentId)
         .select()
@@ -245,6 +254,9 @@ export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast
           description: parts[0].passageText.trim(), // kept for lists/dashboards that show a short preview
           due_date: dueDate || null,
           time_limit_minutes: timeLimit ? parseInt(timeLimit, 10) : null,
+          auto_release_score: autoReleaseScore,
+          show_answer_review: showAnswerReview,
+          reading_test_type: readingTestType,
         })
         .select()
         .single();
@@ -342,6 +354,29 @@ export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast
           <input type="number" min="1" className="field-input" value={timeLimit} onChange={(e) => setTimeLimit(e.target.value)} />
         </div>
       </div>
+
+      <label className="field-label" style={{ marginTop: 14 }}>Reading test type</label>
+      <div className="type-row">
+        <button type="button" className={`type-chip ${readingTestType === "academic" ? "active" : ""}`} onClick={() => setReadingTestType("academic")}>Academic</button>
+        <button type="button" className={`type-chip ${readingTestType === "general" ? "active" : ""}`} onClick={() => setReadingTestType("general")}>General Training</button>
+      </div>
+      <p className="field-hint" style={{ marginTop: 4 }}>Used only to pick the right band-score conversion table.</p>
+
+      <label className="checkbox-row" style={{ marginTop: 16 }}>
+        <input type="checkbox" checked={autoReleaseScore} onChange={(e) => setAutoReleaseScore(e.target.checked)} />
+        Show score to students automatically once they submit
+      </label>
+      <p className="field-hint" style={{ marginTop: 2 }}>
+        {autoReleaseScore ? "Students see their score right after submitting." : "Students see \"Submitted\" only — you release the score from the review screen when ready."}
+      </p>
+
+      <label className="checkbox-row" style={{ marginTop: 10 }}>
+        <input type="checkbox" checked={showAnswerReview} onChange={(e) => setShowAnswerReview(e.target.checked)} />
+        Let students see which answers were correct/incorrect, with the correct answer
+      </label>
+      <p className="field-hint" style={{ marginTop: 2 }}>
+        {showAnswerReview ? "Students can review each question after their score is visible." : "Students only see their overall score, never the answer key — useful if you plan to reuse this test."}
+      </p>
 
       {parts.map((part, pi) => (
         <div key={part.localId} className="qe-part-block">
