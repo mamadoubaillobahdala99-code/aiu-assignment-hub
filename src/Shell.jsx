@@ -92,10 +92,10 @@ export function Shell({ profile, userId, onSignOut, screen, setScreen, showToast
         {screen.name === "dashboard" && isTeacher && <TeacherDashboard userId={userId} setScreen={setScreen} />}
         {screen.name === "question-lab" && isTeacher && <QuestionEngineLab userId={userId} />}
         {screen.name === "reading-builder" && isTeacher && (
-          <TeacherReadingBuilder classId={screen.classId} teacherId={userId} setScreen={setScreen} showToast={showToast} />
+          <TeacherReadingBuilder classId={screen.classId} teacherId={userId} setScreen={setScreen} showToast={showToast} editAssignmentId={screen.editAssignmentId} />
         )}
         {screen.name === "listening-builder" && isTeacher && (
-          <TeacherListeningBuilder classId={screen.classId} teacherId={userId} setScreen={setScreen} showToast={showToast} />
+          <TeacherListeningBuilder classId={screen.classId} teacherId={userId} setScreen={setScreen} showToast={showToast} editAssignmentId={screen.editAssignmentId} />
         )}
         {screen.name === "home" && isTeacher && <TeacherHome userId={userId} setScreen={setScreen} showToast={showToast} />}
         {screen.name === "home" && !isTeacher && <StudentHome userId={userId} setScreen={setScreen} showToast={showToast} />}
