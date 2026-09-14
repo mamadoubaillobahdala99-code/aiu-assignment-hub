@@ -3,6 +3,7 @@ import { Plus, X, Check } from "lucide-react";
 import { supabase } from "../../supabaseClient";
 import { TeacherQuestionForm } from "./TeacherQuestionForm";
 import { defaultInstructionFor } from "./bulkParse";
+import { QuestionBank } from "./QuestionBank";
 import { AudioFilePicker } from "./AudioFilePicker";
 import { SummaryCompletionBuilder, NotesCompletionBuilder, TableCompletionBuilder } from "./TeacherReadingBuilder";
 
@@ -17,6 +18,7 @@ function newPart() {
 
 export function TeacherListeningBuilder({ classId, teacherId, setScreen, showToast, editAssignmentId }) {
   const [title, setTitle] = useState("");
+  const [showQuestionBank, setShowQuestionBank] = useState(false);
   const [dueDate, setDueDate] = useState("");
   const [timeLimit, setTimeLimit] = useState("60");
   const [autoReleaseScore, setAutoReleaseScore] = useState(true);
@@ -141,7 +143,6 @@ export function TeacherListeningBuilder({ classId, teacherId, setScreen, showToa
   }, [parts]);
 
   const canPublish =
-    title.trim() &&
     parts.every(
       (p) =>
         p.audioUrl &&
@@ -152,6 +153,11 @@ export function TeacherListeningBuilder({ classId, teacherId, setScreen, showToa
   async function publish() {
     setError("");
     if (!canPublish) return;
+
+    // No passage to guess a title from for Listening — fall back to a
+    // dated default if the teacher didn't type one, same non-blocking
+    // spirit as Reading.
+    const finalTitle = title.trim() || `Listening Practice — ${new Date().toLocaleDateString()}`;
 
     if (editAssignmentId && existingAnswerCount > 0) {
       const ok = window.confirm(
@@ -198,7 +204,7 @@ export function TeacherListeningBuilder({ classId, teacherId, setScreen, showToa
       const { data: updated, error: uError } = await supabase
         .from("assignments")
         .update({
-          title: title.trim(),
+          title: finalTitle,
           due_date: dueDate || null,
           time_limit_minutes: timeLimit ? parseInt(timeLimit, 10) : null,
           auto_release_score: autoReleaseScore,
@@ -219,7 +225,7 @@ export function TeacherListeningBuilder({ classId, teacherId, setScreen, showToa
         .from("assignments")
         .insert({
           class_id: classId,
-          title: title.trim(),
+          title: finalTitle,
           type: "Listening",
           description: null,
           due_date: dueDate || null,
@@ -307,8 +313,13 @@ export function TeacherListeningBuilder({ classId, teacherId, setScreen, showToa
 
   return (
     <div className="page page-wide">
-      <div className="eyebrow">Structured Listening</div>
-      <h1 className="page-title">{editAssignmentId ? "Edit Listening assignment" : "New Listening assignment"}</h1>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+        <div>
+          <div className="eyebrow">Structured Listening</div>
+          <h1 className="page-title">{editAssignmentId ? "Edit Listening assignment" : "New Listening assignment"}</h1>
+        </div>
+        <button className="btn-ghost" onClick={() => setShowQuestionBank(true)}>Browse question bank</button>
+      </div>
       {editAssignmentId && (
         <p className="field-hint" style={{ marginTop: 4 }}>
           Rebuild the Parts and questions below — saving replaces everything currently in this assignment.
@@ -316,7 +327,9 @@ export function TeacherListeningBuilder({ classId, teacherId, setScreen, showToa
         </p>
       )}
 
-      <label className="field-label" style={{ marginTop: 16 }}>Title</label>
+      {showQuestionBank && <QuestionBank teacherId={teacherId} onClose={() => setShowQuestionBank(false)} />}
+
+      <label className="field-label" style={{ marginTop: 16 }}>Title (optional — auto-generated if left blank)</label>
       <input className="field-input" placeholder="e.g. IELTS Listening Practice Test 1" value={title} onChange={(e) => setTitle(e.target.value)} />
 
       <div style={{ display: "flex", gap: 16, marginTop: 14 }}>
