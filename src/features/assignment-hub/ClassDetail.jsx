@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback } from "react";
-import { BookOpen, Users, Plus, Check, Clock, AlertTriangle, LogOut, GraduationCap, FileText, ChevronRight, X, Copy, CheckCircle2, Headphones, PenLine, Mic, ListChecks, ArrowLeft, Loader2, Timer, Highlighter } from "lucide-react";
+import { BookOpen, Users, Plus, Check, Clock, AlertTriangle, LogOut, GraduationCap, FileText, ChevronRight, X, Copy, CheckCircle2, Headphones, PenLine, Mic, ListChecks, ArrowLeft, Loader2, Timer, Highlighter, Trash2, UserMinus } from "lucide-react";
 import { supabase } from "../../supabaseClient";
 import { uid, makeCode, TYPES, fmtDate, daysUntil, wordCount, isPdfUrl } from "../../lib/utils";
 import { AttachmentPreview, PageHeader, EmptyState, CenterSpinner, Modal, StatusBadge } from "../../components/shared";
@@ -13,6 +13,7 @@ export function ClassDetail({ classId, setScreen, showToast }) {
   const [tab, setTab] = useState("assignments");
   const [copied, setCopied] = useState(false);
   const [activeStudent, setActiveStudent] = useState(null);
+  const [deletingClass, setDeletingClass] = useState(false);
 
   const load = useCallback(async () => {
     const { data: c } = await supabase.from("classes").select("*").eq("id", classId).single();
@@ -32,6 +33,44 @@ export function ClassDetail({ classId, setScreen, showToast }) {
     setTimeout(() => setCopied(false), 1500);
   }
 
+  // Deleting a class is always allowed, even with students/assignments
+  // inside — the teacher just gets told exactly what that will cost
+  // first. Orphaned questions are cleaned up the same way as editing
+  // or deleting a single assignment; everything else (roster,
+  // assignments, exam_sections, student_answers...) is already wired
+  // to cascade automatically at the database level.
+  async function handleDeleteClass() {
+    const assignmentCount = assignments.length;
+    const studentCount = roster.length;
+    const msg =
+      `Delete "${cls.name}"? This will permanently delete ${assignmentCount} assignment${assignmentCount === 1 ? "" : "s"}` +
+      ` and remove ${studentCount} student${studentCount === 1 ? "" : "s"} from this class. This cannot be undone.`;
+    if (!window.confirm(msg)) return;
+
+    setDeletingClass(true);
+    const assignmentIds = assignments.map((a) => a.id);
+    if (assignmentIds.length > 0) {
+      const { data: sections } = await supabase.from("exam_sections").select("id").in("assignment_id", assignmentIds);
+      const sectionIds = (sections || []).map((s) => s.id);
+      if (sectionIds.length > 0) {
+        const { data: links } = await supabase.from("assignment_questions").select("question_id").in("section_id", sectionIds);
+        const questionIds = [...new Set((links || []).map((l) => l.question_id))];
+        if (questionIds.length > 0) {
+          await supabase.from("questions").delete().in("id", questionIds);
+        }
+      }
+    }
+
+    const { error } = await supabase.from("classes").delete().eq("id", classId);
+    setDeletingClass(false);
+    if (error) {
+      showToast?.("Could not delete class: " + error.message);
+      return;
+    }
+    showToast?.("Class deleted");
+    setScreen({ name: "home" });
+  }
+
   if (!cls) return <CenterSpinner />;
 
   if (activeStudent) {
@@ -40,15 +79,21 @@ export function ClassDetail({ classId, setScreen, showToast }) {
         student={activeStudent}
         classId={classId}
         assignments={assignments}
-        onBack={() => setActiveStudent(null)}
+        onBack={() => { setActiveStudent(null); load(); }}
         setScreen={setScreen}
+        showToast={showToast}
       />
     );
   }
 
   return (
     <div className="page page-wide">
-      <button className="back-link" onClick={() => setScreen({ name: "home" })}><ArrowLeft size={14} /> All classes</button>
+      <div className="row-right" style={{ justifyContent: "space-between", marginBottom: 4 }}>
+        <button className="back-link" onClick={() => setScreen({ name: "home" })}><ArrowLeft size={14} /> All classes</button>
+        <button className="btn-ghost delete-assignment-btn" disabled={deletingClass} onClick={handleDeleteClass}>
+          <Trash2 size={13} /> {deletingClass ? "Deleting…" : "Delete class"}
+        </button>
+      </div>
 
       <PageHeader eyebrow="Class" title={cls.name} action={
         <button className="btn-ghost" onClick={copyCode}>
@@ -99,8 +144,9 @@ export function ClassDetail({ classId, setScreen, showToast }) {
 // Deliberately simple, per the brief: name + "X / Y completed", then
 // the class's assignments with this student's status on each —
 // nothing more (no percentages/charts beyond the one completed count).
-function StudentInClassDetail({ student, classId, assignments, onBack, setScreen }) {
+function StudentInClassDetail({ student, classId, assignments, onBack, setScreen, showToast }) {
   const [statuses, setStatuses] = useState(null); // assignmentId -> status string
+  const [removing, setRemoving] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -150,6 +196,19 @@ function StudentInClassDetail({ student, classId, assignments, onBack, setScreen
     return () => { cancelled = true; };
   }, [student.studentId, assignments]);
 
+  async function removeStudent() {
+    if (!window.confirm(`Remove ${student.name} from this class? They'll need the class code to rejoin.`)) return;
+    setRemoving(true);
+    const { error } = await supabase.from("roster").delete().eq("class_id", classId).eq("student_id", student.studentId);
+    setRemoving(false);
+    if (error) {
+      showToast?.("Could not remove student: " + error.message);
+      return;
+    }
+    showToast?.(`${student.name} removed from class`);
+    onBack();
+  }
+
   if (statuses === null) return <CenterSpinner />;
 
   const completedCount = assignments.filter((a) => statuses[a.id] === "submitted" || statuses[a.id] === "graded").length;
@@ -158,13 +217,18 @@ function StudentInClassDetail({ student, classId, assignments, onBack, setScreen
     <div className="page page-wide">
       <button className="back-link" onClick={onBack}><ArrowLeft size={14} /> Back to students</button>
 
-      <div className="asg-header">
-        <div className="avatar" style={{ width: 44, height: 44, fontSize: 17 }}>{student.name.slice(0, 1).toUpperCase()}</div>
-        <div>
-          <div className="asg-type">Student</div>
-          <h1 className="asg-title">{student.name}</h1>
-          <p className="field-hint" style={{ margin: 0 }}>{completedCount} / {assignments.length} assignments completed</p>
+      <div className="row-right" style={{ justifyContent: "space-between", marginTop: 14 }}>
+        <div className="asg-header" style={{ marginTop: 0 }}>
+          <div className="avatar" style={{ width: 44, height: 44, fontSize: 17 }}>{student.name.slice(0, 1).toUpperCase()}</div>
+          <div>
+            <div className="asg-type">Student</div>
+            <h1 className="asg-title">{student.name}</h1>
+            <p className="field-hint" style={{ margin: 0 }}>{completedCount} / {assignments.length} assignments completed</p>
+          </div>
         </div>
+        <button className="btn-ghost delete-assignment-btn" disabled={removing} onClick={removeStudent}>
+          <UserMinus size={13} /> {removing ? "Removing…" : "Remove from class"}
+        </button>
       </div>
 
       <h3 className="section-title">Assignments</h3>
