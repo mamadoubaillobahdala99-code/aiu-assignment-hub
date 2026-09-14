@@ -338,6 +338,15 @@ body { margin: 0; }
 .grade-overlay { position: fixed; inset: 0; z-index: 200; background: var(--paper); display: flex; flex-direction: column; overflow-y: auto; }
 .grade-topbar { display: flex; align-items: center; justify-content: space-between; padding: 16px 28px; border-bottom: 1px solid var(--line); background: var(--paper-raised); flex-shrink: 0; }
 .grade-title { font-family: 'Fraunces', serif; font-size: 16px; font-weight: 600; }
+
+.qe-bank-overlay { position: fixed; inset: 0; z-index: 200; background: var(--paper); display: flex; flex-direction: column; overflow-y: auto; }
+.qe-bank-topbar { display: flex; align-items: center; justify-content: space-between; padding: 16px 28px; border-bottom: 1px solid var(--line); background: var(--paper-raised); flex-shrink: 0; }
+.qe-bank-title { font-family: 'Fraunces', serif; font-size: 16px; font-weight: 600; }
+.qe-bank-body { max-width: 760px; margin: 0 auto; padding: 24px 24px 60px; width: 100%; box-sizing: border-box; }
+.qe-bank-group { background: var(--paper-raised); border: 1px solid var(--line); border-radius: 14px; padding: 20px 24px; margin-bottom: 18px; }
+.qe-bank-question { padding: 12px 0; border-top: 1px solid var(--line); }
+.qe-bank-question:first-of-type { border-top: none; padding-top: 4px; }
+.qe-bank-gapfill-note { font-size: 12.5px; color: var(--ink-soft); font-style: italic; margin: 0; }
 .grade-body { flex: 1; display: flex; gap: 28px; padding: 28px; max-width: 1400px; margin: 0 auto; width: 100%; align-items: flex-start; }
 .grade-panel { min-width: 0; }
 .grade-panel-submission { flex: 2.2; }
