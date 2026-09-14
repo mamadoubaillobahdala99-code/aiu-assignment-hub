@@ -10,7 +10,7 @@ import { HighlightableText } from "./HighlightableText";
 //
 // Highlighting uses the same anchor-question technique as NotesCompletion
 // — see the comment there for why.
-export function TableCompletion({ headers, rows, questions, answers, onChange, results, disabled, startNumber = 1, assignmentId, userId }) {
+export function TableCompletion({ headers, rows, questions, answers, onChange, results, disabled, startNumber = 1, assignmentId, userId, correctAnswers }) {
   let blankCursor = 0;
   const anchorId = questions[0]?.id;
   const canHighlight = Boolean(assignmentId && userId && anchorId);
@@ -54,6 +54,9 @@ export function TableCompletion({ headers, rows, questions, answers, onChange, r
                 <span className={results[question.id]?.isCorrect ? "qe-result-correct" : "qe-result-incorrect"} style={{ marginLeft: 4 }}>
                   {results[question.id]?.isCorrect ? "✓" : "✗"}
                 </span>
+              )}
+              {results && !results[question.id]?.isCorrect && correctAnswers?.[question.id] && (
+                <span className="qe-review-correct-inline"> (correct: {correctAnswers[question.id]})</span>
               )}
             </span>
           )}
