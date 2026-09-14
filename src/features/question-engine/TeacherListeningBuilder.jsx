@@ -19,6 +19,8 @@ export function TeacherListeningBuilder({ classId, teacherId, setScreen, showToa
   const [title, setTitle] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [timeLimit, setTimeLimit] = useState("60");
+  const [autoReleaseScore, setAutoReleaseScore] = useState(true);
+  const [showAnswerReview, setShowAnswerReview] = useState(true);
   const [parts, setParts] = useState([newPart()]);
   const [addingQuestionFor, setAddingQuestionFor] = useState(null);
   const [publishing, setPublishing] = useState(false);
@@ -32,11 +34,13 @@ export function TeacherListeningBuilder({ classId, teacherId, setScreen, showToa
   useEffect(() => {
     if (!editAssignmentId) return;
     (async () => {
-      const { data: a } = await supabase.from("assignments").select("title, due_date, time_limit_minutes").eq("id", editAssignmentId).single();
+      const { data: a } = await supabase.from("assignments").select("title, due_date, time_limit_minutes, auto_release_score, show_answer_review").eq("id", editAssignmentId).single();
       if (a) {
         setTitle(a.title || "");
         setDueDate(a.due_date || "");
         setTimeLimit(a.time_limit_minutes ? String(a.time_limit_minutes) : "");
+        setAutoReleaseScore(a.auto_release_score ?? true);
+        setShowAnswerReview(a.show_answer_review ?? true);
       }
       const { count } = await supabase.from("student_answers").select("id", { count: "exact", head: true }).eq("assignment_id", editAssignmentId);
       setExistingAnswerCount(count || 0);
@@ -197,6 +201,8 @@ export function TeacherListeningBuilder({ classId, teacherId, setScreen, showToa
           title: title.trim(),
           due_date: dueDate || null,
           time_limit_minutes: timeLimit ? parseInt(timeLimit, 10) : null,
+          auto_release_score: autoReleaseScore,
+          show_answer_review: showAnswerReview,
         })
         .eq("id", editAssignmentId)
         .select()
@@ -218,6 +224,8 @@ export function TeacherListeningBuilder({ classId, teacherId, setScreen, showToa
           description: null,
           due_date: dueDate || null,
           time_limit_minutes: timeLimit ? parseInt(timeLimit, 10) : null,
+          auto_release_score: autoReleaseScore,
+          show_answer_review: showAnswerReview,
         })
         .select()
         .single();
@@ -321,6 +329,22 @@ export function TeacherListeningBuilder({ classId, teacherId, setScreen, showToa
           <input type="number" min="1" className="field-input" value={timeLimit} onChange={(e) => setTimeLimit(e.target.value)} />
         </div>
       </div>
+
+      <label className="checkbox-row" style={{ marginTop: 16 }}>
+        <input type="checkbox" checked={autoReleaseScore} onChange={(e) => setAutoReleaseScore(e.target.checked)} />
+        Show score to students automatically once they submit
+      </label>
+      <p className="field-hint" style={{ marginTop: 2 }}>
+        {autoReleaseScore ? "Students see their score right after submitting." : "Students see \"Submitted\" only — you release the score from the review screen when ready."}
+      </p>
+
+      <label className="checkbox-row" style={{ marginTop: 10 }}>
+        <input type="checkbox" checked={showAnswerReview} onChange={(e) => setShowAnswerReview(e.target.checked)} />
+        Let students see which answers were correct/incorrect, with the correct answer
+      </label>
+      <p className="field-hint" style={{ marginTop: 2 }}>
+        {showAnswerReview ? "Students can review each question after their score is visible." : "Students only see their overall score, never the answer key — useful if you plan to reuse this test."}
+      </p>
 
       {parts.map((part, pi) => (
         <div key={part.localId} className="qe-part-block">
