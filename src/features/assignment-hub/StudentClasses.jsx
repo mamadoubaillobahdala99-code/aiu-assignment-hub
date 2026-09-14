@@ -23,7 +23,7 @@ export function StudentClasses({ userId, setScreen }) {
   if (loading) return <CenterSpinner />;
 
   return (
-    <div className="page">
+    <div className="page page-wide">
       <PageHeader eyebrow="Student" title="My Classes" />
 
       {classes.length === 0 ? (
