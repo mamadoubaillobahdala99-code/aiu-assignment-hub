@@ -2,7 +2,7 @@ export const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Public+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap');
 
 :root {
-  --paper: #EFEDE5;
+  --paper: #FAFAF7;
   --paper-raised: #F8F7F2;
   --ink: #1B2820;
   --ink-soft: #5B6960;
@@ -15,8 +15,8 @@ export const CSS = `
   --info: #3D6E8C;
   --info-soft: #DCE6EA;
   --line: #D9D4C4;
-  --sidebar: #17251F;
-  --sidebar-text: #D9E5DE;
+  --sidebar: #1B3A5C;
+  --sidebar-text: #D9E6F2;
 
   /* Semantic aliases — additive only, nothing above changes meaning.
      New code should prefer these names over --teal/--amber/--rose
