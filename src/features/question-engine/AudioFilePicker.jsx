@@ -66,7 +66,7 @@ export function AudioFilePicker({ teacherId, value, onChange }) {
 
     const { data: usedIn, error: usageError } = await supabase
       .from("exam_sections")
-      .select("id, title, assignment_id, assignments(title)")
+      .select("id, title, assignment_id, assignments!exam_sections_assignment_id_fkey(title)")
       .eq("audio_url", f.url);
 
     if (usageError) {
