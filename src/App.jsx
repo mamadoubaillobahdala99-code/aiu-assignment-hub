@@ -56,7 +56,7 @@ export default function App() {
       ) : !session || !profile ? (
         <AuthScreen showToast={showToast} />
       ) : (
-        <Shell profile={profile} userId={session.user.id} onSignOut={handleSignOut} screen={screen} setScreen={setScreen} showToast={showToast} />
+        <Shell profile={profile} setProfile={setProfile} userId={session.user.id} onSignOut={handleSignOut} screen={screen} setScreen={setScreen} showToast={showToast} />
       )}
       {toast && <div className="toast">{toast}</div>}
     </div>
