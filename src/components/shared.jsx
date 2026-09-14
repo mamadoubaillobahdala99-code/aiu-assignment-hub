@@ -65,7 +65,7 @@ export function StatusBadge({ status }) {
   if (status === "graded") return <span className="status-badge graded"><CheckCircle2 size={13} /> Graded</span>;
   if (status === "submitted") return <span className="status-badge submitted"><Check size={13} /> Submitted</span>;
   if (status === "in-progress") return <span className="status-badge inprogress"><Timer size={13} /> In progress</span>;
-  return <span className="status-badge pending"><AlertTriangle size={13} /> Not submitted</span>;
+  return <span className="status-badge pending"><Clock size={13} /> Not submitted</span>;
 }
 
 // ---------- Student: join class ----------
