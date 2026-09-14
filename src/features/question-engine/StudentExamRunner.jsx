@@ -9,11 +9,10 @@ import { AudioPlayer } from "./AudioPlayer";
 import { parseCompletionPayload } from "./bulkParse";
 import { HighlightableText } from "./HighlightableText";
 
-// KNOWN LIMITATION, stated honestly: the countdown shown here is a
-// visual guide only — unlike the older AssignmentStudent timer, it
-// isn't yet backed by a stored "started_at" on the server, so a page
-// refresh currently restarts it. Fine for this first working version;
-// worth hardening later before relying on it for a strict real exam.
+// The countdown is backed by exam_attempts.started_at on the server, so
+// a page refresh recomputes the remaining time instead of restarting
+// it. If exam_attempts hasn't been migrated in yet, this falls back to
+// the old client-only behavior rather than breaking the assignment.
 
 export function StudentExamRunner({ userId, classId, assignmentId, setScreen, showToast }) {
   const [assignment, setAssignment] = useState(null);
@@ -31,7 +30,31 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
   const load = useCallback(async () => {
     const { data: a } = await supabase.from("assignments").select("*").eq("id", assignmentId).single();
     setAssignment(a || null);
-    if (a?.time_limit_minutes) setRemainingSec(a.time_limit_minutes * 60);
+
+    // Server-side timer: record (or fetch) the real start time so a
+    // refresh can't reset the countdown. Falls back to the old
+    // client-only behavior if exam_attempts hasn't been migrated in
+    // yet, rather than breaking the whole assignment load.
+    let startedAt = null;
+    await supabase
+      .from("exam_attempts")
+      .upsert({ assignment_id: assignmentId, student_id: userId }, { onConflict: "assignment_id,student_id", ignoreDuplicates: true });
+    const { data: attempt } = await supabase
+      .from("exam_attempts")
+      .select("started_at")
+      .eq("assignment_id", assignmentId)
+      .eq("student_id", userId)
+      .maybeSingle();
+    startedAt = attempt?.started_at || null;
+
+    if (a?.time_limit_minutes) {
+      if (startedAt) {
+        const elapsedSec = Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000);
+        setRemainingSec(Math.max(0, a.time_limit_minutes * 60 - elapsedSec));
+      } else {
+        setRemainingSec(a.time_limit_minutes * 60);
+      }
+    }
 
     const { data: sectionRows } = await supabase
       .from("exam_sections")
@@ -274,7 +297,13 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
               <p className="qe-part-quicksummary">Listen and answer questions {partRangeStart}-{partRangeEnd}</p>
             )}
             {activeSection.audioUrl && (
-              <AudioPlayer url={activeSection.audioUrl} maxPlays={activeSection.maxPlays} />
+              <AudioPlayer
+                url={activeSection.audioUrl}
+                maxPlays={activeSection.maxPlays}
+                assignmentId={assignmentId}
+                userId={userId}
+                sectionId={activeSection.id}
+              />
             )}
             {questionsContent}
           </div>
