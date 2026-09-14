@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { Plus, X, Check } from "lucide-react";
 import { supabase } from "../../supabaseClient";
 import { TeacherQuestionForm } from "./TeacherQuestionForm";
@@ -13,7 +13,7 @@ function newPart() {
   return { localId: crypto.randomUUID(), passageText: "", passageTitle: "", titleTouched: false, groups: [newGroup()] };
 }
 
-export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast }) {
+export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast, editAssignmentId }) {
   const [title, setTitle] = useState("");
   const [titleTouched, setTitleTouched] = useState(false);
   const [dueDate, setDueDate] = useState("");
@@ -22,6 +22,29 @@ export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast
   const [addingQuestionFor, setAddingQuestionFor] = useState(null); // groupLocalId
   const [publishing, setPublishing] = useState(false);
   const [error, setError] = useState("");
+  const [loadingExisting, setLoadingExisting] = useState(Boolean(editAssignmentId));
+  const [existingAnswerCount, setExistingAnswerCount] = useState(0);
+
+  // Edit mode only prefills the assignment's own metadata (title, due
+  // date, time limit) — the Parts/questions below always start fresh,
+  // by design: rebuilding the full content here and replacing the old
+  // structure on save, rather than trying to reconstruct every existing
+  // question back into an editable form.
+  useEffect(() => {
+    if (!editAssignmentId) return;
+    (async () => {
+      const { data: a } = await supabase.from("assignments").select("title, due_date, time_limit_minutes").eq("id", editAssignmentId).single();
+      if (a) {
+        setTitle(a.title || "");
+        setTitleTouched(true);
+        setDueDate(a.due_date || "");
+        setTimeLimit(a.time_limit_minutes ? String(a.time_limit_minutes) : "");
+      }
+      const { count } = await supabase.from("student_answers").select("id", { count: "exact", head: true }).eq("assignment_id", editAssignmentId);
+      setExistingAnswerCount(count || 0);
+      setLoadingExisting(false);
+    })();
+  }, [editAssignmentId]);
 
   function handlePassageChange(partLocalId, text) {
     setParts((prev) =>
@@ -146,25 +169,92 @@ export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast
   async function publish() {
     setError("");
     if (!canPublish) return;
+
+    if (editAssignmentId && existingAnswerCount > 0) {
+      const ok = window.confirm(
+        `${existingAnswerCount} answer${existingAnswerCount > 1 ? "s have" : " has"} already been submitted for this assignment. Saving your changes will delete all of that and reset the assignment for every student — they'll need to redo it. Continue?`
+      );
+      if (!ok) return;
+    }
+
     setPublishing(true);
 
-    const { data: assignment, error: aError } = await supabase
-      .from("assignments")
-      .insert({
-        class_id: classId,
-        title: title.trim(),
-        type: "Reading",
-        description: parts[0].passageText.trim(), // kept for lists/dashboards that show a short preview
-        due_date: dueDate || null,
-        time_limit_minutes: timeLimit ? parseInt(timeLimit, 10) : null,
-      })
-      .select()
-      .single();
+    let assignment;
+    if (editAssignmentId) {
+      // Clear the old structure first. Deleting the old questions
+      // cascades away their assignment_questions links AND any
+      // student_answers tied to them — a real delete, by design, so
+      // students get a genuinely clean slate instead of orphaned,
+      // invisible answer rows lingering in the database.
+      const { data: oldSections, error: oldSError } = await supabase.from("exam_sections").select("id").eq("assignment_id", editAssignmentId);
+      if (oldSError) {
+        setPublishing(false);
+        setError("Could not read the existing parts: " + oldSError.message);
+        return;
+      }
+      const sectionIds = (oldSections || []).map((s) => s.id);
+      if (sectionIds.length > 0) {
+        const { data: oldLinks, error: oldLError } = await supabase.from("assignment_questions").select("question_id").in("section_id", sectionIds);
+        if (oldLError) {
+          setPublishing(false);
+          setError("Could not read the existing questions: " + oldLError.message);
+          return;
+        }
+        const questionIds = [...new Set((oldLinks || []).map((l) => l.question_id))];
+        if (questionIds.length > 0) {
+          const { error: delQError } = await supabase.from("questions").delete().in("id", questionIds);
+          if (delQError) {
+            setPublishing(false);
+            setError("Could not clear the old questions: " + delQError.message);
+            return;
+          }
+        }
+        const { error: delSError } = await supabase.from("exam_sections").delete().eq("assignment_id", editAssignmentId);
+        if (delSError) {
+          setPublishing(false);
+          setError("Could not clear the old parts: " + delSError.message);
+          return;
+        }
+      }
 
-    if (aError || !assignment) {
-      setPublishing(false);
-      setError("Could not create the assignment: " + (aError?.message || "unknown error"));
-      return;
+      const { data: updated, error: uError } = await supabase
+        .from("assignments")
+        .update({
+          title: title.trim(),
+          description: parts[0].passageText.trim(),
+          due_date: dueDate || null,
+          time_limit_minutes: timeLimit ? parseInt(timeLimit, 10) : null,
+        })
+        .eq("id", editAssignmentId)
+        .select()
+        .single();
+
+      if (uError || !updated) {
+        setPublishing(false);
+        setError("Could not update the assignment: " + (uError?.message || "unknown error"));
+        return;
+      }
+      assignment = updated;
+    } else {
+      const { data: created, error: aError } = await supabase
+        .from("assignments")
+        .insert({
+          class_id: classId,
+          title: title.trim(),
+          type: "Reading",
+          description: parts[0].passageText.trim(), // kept for lists/dashboards that show a short preview
+          due_date: dueDate || null,
+          time_limit_minutes: timeLimit ? parseInt(timeLimit, 10) : null,
+        })
+        .select()
+        .single();
+
+      if (aError || !created) {
+        setPublishing(false);
+        setError("Could not create the assignment: " + (aError?.message || "unknown error"));
+        return;
+      }
+      assignment = created;
     }
 
     for (let pi = 0; pi < parts.length; pi++) {
@@ -177,7 +267,7 @@ export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast
 
       if (sError || !sectionRow) {
         setPublishing(false);
-        setError(`Assignment created, but Part ${pi + 1} failed to save: ` + sError?.message);
+        setError(`Assignment saved, but Part ${pi + 1} failed to save: ` + sError?.message);
         return;
       }
 
@@ -196,7 +286,7 @@ export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast
 
         if (gError || !groupRow) {
           setPublishing(false);
-          setError(`Assignment created, but a question group in Part ${pi + 1} failed to save: ` + gError?.message);
+          setError(`Assignment saved, but a question group in Part ${pi + 1} failed to save: ` + gError?.message);
           return;
         }
 
@@ -209,21 +299,35 @@ export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast
         const { error: linkError } = await supabase.from("assignment_questions").insert(links);
         if (linkError) {
           setPublishing(false);
-          setError("Assignment created, but linking questions failed: " + linkError.message);
+          setError("Assignment saved, but linking questions failed: " + linkError.message);
           return;
         }
       }
     }
 
     setPublishing(false);
-    showToast?.("Reading assignment published");
+    showToast?.(editAssignmentId ? "Reading assignment updated" : "Reading assignment published");
     setScreen({ name: "class", classId });
+  }
+
+  if (loadingExisting) {
+    return (
+      <div className="page page-wide">
+        <p className="empty-inline">Loading assignment…</p>
+      </div>
+    );
   }
 
   return (
     <div className="page page-wide">
       <div className="eyebrow">Structured Reading</div>
-      <h1 className="page-title">New Reading assignment</h1>
+      <h1 className="page-title">{editAssignmentId ? "Edit Reading assignment" : "New Reading assignment"}</h1>
+      {editAssignmentId && (
+        <p className="field-hint" style={{ marginTop: 4 }}>
+          Rebuild the Parts and questions below — saving replaces everything currently in this assignment.
+          {existingAnswerCount > 0 && ` ${existingAnswerCount} answer${existingAnswerCount > 1 ? "s have" : " has"} already been submitted and will be reset if you save.`}
+        </p>
+      )}
 
       <label className="field-label" style={{ marginTop: 16 }}>Title</label>
       <input className="field-input" placeholder="e.g. IELTS Reading Practice Test 1" value={title} onChange={(e) => handleTitleChange(e.target.value)} />
@@ -372,7 +476,7 @@ export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast
       {error && <div className="field-error" style={{ marginTop: 16 }}>{error}</div>}
 
       <button className="btn-primary" style={{ marginTop: 24 }} disabled={!canPublish || publishing} onClick={publish}>
-        {publishing ? "Publishing…" : "Publish assignment"}
+        {publishing ? "Saving…" : editAssignmentId ? "Save changes" : "Publish assignment"}
       </button>
     </div>
   );
