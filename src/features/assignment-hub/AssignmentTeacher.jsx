@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { BookOpen, Users, Plus, Check, Clock, AlertTriangle, LogOut, GraduationCap, FileText, ChevronRight, X, Copy, CheckCircle2, Headphones, PenLine, Mic, ListChecks, ArrowLeft, Loader2, Timer, Highlighter, Trash2 } from "lucide-react";
+import { BookOpen, Users, Plus, Check, Clock, AlertTriangle, LogOut, GraduationCap, FileText, ChevronRight, X, Copy, CheckCircle2, Headphones, PenLine, Mic, ListChecks, ArrowLeft, Loader2, Timer, Highlighter, Trash2, Pencil } from "lucide-react";
 import { supabase } from "../../supabaseClient";
 import { uid, makeCode, TYPES, fmtDate, fmtDueDateTime, daysUntil, wordCount, isPdfUrl } from "../../lib/utils";
 import { AttachmentPreview, PageHeader, EmptyState, CenterSpinner, StatusBadge } from "../../components/shared";
@@ -41,6 +41,7 @@ export function AssignmentTeacher({ classId, assignmentId, setScreen, showToast 
   useEffect(() => { load(); }, [load]);
 
   const isWritingType = assignment?.type === "Writing Task 1" || assignment?.type === "Writing Task 2";
+  const isStructured = assignment?.type === "Reading" || assignment?.type === "Listening";
 
   function openGrade(student) {
     const sub = submissions.find((s) => s.student_id === student.id);
@@ -115,9 +116,25 @@ export function AssignmentTeacher({ classId, assignmentId, setScreen, showToast 
     <div className="page">
       <div className="row-right" style={{ justifyContent: "space-between", marginBottom: 4 }}>
         <button className="back-link" onClick={() => setScreen({ name: "class", classId })}><ArrowLeft size={14} /> Back to class</button>
-        <button className="btn-ghost delete-assignment-btn" disabled={deleting} onClick={handleDelete}>
-          <Trash2 size={13} /> {deleting ? "Checking…" : "Delete assignment"}
-        </button>
+        <div style={{ display: "flex", gap: 8 }}>
+          {isStructured && (
+            <button
+              className="btn-ghost"
+              onClick={() =>
+                setScreen({
+                  name: assignment.type === "Reading" ? "reading-builder" : "listening-builder",
+                  classId,
+                  editAssignmentId: assignmentId,
+                })
+              }
+            >
+              <Pencil size={13} /> Edit assignment
+            </button>
+          )}
+          <button className="btn-ghost delete-assignment-btn" disabled={deleting} onClick={handleDelete}>
+            <Trash2 size={13} /> {deleting ? "Checking…" : "Delete assignment"}
+          </button>
+        </div>
       </div>
 
       <div className="asg-header">
