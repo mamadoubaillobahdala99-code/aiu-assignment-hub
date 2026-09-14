@@ -3,7 +3,6 @@ import { Plus, X, Check } from "lucide-react";
 import { supabase } from "../../supabaseClient";
 import { TeacherQuestionForm } from "./TeacherQuestionForm";
 import { guessPassageTitle, defaultInstructionFor, parseNotesMarkdown, countBlanksInTexts, parseCompletionPayload } from "./bulkParse";
-import { QuestionBank } from "./QuestionBank";
 import { NotesCompletion } from "./NotesCompletion";
 import { TableCompletion } from "./TableCompletion";
 
@@ -17,12 +16,11 @@ function newPart() {
 export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast, editAssignmentId }) {
   const [title, setTitle] = useState("");
   const [titleTouched, setTitleTouched] = useState(false);
-  const [showQuestionBank, setShowQuestionBank] = useState(false);
   const [dueDate, setDueDate] = useState("");
   const [timeLimit, setTimeLimit] = useState("60");
   const [autoReleaseScore, setAutoReleaseScore] = useState(true);
   const [showAnswerReview, setShowAnswerReview] = useState(true);
-  const [readingTestType, setReadingTestType] = useState("academic");
+  const readingTestType = "academic"; // only option now — General Training was removed
   const [parts, setParts] = useState([newPart()]);
   const [addingQuestionFor, setAddingQuestionFor] = useState(null); // groupLocalId
   const [publishing, setPublishing] = useState(false);
@@ -340,21 +338,14 @@ export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast
 
   return (
     <div className="page page-wide">
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-        <div>
-          <div className="eyebrow">Structured Reading</div>
-          <h1 className="page-title">{editAssignmentId ? "Edit Reading assignment" : "New Reading assignment"}</h1>
-        </div>
-        <button className="btn-ghost" onClick={() => setShowQuestionBank(true)}>Browse question bank</button>
-      </div>
+      <div className="eyebrow">Structured Reading</div>
+      <h1 className="page-title">{editAssignmentId ? "Edit Reading assignment" : "New Reading assignment"}</h1>
       {editAssignmentId && (
         <p className="field-hint" style={{ marginTop: 4 }}>
           Rebuild the Parts and questions below — saving replaces everything currently in this assignment.
           {existingAnswerCount > 0 && ` ${existingAnswerCount} answer${existingAnswerCount > 1 ? "s have" : " has"} already been submitted and will be reset if you save.`}
         </p>
       )}
-
-      {showQuestionBank && <QuestionBank teacherId={teacherId} onClose={() => setShowQuestionBank(false)} />}
 
       <label className="field-label" style={{ marginTop: 16 }}>Title (optional — auto-filled from Part 1's passage)</label>
       <input className="field-input" placeholder="e.g. IELTS Reading Practice Test 1" value={title} onChange={(e) => handleTitleChange(e.target.value)} />
@@ -369,13 +360,6 @@ export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast
           <input type="number" min="1" className="field-input" value={timeLimit} onChange={(e) => setTimeLimit(e.target.value)} />
         </div>
       </div>
-
-      <label className="field-label" style={{ marginTop: 14 }}>Reading test type</label>
-      <div className="type-row">
-        <button type="button" className={`type-chip ${readingTestType === "academic" ? "active" : ""}`} onClick={() => setReadingTestType("academic")}>Academic</button>
-        <button type="button" className={`type-chip ${readingTestType === "general" ? "active" : ""}`} onClick={() => setReadingTestType("general")}>General Training</button>
-      </div>
-      <p className="field-hint" style={{ marginTop: 4 }}>Used only to pick the right band-score conversion table.</p>
 
       <label className="checkbox-row" style={{ marginTop: 16 }}>
         <input type="checkbox" checked={autoReleaseScore} onChange={(e) => setAutoReleaseScore(e.target.checked)} />
