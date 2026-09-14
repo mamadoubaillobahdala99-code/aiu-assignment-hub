@@ -8,6 +8,7 @@ import "./features/question-engine/multiple-choice.css";
 import "./features/question-engine/bulk-paste.css";
 import "./features/question-engine/summary-completion.css";
 import "./features/question-engine/notes-table-completion.css";
+import "./features/question-engine/review.css";
 
 export default function App() {
   const [loading, setLoading] = useState(true);
