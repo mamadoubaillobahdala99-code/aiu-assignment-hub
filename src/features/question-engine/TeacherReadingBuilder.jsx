@@ -3,6 +3,7 @@ import { Plus, X, Check } from "lucide-react";
 import { supabase } from "../../supabaseClient";
 import { TeacherQuestionForm } from "./TeacherQuestionForm";
 import { guessPassageTitle, defaultInstructionFor, parseNotesMarkdown, countBlanksInTexts, parseCompletionPayload } from "./bulkParse";
+import { QuestionBank } from "./QuestionBank";
 import { NotesCompletion } from "./NotesCompletion";
 import { TableCompletion } from "./TableCompletion";
 
@@ -16,6 +17,7 @@ function newPart() {
 export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast, editAssignmentId }) {
   const [title, setTitle] = useState("");
   const [titleTouched, setTitleTouched] = useState(false);
+  const [showQuestionBank, setShowQuestionBank] = useState(false);
   const [dueDate, setDueDate] = useState("");
   const [timeLimit, setTimeLimit] = useState("60");
   const [autoReleaseScore, setAutoReleaseScore] = useState(true);
@@ -164,7 +166,6 @@ export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast
   }, [parts]);
 
   const canPublish =
-    title.trim() &&
     parts.every(
       (p) =>
         p.passageText.trim() &&
@@ -175,6 +176,13 @@ export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast
   async function publish() {
     setError("");
     if (!canPublish) return;
+
+    // Title is never required anymore — Part 1's passage already
+    // guesses it as the teacher types (see handlePassageChange). This
+    // is just the last-resort fallback for the rare case nothing was
+    // guessable (e.g. no title-like first line) and the teacher didn't
+    // type one either.
+    const finalTitle = title.trim() || `Reading — ${new Date().toLocaleDateString()}`;
 
     if (editAssignmentId && existingAnswerCount > 0) {
       const ok = window.confirm(
@@ -226,7 +234,7 @@ export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast
       const { data: updated, error: uError } = await supabase
         .from("assignments")
         .update({
-          title: title.trim(),
+          title: finalTitle,
           description: parts[0].passageText.trim(),
           due_date: dueDate || null,
           time_limit_minutes: timeLimit ? parseInt(timeLimit, 10) : null,
@@ -249,7 +257,7 @@ export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast
         .from("assignments")
         .insert({
           class_id: classId,
-          title: title.trim(),
+          title: finalTitle,
           type: "Reading",
           description: parts[0].passageText.trim(), // kept for lists/dashboards that show a short preview
           due_date: dueDate || null,
@@ -332,8 +340,13 @@ export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast
 
   return (
     <div className="page page-wide">
-      <div className="eyebrow">Structured Reading</div>
-      <h1 className="page-title">{editAssignmentId ? "Edit Reading assignment" : "New Reading assignment"}</h1>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+        <div>
+          <div className="eyebrow">Structured Reading</div>
+          <h1 className="page-title">{editAssignmentId ? "Edit Reading assignment" : "New Reading assignment"}</h1>
+        </div>
+        <button className="btn-ghost" onClick={() => setShowQuestionBank(true)}>Browse question bank</button>
+      </div>
       {editAssignmentId && (
         <p className="field-hint" style={{ marginTop: 4 }}>
           Rebuild the Parts and questions below — saving replaces everything currently in this assignment.
@@ -341,7 +354,9 @@ export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast
         </p>
       )}
 
-      <label className="field-label" style={{ marginTop: 16 }}>Title</label>
+      {showQuestionBank && <QuestionBank teacherId={teacherId} onClose={() => setShowQuestionBank(false)} />}
+
+      <label className="field-label" style={{ marginTop: 16 }}>Title (optional — auto-filled from Part 1's passage)</label>
       <input className="field-input" placeholder="e.g. IELTS Reading Practice Test 1" value={title} onChange={(e) => handleTitleChange(e.target.value)} />
 
       <div style={{ display: "flex", gap: 16, marginTop: 14 }}>
