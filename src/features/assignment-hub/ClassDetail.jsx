@@ -47,7 +47,7 @@ export function ClassDetail({ classId, setScreen, showToast }) {
   }
 
   return (
-    <div className="page">
+    <div className="page page-wide">
       <button className="back-link" onClick={() => setScreen({ name: "home" })}><ArrowLeft size={14} /> All classes</button>
 
       <PageHeader eyebrow="Class" title={cls.name} action={
@@ -155,7 +155,7 @@ function StudentInClassDetail({ student, classId, assignments, onBack, setScreen
   const completedCount = assignments.filter((a) => statuses[a.id] === "submitted" || statuses[a.id] === "graded").length;
 
   return (
-    <div className="page">
+    <div className="page page-wide">
       <button className="back-link" onClick={onBack}><ArrowLeft size={14} /> Back to students</button>
 
       <div className="asg-header">
