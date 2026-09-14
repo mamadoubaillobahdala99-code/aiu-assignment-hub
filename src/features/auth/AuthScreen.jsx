@@ -35,48 +35,65 @@ export function AuthScreen({ showToast }) {
   }
 
   return (
-    <div className="auth">
-      <div className="auth-card">
-        <div className="auth-eyebrow">ALBUKHARY INTERNATIONAL UNIVERSITY</div>
-        <h1 className="auth-title">Assignment Hub</h1>
-        <p className="auth-sub">One place for IELTS prep coursework — no more chasing links across WhatsApp, Drive, and Classroom.</p>
-
-        <div className="auth-tabs">
-          <button className={`auth-tab ${mode === "signup" ? "active" : ""}`} onClick={() => setMode("signup")}>Create account</button>
-          <button className={`auth-tab ${mode === "login" ? "active" : ""}`} onClick={() => setMode("login")}>Log in</button>
+    <div className="auth-split">
+      <div className="auth-brand-panel">
+        <svg className="auth-brand-pattern" aria-hidden="true" viewBox="0 0 400 400" preserveAspectRatio="xMidYMid slice">
+          <defs>
+            <pattern id="auth-dots" width="28" height="28" patternUnits="userSpaceOnUse">
+              <circle cx="2" cy="2" r="1.6" fill="currentColor" />
+            </pattern>
+          </defs>
+          <rect width="400" height="400" fill="url(#auth-dots)" />
+        </svg>
+        <div className="auth-brand-content">
+          <div className="auth-eyebrow">ALBUKHARY INTERNATIONAL UNIVERSITY</div>
+          <h1 className="auth-title">Assignment Hub</h1>
+          <p className="auth-sub">One place for IELTS prep coursework — no more chasing links across WhatsApp, Drive, and Classroom.</p>
         </div>
+      </div>
 
-        {mode === "signup" && (
-          <>
-            <label className="field-label">Your name</label>
-            <input className="field-input" placeholder="e.g. Mamadou Bailo" value={name} onChange={(e) => setName(e.target.value)} />
+      <div className="auth-form-panel">
+        <div className="auth-card">
+          <div className="auth-eyebrow auth-eyebrow-compact">ALBUKHARY INTERNATIONAL UNIVERSITY</div>
+          <h2 className="auth-form-title">{mode === "signup" ? "Create your account" : "Welcome back"}</h2>
 
-            <label className="field-label" style={{ marginTop: 14 }}>I am a…</label>
-            <div className="role-row">
-              <button className={`role-btn ${role === "teacher" ? "active" : ""}`} onClick={() => setRole("teacher")}>
-                <GraduationCap size={20} /><span>Teacher</span>
-              </button>
-              <button className={`role-btn ${role === "student" ? "active" : ""}`} onClick={() => setRole("student")}>
-                <Users size={20} /><span>Student</span>
-              </button>
-            </div>
-          </>
-        )}
+          <div className="auth-tabs">
+            <button className={`auth-tab ${mode === "signup" ? "active" : ""}`} onClick={() => setMode("signup")}>Create account</button>
+            <button className={`auth-tab ${mode === "login" ? "active" : ""}`} onClick={() => setMode("login")}>Log in</button>
+          </div>
 
-        <label className="field-label" style={{ marginTop: 14 }}>Email</label>
-        <input className="field-input" type="email" placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} />
+          {mode === "signup" && (
+            <>
+              <label className="field-label">Your name</label>
+              <input className="field-input" placeholder="e.g. Mamadou Bailo" value={name} onChange={(e) => setName(e.target.value)} />
 
-        <label className="field-label" style={{ marginTop: 14 }}>Password</label>
-        <input className="field-input" type="password" placeholder="At least 6 characters" value={password} onChange={(e) => setPassword(e.target.value)} />
+              <label className="field-label" style={{ marginTop: 14 }}>I am a…</label>
+              <div className="role-row">
+                <button className={`role-btn ${role === "teacher" ? "active" : ""}`} onClick={() => setRole("teacher")}>
+                  <GraduationCap size={20} /><span>Teacher</span>
+                </button>
+                <button className={`role-btn ${role === "student" ? "active" : ""}`} onClick={() => setRole("student")}>
+                  <Users size={20} /><span>Student</span>
+                </button>
+              </div>
+            </>
+          )}
 
-        {err && <div className="field-error">{err}</div>}
+          <label className="field-label" style={{ marginTop: 14 }}>Email</label>
+          <input className="field-input" type="email" placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} />
 
-        <button className="btn-primary auth-submit" disabled={busy} onClick={submit}>
-          {busy ? "Please wait…" : mode === "signup" ? "Create account" : "Log in"} <ChevronRight size={16} />
-        </button>
-        {mode === "signup" && (
-          <p className="auth-note">A confirmation email may be sent depending on your project settings — check your inbox if login doesn't work right away.</p>
-        )}
+          <label className="field-label" style={{ marginTop: 14 }}>Password</label>
+          <input className="field-input" type="password" placeholder="At least 6 characters" value={password} onChange={(e) => setPassword(e.target.value)} />
+
+          {err && <div className="field-error">{err}</div>}
+
+          <button className="btn-primary auth-submit" disabled={busy} onClick={submit}>
+            {busy ? "Please wait…" : mode === "signup" ? "Create account" : "Log in"} <ChevronRight size={16} />
+          </button>
+          {mode === "signup" && (
+            <p className="auth-note">A confirmation email may be sent depending on your project settings — check your inbox if login doesn't work right away.</p>
+          )}
+        </div>
       </div>
     </div>
   );
