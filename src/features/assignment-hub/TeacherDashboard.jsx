@@ -149,7 +149,7 @@ export function TeacherDashboard({ userId, setScreen }) {
   const needsAttention = [...missingWork, ...needsFeedback].slice(0, 10);
 
   return (
-    <div className="page">
+    <div className="page page-wide">
       <PageHeader eyebrow="Teacher" title="Dashboard" />
 
       <div className="stat-grid">
