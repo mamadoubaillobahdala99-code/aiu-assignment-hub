@@ -10,7 +10,6 @@ import { StudentClasses } from "./features/assignment-hub/StudentClasses";
 import { StudentClassDetail } from "./features/assignment-hub/StudentClassDetail";
 import { Profile } from "./features/assignment-hub/Profile";
 import { AssignmentOpenBridge } from "./features/question-engine/AssignmentOpenBridge";
-import { QuestionEngineLab } from "./features/question-engine/QuestionEngineLab";
 import { TeacherReadingBuilder } from "./features/question-engine/TeacherReadingBuilder";
 import { TeacherListeningBuilder } from "./features/question-engine/TeacherListeningBuilder";
 import "./features/question-engine/reading-builder.css";
@@ -53,16 +52,14 @@ export function Shell({ profile, setProfile, userId, onSignOut, screen, setScree
         </button>
 
         <nav className="nav">
+          <button className={`nav-item ${screen.name === "profile" ? "active" : ""}`} onClick={() => setScreen({ name: "profile" })}>
+            <User size={17} /> Profile
+          </button>
           {isTeacher && (
             <button className={`nav-item ${screen.name === "dashboard" ? "active" : ""}`} onClick={() => setScreen({ name: "dashboard" })}>
               <Timer size={17} /> Dashboard
             </button>
           )}
-          {isTeacher && (
-                  <button className={`nav-item ${screen.name === "question-lab" ? "active" : ""}`} onClick={() => setScreen({ name: "question-lab" })}>
-                    <FileText size={17} /> Question Lab
-                  </button>
-                )}
           <button className={`nav-item ${screen.name === "home" ? "active" : ""}`} onClick={() => setScreen({ name: "home" })}>
             {isTeacher ? <BookOpen size={17} /> : <ListChecks size={17} />}
             {isTeacher ? "My classes" : "My assignments"}
@@ -77,9 +74,6 @@ export function Shell({ profile, setProfile, userId, onSignOut, screen, setScree
               <Plus size={17} /> Join a class
             </button>
           )}
-          <button className={`nav-item ${screen.name === "profile" ? "active" : ""}`} onClick={() => setScreen({ name: "profile" })}>
-            <User size={17} /> Profile
-          </button>
         </nav>
 
         <button className="nav-item" onClick={toggleFullscreen}>
@@ -94,7 +88,6 @@ export function Shell({ profile, setProfile, userId, onSignOut, screen, setScree
 
       <main className="main">
         {screen.name === "dashboard" && isTeacher && <TeacherDashboard userId={userId} setScreen={setScreen} />}
-        {screen.name === "question-lab" && isTeacher && <QuestionEngineLab userId={userId} />}
         {screen.name === "reading-builder" && isTeacher && (
           <TeacherReadingBuilder classId={screen.classId} teacherId={userId} setScreen={setScreen} showToast={showToast} editAssignmentId={screen.editAssignmentId} />
         )}
