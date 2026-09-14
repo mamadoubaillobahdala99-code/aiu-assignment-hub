@@ -69,10 +69,14 @@
 /* Teacher-side audio picker */
 .qe-audio-picker { margin-top: 6px; }
 .qe-audio-library { display: flex; flex-direction: column; gap: 6px; }
-.qe-audio-library-item { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 7px; background: #fff; cursor: pointer; font-size: 13px; text-align: left; }
+.qe-audio-library-item { display: flex; align-items: stretch; gap: 4px; border: 1px solid var(--line); border-radius: 7px; background: #fff; }
 .qe-audio-library-item:hover { border-color: var(--teal); }
 .qe-audio-library-item.active { border-color: var(--teal); background: var(--teal-soft); }
+.qe-audio-library-select { flex: 1; display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: none; background: none; cursor: pointer; font-size: 13px; text-align: left; }
 .qe-audio-library-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.qe-audio-delete-btn { flex-shrink: 0; display: flex; align-items: center; padding: 0 10px; border: none; border-left: 1px solid var(--line); background: none; color: var(--ink-soft); cursor: pointer; }
+.qe-audio-delete-btn:hover { color: #b3352c; }
+.qe-audio-delete-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 .qe-audio-selected { display: flex; align-items: center; gap: 10px; margin-top: 10px; font-size: 12.5px; color: var(--ink-soft); }
 .qe-audio-remove-btn { display: inline-flex; align-items: center; gap: 4px; border: none; background: none; color: var(--ink-soft); cursor: pointer; font-size: 12.5px; text-decoration: underline; padding: 0; }
 .qe-audio-remove-btn:hover { color: var(--ink); }
