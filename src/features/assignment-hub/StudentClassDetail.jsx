@@ -35,11 +35,19 @@ export function StudentClassDetail({ classId, userId, setScreen }) {
         : { data: [] };
     const submittedIds = new Set((myAnswers || []).map((r) => r.assignment_id));
 
+    const { data: myFeedback } =
+      qeAssignmentIds.size > 0
+        ? await supabase.from("assignment_feedback").select("assignment_id, released_at").eq("student_id", userId).in("assignment_id", [...qeAssignmentIds])
+        : { data: [] };
+    const releasedIds = new Set((myFeedback || []).filter((f) => f.released_at).map((f) => f.assignment_id));
+
     const combined = (assignments || []).map((a) => {
       let status;
       if (qeAssignmentIds.has(a.id)) {
-        if (submittedIds.has(a.id)) status = "submitted";
-        else if (attemptedIds.has(a.id)) status = "in-progress";
+        if (submittedIds.has(a.id)) {
+          const released = a.auto_release_score || releasedIds.has(a.id);
+          status = released ? "graded" : "submitted";
+        } else if (attemptedIds.has(a.id)) status = "in-progress";
         else status = "pending";
       } else {
         const mine = (mySubs || []).find((s) => s.assignment_id === a.id);
