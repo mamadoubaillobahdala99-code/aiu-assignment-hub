@@ -10,7 +10,7 @@ import { HighlightableText } from "./HighlightableText";
 // group's first blank's question id (always present once blanks exist)
 // with a unique optionKey per segment, keeping each segment's highlights
 // independent without needing a question row for the surrounding prose.
-export function SummaryCompletion({ text, questions, answers, onChange, results, disabled, startNumber = 1, assignmentId, userId }) {
+export function SummaryCompletion({ text, questions, answers, onChange, results, disabled, startNumber = 1, assignmentId, userId, correctAnswers }) {
   const parts = text.split(/_{3,}/);
   const anchorId = questions[0]?.id;
   const canHighlight = Boolean(assignmentId && userId && anchorId);
@@ -51,6 +51,9 @@ export function SummaryCompletion({ text, questions, answers, onChange, results,
                   <span className={results[question.id]?.isCorrect ? "qe-result-correct" : "qe-result-incorrect"} style={{ marginLeft: 4 }}>
                     {results[question.id]?.isCorrect ? "✓" : "✗"}
                   </span>
+                )}
+                {results && !results[question.id]?.isCorrect && correctAnswers?.[question.id] && (
+                  <span className="qe-review-correct-inline"> (correct: {correctAnswers[question.id]})</span>
                 )}
               </span>
             )}
