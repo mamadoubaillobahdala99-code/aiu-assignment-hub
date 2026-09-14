@@ -16,12 +16,38 @@ export function StudentClassDetail({ classId, userId, setScreen }) {
     const { data: assignments } = await supabase.from("assignments").select("*").eq("class_id", classId);
     const { data: mySubs } = await supabase.from("submissions").select("*").eq("student_id", userId);
 
+    const assignmentIds = (assignments || []).map((a) => a.id);
+    const { data: qeSections } =
+      assignmentIds.length > 0
+        ? await supabase.from("exam_sections").select("assignment_id").in("assignment_id", assignmentIds)
+        : { data: [] };
+    const qeAssignmentIds = new Set((qeSections || []).map((s) => s.assignment_id));
+
+    const { data: myAttempts } =
+      qeAssignmentIds.size > 0
+        ? await supabase.from("exam_attempts").select("assignment_id").eq("student_id", userId).in("assignment_id", [...qeAssignmentIds])
+        : { data: [] };
+    const attemptedIds = new Set((myAttempts || []).map((r) => r.assignment_id));
+
+    const { data: myAnswers } =
+      qeAssignmentIds.size > 0
+        ? await supabase.from("student_answers").select("assignment_id").eq("student_id", userId).in("assignment_id", [...qeAssignmentIds])
+        : { data: [] };
+    const submittedIds = new Set((myAnswers || []).map((r) => r.assignment_id));
+
     const combined = (assignments || []).map((a) => {
-      const mine = (mySubs || []).find((s) => s.assignment_id === a.id);
-      let status = "pending";
-      if (mine?.grade) status = "graded";
-      else if (mine?.submitted_at) status = "submitted";
-      else if (mine?.started_at) status = "in-progress";
+      let status;
+      if (qeAssignmentIds.has(a.id)) {
+        if (submittedIds.has(a.id)) status = "submitted";
+        else if (attemptedIds.has(a.id)) status = "in-progress";
+        else status = "pending";
+      } else {
+        const mine = (mySubs || []).find((s) => s.assignment_id === a.id);
+        status = "pending";
+        if (mine?.grade) status = "graded";
+        else if (mine?.submitted_at) status = "submitted";
+        else if (mine?.started_at) status = "in-progress";
+      }
       return { ...a, dueDate: a.due_date, status };
     });
     combined.sort((a, b) => {
