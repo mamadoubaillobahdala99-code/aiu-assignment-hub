@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Play, Pause, Volume2, Headphones, GripHorizontal } from "lucide-react";
+import { supabase } from "../../supabaseClient";
 
 function formatTime(sec) {
   if (!isFinite(sec) || sec < 0) return "00:00";
@@ -8,11 +9,12 @@ function formatTime(sec) {
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
-// KNOWN LIMITATION, stated honestly, same spirit as the exam timer: the
-// "times listened" counter below is visual only, kept in React state. A
-// page refresh currently resets it — it isn't backed by a server-side
-// record yet. Fine for this first working version of Listening.
-export function AudioPlayer({ url, filename, maxPlays }) {
+// For a limited Part, the play count is enforced server-side via the
+// record_audio_play RPC (a student can't bypass it by calling the REST
+// API directly). Falls back to local-only counting if that RPC hasn't
+// been migrated in yet, so playback still works either way. Unlimited
+// Parts never call the RPC — there's nothing to enforce or display.
+export function AudioPlayer({ url, filename, maxPlays, assignmentId, userId, sectionId }) {
   const audioRef = useRef(null);
   const panelRef = useRef(null);
   const [playsUsed, setPlaysUsed] = useState(0);
@@ -39,6 +41,25 @@ export function AudioPlayer({ url, filename, maxPlays }) {
     if (!audio) return;
     audio.volume = volume;
   }, [volume]);
+
+  // Catch the display up to the real server-side count on mount/refresh
+  // — enforcement itself is already correct either way (the RPC checks
+  // the server's own row), this is purely so the "X / Y" shown matches
+  // reality right away instead of only after the next play attempt.
+  useEffect(() => {
+    if (!isLimited || !assignmentId || !userId || !sectionId) return;
+    (async () => {
+      const { data } = await supabase
+        .from("listening_plays")
+        .select("plays_used")
+        .eq("assignment_id", assignmentId)
+        .eq("student_id", userId)
+        .eq("section_id", sectionId)
+        .maybeSingle();
+      if (data) setPlaysUsed(data.plays_used);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLimited, assignmentId, userId, sectionId]);
 
   // --- Dragging, with the panel always kept fully inside the viewport ---
   function clamp(x, y) {
@@ -83,14 +104,34 @@ export function AudioPlayer({ url, filename, maxPlays }) {
     };
   }, []);
 
-  function handlePlay() {
+  const [checking, setChecking] = useState(false);
+
+  async function handlePlay() {
     const audio = audioRef.current;
     if (!audio) return;
     if (isLimited && exhausted) return; // no more plays left on a limited Part
+    if (checking) return; // a server check is already in flight — avoid a double-press race
+
     if (!playing) {
-      // A fresh listen — every time playback starts from a stopped state,
-      // not only the very first time.
-      setPlaysUsed((n) => n + 1);
+      if (isLimited && assignmentId && userId && sectionId) {
+        setChecking(true);
+        const { data, error } = await supabase.rpc("record_audio_play", {
+          p_assignment_id: assignmentId,
+          p_section_id: sectionId,
+          p_max_plays: maxPlays,
+        });
+        setChecking(false);
+        if (!error && data) {
+          setPlaysUsed(data.plays_used);
+          if (!data.allowed) return; // server says the limit is already reached
+        } else {
+          // record_audio_play isn't set up yet (migration not applied) —
+          // fall back to local-only counting rather than blocking playback.
+          setPlaysUsed((n) => n + 1);
+        }
+      } else {
+        setPlaysUsed((n) => n + 1);
+      }
       if (isLimited) setActive(true);
     }
     audio.play();
@@ -145,7 +186,7 @@ export function AudioPlayer({ url, filename, maxPlays }) {
           type="button"
           className="qe-audio-play-btn"
           onClick={playing ? handlePauseClick : handlePlay}
-          disabled={exhausted}
+          disabled={exhausted || checking}
         >
           {playing ? <Pause size={16} /> : <Play size={16} />}
         </button>
