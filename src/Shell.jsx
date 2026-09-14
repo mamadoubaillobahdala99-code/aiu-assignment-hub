@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { BookOpen, Users, Plus, Check, Clock, AlertTriangle, LogOut, GraduationCap, FileText, ChevronRight, X, Copy, CheckCircle2, Headphones, PenLine, Mic, ListChecks, ArrowLeft, Loader2, Timer, Highlighter, Maximize, Minimize } from "lucide-react";
+import { BookOpen, Users, Plus, Check, Clock, AlertTriangle, LogOut, GraduationCap, FileText, ChevronRight, X, Copy, CheckCircle2, Headphones, PenLine, Mic, ListChecks, ArrowLeft, Loader2, Timer, Highlighter, Maximize, Minimize, User } from "lucide-react";
 import { TeacherHome } from "./features/assignment-hub/TeacherHome";
 import { TeacherDashboard } from "./features/assignment-hub/TeacherDashboard";
 import { ClassDetail } from "./features/assignment-hub/ClassDetail";
@@ -8,6 +8,7 @@ import { JoinClass } from "./features/assignment-hub/JoinClass";
 import { StudentHome } from "./features/assignment-hub/StudentHome";
 import { StudentClasses } from "./features/assignment-hub/StudentClasses";
 import { StudentClassDetail } from "./features/assignment-hub/StudentClassDetail";
+import { Profile } from "./features/assignment-hub/Profile";
 import { AssignmentOpenBridge } from "./features/question-engine/AssignmentOpenBridge";
 import { QuestionEngineLab } from "./features/question-engine/QuestionEngineLab";
 import { TeacherReadingBuilder } from "./features/question-engine/TeacherReadingBuilder";
@@ -15,7 +16,7 @@ import { TeacherListeningBuilder } from "./features/question-engine/TeacherListe
 import "./features/question-engine/reading-builder.css";
 import "./features/question-engine/listening.css";
 
-export function Shell({ profile, userId, onSignOut, screen, setScreen, showToast }) {
+export function Shell({ profile, setProfile, userId, onSignOut, screen, setScreen, showToast }) {
   const isTeacher = profile.role === "teacher";
   const [isFullscreen, setIsFullscreen] = useState(false);
 
@@ -43,13 +44,13 @@ export function Shell({ profile, userId, onSignOut, screen, setScreen, showToast
           <div className="brand-text">Assignment Hub</div>
         </div>
 
-        <div className="profile-card">
+        <button className="profile-card" onClick={() => setScreen({ name: "profile" })} style={{ border: "none", width: "100%", textAlign: "left", cursor: "pointer" }}>
           <div className="avatar">{profile.name.slice(0, 1).toUpperCase()}</div>
           <div>
             <div className="profile-name">{profile.name}</div>
             <div className="profile-role">{isTeacher ? "Teacher" : "Student"}</div>
           </div>
-        </div>
+        </button>
 
         <nav className="nav">
           {isTeacher && (
@@ -76,6 +77,9 @@ export function Shell({ profile, userId, onSignOut, screen, setScreen, showToast
               <Plus size={17} /> Join a class
             </button>
           )}
+          <button className={`nav-item ${screen.name === "profile" ? "active" : ""}`} onClick={() => setScreen({ name: "profile" })}>
+            <User size={17} /> Profile
+          </button>
         </nav>
 
         <button className="nav-item" onClick={toggleFullscreen}>
@@ -99,6 +103,9 @@ export function Shell({ profile, userId, onSignOut, screen, setScreen, showToast
         )}
         {screen.name === "home" && isTeacher && <TeacherHome userId={userId} setScreen={setScreen} showToast={showToast} />}
         {screen.name === "home" && !isTeacher && <StudentHome userId={userId} setScreen={setScreen} showToast={showToast} />}
+        {screen.name === "profile" && (
+          <Profile profile={profile} setProfile={setProfile} userId={userId} setScreen={setScreen} showToast={showToast} />
+        )}
         {screen.name === "student-classes" && !isTeacher && <StudentClasses userId={userId} setScreen={setScreen} />}
         {screen.name === "student-class-detail" && !isTeacher && <StudentClassDetail classId={screen.classId} userId={userId} setScreen={setScreen} />}
         {screen.name === "join" && !isTeacher && <JoinClass userId={userId} setScreen={setScreen} showToast={showToast} />}
