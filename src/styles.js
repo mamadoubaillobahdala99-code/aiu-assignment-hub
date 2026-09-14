@@ -12,9 +12,25 @@ export const CSS = `
   --amber-soft: #F3E3CC;
   --rose: #AE3B47;
   --rose-soft: #F1DCDC;
+  --info: #3D6E8C;
+  --info-soft: #DCE6EA;
   --line: #D9D4C4;
   --sidebar: #17251F;
   --sidebar-text: #D9E5DE;
+
+  /* Semantic aliases — additive only, nothing above changes meaning.
+     New code should prefer these names over --teal/--amber/--rose
+     directly, so the underlying hue can evolve without a find-replace
+     across the whole app. */
+  --color-primary: var(--teal);
+  --color-success: var(--teal);
+  --color-success-soft: var(--teal-soft);
+  --color-warning: var(--amber);
+  --color-warning-soft: var(--amber-soft);
+  --color-error: var(--rose);
+  --color-error-soft: var(--rose-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
 }
 
 * { box-sizing: border-box; }
@@ -24,7 +40,19 @@ body { margin: 0; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .boot, .center-spin { display: flex; align-items: center; justify-content: center; min-height: 300px; color: var(--teal); }
 
-.auth { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
+.auth-split { display: flex; height: 100vh; overflow: hidden; }
+
+.auth-brand-panel { flex: 1.1; background: var(--sidebar); color: var(--sidebar-text); display: flex; align-items: center; padding: 60px; position: relative; overflow: hidden; }
+.auth-brand-pattern { position: absolute; inset: 0; width: 100%; height: 100%; color: var(--sidebar-text); opacity: 0.12; pointer-events: none; }
+.auth-brand-content { position: relative; z-index: 1; max-width: 440px; }
+.auth-brand-panel .auth-eyebrow { color: var(--sidebar-text); opacity: 0.8; }
+.auth-brand-panel .auth-title { color: #fff; font-size: 42px; }
+.auth-brand-panel .auth-sub { color: var(--sidebar-text); opacity: 0.85; font-size: 15.5px; }
+
+.auth-form-panel { flex: 1; display: flex; align-items: center; justify-content: center; padding: 40px; overflow-y: auto; }
+.auth-eyebrow-compact { display: none; }
+.auth-form-title { font-family: 'Fraunces', serif; font-size: 23px; font-weight: 600; margin: 0 0 20px; }
+
 .auth-card { max-width: 420px; width: 100%; background: var(--paper-raised); border: 1px solid var(--line); border-radius: 14px; padding: 36px 32px; }
 .auth-eyebrow { font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.08em; color: var(--teal); margin-bottom: 10px; }
 .auth-title { font-family: 'Fraunces', serif; font-size: 32px; font-weight: 600; margin: 0 0 8px; }
@@ -34,6 +62,12 @@ body { margin: 0; }
 .auth-tab.active { color: var(--ink); border-bottom-color: var(--teal); }
 .auth-submit { width: 100%; justify-content: center; margin-top: 18px; }
 .auth-note { font-size: 12px; color: var(--ink-soft); margin-top: 14px; line-height: 1.5; }
+
+@media (max-width: 900px) {
+  .auth-brand-panel { display: none; }
+  .auth-eyebrow-compact { display: block; }
+  .auth-form-panel { padding: 24px; }
+}
 
 .field-label { display: block; font-size: 12px; font-weight: 600; color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px; }
 .field-input { width: 100%; padding: 11px 13px; border: 1px solid var(--line); border-radius: 8px; background: #fff; font-family: inherit; font-size: 14.5px; color: var(--ink); outline: none; transition: border-color .15s; }
@@ -52,7 +86,7 @@ body { margin: 0; }
 .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
 .btn-ghost { display: inline-flex; align-items: center; gap: 7px; background: var(--paper-raised); border: 1px solid var(--line); padding: 9px 14px; border-radius: 8px; font-family: 'IBM Plex Mono', monospace; font-size: 12.5px; font-weight: 500; color: var(--ink); cursor: pointer; letter-spacing: 0.03em; }
 
-.shell { display: flex; min-height: 100vh; }
+.shell { display: flex; height: 100vh; overflow: hidden; }
 .sidebar { width: 240px; background: var(--sidebar); color: var(--sidebar-text); padding: 22px 16px; display: flex; flex-direction: column; flex-shrink: 0; }
 .brand { display: flex; align-items: center; gap: 10px; margin-bottom: 26px; padding: 0 4px; }
 .brand-mark { width: 32px; height: 32px; border-radius: 7px; background: var(--teal); color: #fff; display: flex; align-items: center; justify-content: center; font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 700; }
@@ -70,7 +104,7 @@ body { margin: 0; }
 .nav-item.active { background: var(--teal); color: #fff; }
 .nav-item.logout { color: #8AA097; margin-top: auto; }
 
-.main { flex: 1; padding: 40px 44px; min-width: 0; }
+.main { flex: 1; min-width: 0; padding: 40px 44px; overflow-y: auto; height: 100%; }
 .page { max-width: 880px; }
 .page.narrow { max-width: 560px; }
 /* Wider, centered variant used only by the Reading/Listening builder
@@ -127,7 +161,7 @@ body { margin: 0; }
 .timer-clock { font-family: 'IBM Plex Mono', monospace; font-size: 22px; font-weight: 600; }
 
 .status-badge { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 600; padding: 5px 10px; border-radius: 20px; white-space: nowrap; }
-.status-badge.pending { background: var(--rose-soft); color: var(--rose); }
+.status-badge.pending { background: var(--line); color: var(--ink-soft); }
 .status-badge.submitted { background: var(--amber-soft); color: var(--amber); }
 .status-badge.graded { background: var(--teal-soft); color: var(--teal); }
 .status-badge.inprogress { background: #E4E1D3; color: var(--ink-soft); }
