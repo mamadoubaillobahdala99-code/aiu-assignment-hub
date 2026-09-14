@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { ArrowLeft, GraduationCap, FileText, Users } from "lucide-react";
+import { ArrowLeft, GraduationCap, FileText, Users, LogOut } from "lucide-react";
 import { supabase } from "../../supabaseClient";
 import { PageHeader, EmptyState, CenterSpinner } from "../../components/shared";
 import { TicketCard } from "./TicketCard";
 import { StatusBadge } from "../../components/shared";
 
-export function StudentClassDetail({ classId, userId, setScreen }) {
+export function StudentClassDetail({ classId, userId, setScreen, showToast }) {
   const [cls, setCls] = useState(null);
   const [items, setItems] = useState(null);
+  const [leaving, setLeaving] = useState(false);
 
   const load = useCallback(async () => {
     const { data: c } = await supabase.from("classes").select("name, profiles(name)").eq("id", classId).single();
@@ -68,18 +69,36 @@ export function StudentClassDetail({ classId, userId, setScreen }) {
 
   useEffect(() => { load(); }, [load]);
 
+  async function leaveClass() {
+    if (!window.confirm(`Leave "${cls.name}"? You'll lose access to its assignments, and you'll need the class code to rejoin.`)) return;
+    setLeaving(true);
+    const { error } = await supabase.from("roster").delete().eq("class_id", classId).eq("student_id", userId);
+    setLeaving(false);
+    if (error) {
+      showToast?.("Could not leave the class");
+      return;
+    }
+    showToast?.("You left the class");
+    setScreen({ name: "student-classes" });
+  }
+
   if (!cls || items === null) return <CenterSpinner />;
 
   return (
-    <div className="page">
+    <div className="page page-wide">
       <button className="back-link" onClick={() => setScreen({ name: "student-classes" })}><ArrowLeft size={14} /> My Classes</button>
 
       <PageHeader
         eyebrow="Class"
         title={cls.name}
         action={
-          <div className="class-card-teacher" style={{ marginTop: 0 }}>
-            <GraduationCap size={14} /> {cls.profiles?.name || "Unknown teacher"}
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div className="class-card-teacher" style={{ marginTop: 0 }}>
+              <GraduationCap size={14} /> {cls.profiles?.name || "Unknown teacher"}
+            </div>
+            <button className="btn-ghost" disabled={leaving} onClick={leaveClass}>
+              <LogOut size={13} /> {leaving ? "Leaving…" : "Leave class"}
+            </button>
           </div>
         }
       />
