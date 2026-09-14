@@ -100,11 +100,11 @@ export function Shell({ profile, setProfile, userId, onSignOut, screen, setScree
           <Profile profile={profile} setProfile={setProfile} userId={userId} setScreen={setScreen} showToast={showToast} />
         )}
         {screen.name === "student-classes" && !isTeacher && <StudentClasses userId={userId} setScreen={setScreen} />}
-        {screen.name === "student-class-detail" && !isTeacher && <StudentClassDetail classId={screen.classId} userId={userId} setScreen={setScreen} />}
+        {screen.name === "student-class-detail" && !isTeacher && <StudentClassDetail classId={screen.classId} userId={userId} setScreen={setScreen} showToast={showToast} />}
         {screen.name === "join" && !isTeacher && <JoinClass userId={userId} setScreen={setScreen} showToast={showToast} />}
         {screen.name === "class" && isTeacher && <ClassDetail classId={screen.classId} setScreen={setScreen} showToast={showToast} />}
         {screen.name === "assignment-teacher" && isTeacher && (
-          <AssignmentTeacher classId={screen.classId} assignmentId={screen.assignmentId} setScreen={setScreen} showToast={showToast} />
+          <AssignmentTeacher classId={screen.classId} assignmentId={screen.assignmentId} teacherId={userId} setScreen={setScreen} showToast={showToast} />
         )}
         {screen.name === "assignment-student" && !isTeacher && (
           <AssignmentOpenBridge userId={userId} classId={screen.classId} assignmentId={screen.assignmentId} setScreen={setScreen} showToast={showToast} />
