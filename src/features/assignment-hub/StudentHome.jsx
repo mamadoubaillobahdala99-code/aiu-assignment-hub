@@ -78,7 +78,7 @@ export function StudentHome({ userId, setScreen, showToast }) {
   if (items === null) return <CenterSpinner />;
 
   return (
-    <div className="page">
+    <div className="page page-wide">
       <PageHeader eyebrow="Student" title="My assignments" />
       {classCount === 0 ? (
         <EmptyState icon={<Users size={26} />} title="You haven't joined a class yet" body="Get a join code from your teacher, then join from the sidebar." />
