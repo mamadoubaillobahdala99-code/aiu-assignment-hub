@@ -205,6 +205,8 @@ body { margin: 0; }
 .sub-list { display: flex; flex-direction: column; gap: 8px; }
 .sub-row { display: flex; align-items: center; gap: 11px; background: var(--paper-raised); border: 1px solid var(--line); border-radius: 9px; padding: 11px 14px; cursor: pointer; transition: border-color .15s; }
 .sub-row:hover { border-color: var(--teal); }
+.sub-row-disabled { cursor: default; opacity: 0.7; }
+.sub-row-disabled:hover { border-color: var(--line); }
 .sub-name { flex: 1; font-weight: 500; font-size: 14px; }
 .sub-meta { font-size: 12px; color: var(--ink-soft); }
 
