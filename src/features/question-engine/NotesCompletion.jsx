@@ -13,7 +13,7 @@ import { HighlightableText } from "./HighlightableText";
 // saved with zero blanks) with a unique optionKey per segment. That
 // keeps each segment's highlights independent without needing a
 // question row that doesn't exist for the surrounding prose itself.
-export function NotesCompletion({ blocks, questions, answers, onChange, results, disabled, startNumber = 1, assignmentId, userId }) {
+export function NotesCompletion({ blocks, questions, answers, onChange, results, disabled, startNumber = 1, assignmentId, userId, correctAnswers }) {
   let blankCursor = 0;
   const anchorId = questions[0]?.id;
   const canHighlight = Boolean(assignmentId && userId && anchorId);
@@ -57,6 +57,9 @@ export function NotesCompletion({ blocks, questions, answers, onChange, results,
                 <span className={results[question.id]?.isCorrect ? "qe-result-correct" : "qe-result-incorrect"} style={{ marginLeft: 4 }}>
                   {results[question.id]?.isCorrect ? "✓" : "✗"}
                 </span>
+              )}
+              {results && !results[question.id]?.isCorrect && correctAnswers?.[question.id] && (
+                <span className="qe-review-correct-inline"> (correct: {correctAnswers[question.id]})</span>
               )}
             </span>
           )}
