@@ -3,6 +3,7 @@ import { BookOpen, Users, Plus, Check, Clock, AlertTriangle, LogOut, GraduationC
 import { supabase } from "../../supabaseClient";
 import { uid, makeCode, TYPES, fmtDate, fmtDueDateTime, daysUntil, wordCount, isPdfUrl } from "../../lib/utils";
 import { AttachmentPreview, PageHeader, EmptyState, CenterSpinner, StatusBadge } from "../../components/shared";
+import { TeacherQuestionEngineReview } from "../question-engine/TeacherQuestionEngineReview";
 
 const CRITERIA = [
   { key: "score_task_achievement", label: "Task Achievement" },
@@ -22,7 +23,10 @@ export function AssignmentTeacher({ classId, assignmentId, setScreen, showToast 
   const [assignment, setAssignment] = useState(null);
   const [roster, setRoster] = useState([]);
   const [submissions, setSubmissions] = useState([]);
+  const [isStructured, setIsStructured] = useState(false);
+  const [structuredStudentIds, setStructuredStudentIds] = useState(new Set());
   const [active, setActive] = useState(null);
+  const [activeStructuredStudent, setActiveStructuredStudent] = useState(null);
   const [gradeDraft, setGradeDraft] = useState("");
   const [criteriaDraft, setCriteriaDraft] = useState({});
   const [feedbackDraft, setFeedbackDraft] = useState("");
@@ -34,14 +38,31 @@ export function AssignmentTeacher({ classId, assignmentId, setScreen, showToast 
     setAssignment(a || null);
     const { data: r } = await supabase.from("roster").select("student_id, profiles(name)").eq("class_id", classId);
     setRoster((r || []).map((x) => ({ id: x.student_id, name: x.profiles?.name || "Unknown" })));
-    const { data: s } = await supabase.from("submissions").select("*").eq("assignment_id", assignmentId);
-    setSubmissions(s || []);
+
+    // Reliable check: assignment.type alone can't tell a Question Engine
+    // assignment apart from an old-style one — "Reading"/"Listening" are
+    // valid types in both systems. Presence of exam_sections is what
+    // actually distinguishes them (same check AssignmentOpenBridge uses).
+    const { count: sectionCount } = await supabase
+      .from("exam_sections")
+      .select("id", { count: "exact", head: true })
+      .eq("assignment_id", assignmentId);
+    const structured = (sectionCount || 0) > 0;
+    setIsStructured(structured);
+
+    if (structured) {
+      const { data: sa } = await supabase.from("student_answers").select("student_id").eq("assignment_id", assignmentId);
+      setStructuredStudentIds(new Set((sa || []).map((row) => row.student_id)));
+      setSubmissions([]);
+    } else {
+      const { data: s } = await supabase.from("submissions").select("*").eq("assignment_id", assignmentId);
+      setSubmissions(s || []);
+    }
   }, [classId, assignmentId]);
 
   useEffect(() => { load(); }, [load]);
 
   const isWritingType = assignment?.type === "Writing Task 1" || assignment?.type === "Writing Task 2";
-  const isStructured = assignment?.type === "Reading" || assignment?.type === "Listening";
 
   function openGrade(student) {
     const sub = submissions.find((s) => s.student_id === student.id);
@@ -109,8 +130,55 @@ export function AssignmentTeacher({ classId, assignmentId, setScreen, showToast 
   }
 
   if (!assignment) return <CenterSpinner />;
+
+  if (activeStructuredStudent) {
+    return (
+      <TeacherQuestionEngineReview
+        assignmentId={assignmentId}
+        studentId={activeStructuredStudent.id}
+        studentName={activeStructuredStudent.name}
+        onBack={() => setActiveStructuredStudent(null)}
+        showToast={showToast}
+      />
+    );
+  }
+
   const meta = TYPES[assignment.type] || TYPES.Other;
   const Icon = meta.icon;
+
+  // Two groups, per Phase 25 — submitted students first, not-submitted
+  // after, instead of one flat list.
+  const submittedRoster = roster.filter((s) => (isStructured ? structuredStudentIds.has(s.id) : Boolean(submissions.find((x) => x.student_id === s.id)?.submitted_at)));
+  const notSubmittedRoster = roster.filter((s) => !submittedRoster.includes(s));
+
+  function statusFor(student) {
+    if (isStructured) return structuredStudentIds.has(student.id) ? "submitted" : "pending";
+    const sub = submissions.find((x) => x.student_id === student.id);
+    if (sub?.grade) return "graded";
+    if (sub?.submitted_at) return "submitted";
+    if (sub?.started_at) return "in-progress";
+    return "pending";
+  }
+
+  function handleRowClick(student) {
+    if (isStructured) {
+      if (structuredStudentIds.has(student.id)) setActiveStructuredStudent(student);
+      return;
+    }
+    openGrade(student);
+  }
+
+  function renderRow(s) {
+    const clickable = isStructured ? structuredStudentIds.has(s.id) : true;
+    return (
+      <div key={s.id} className={`sub-row ${clickable ? "" : "sub-row-disabled"}`} onClick={clickable ? () => handleRowClick(s) : undefined}>
+        <div className="avatar small">{s.name.slice(0, 1).toUpperCase()}</div>
+        <div className="sub-name">{s.name}</div>
+        <StatusBadge status={statusFor(s)} />
+        {clickable && <ChevronRight size={15} className="chev" />}
+      </div>
+    );
+  }
 
   return (
     <div className="page">
@@ -122,7 +190,7 @@ export function AssignmentTeacher({ classId, assignmentId, setScreen, showToast 
               className="btn-ghost"
               onClick={() =>
                 setScreen({
-                  name: assignment.type === "Reading" ? "reading-builder" : "listening-builder",
+                  name: assignment.type === "Listening" ? "listening-builder" : "reading-builder",
                   classId,
                   editAssignmentId: assignmentId,
                 })
@@ -146,29 +214,26 @@ export function AssignmentTeacher({ classId, assignmentId, setScreen, showToast 
         </div>
       </div>
       <AttachmentPreview url={assignment.image_url} />
-      {assignment.description && <p className="asg-desc">{assignment.description}</p>}
+      {assignment.description && !isStructured && <p className="asg-desc">{assignment.description}</p>}
 
-      <h3 className="section-title">Submissions</h3>
       {roster.length === 0 ? (
         <EmptyState icon={<Users size={24} />} title="No students in this class yet" />
       ) : (
-        <div className="sub-list">
-          {roster.map((s) => {
-            const sub = submissions.find((x) => x.student_id === s.id);
-            let status = "pending";
-            if (sub?.grade) status = "graded";
-            else if (sub?.submitted_at) status = "submitted";
-            else if (sub?.started_at) status = "in-progress";
-            return (
-              <div key={s.id} className="sub-row" onClick={() => openGrade(s)}>
-                <div className="avatar small">{s.name.slice(0, 1).toUpperCase()}</div>
-                <div className="sub-name">{s.name}</div>
-                <StatusBadge status={status} />
-                <ChevronRight size={15} className="chev" />
-              </div>
-            );
-          })}
-        </div>
+        <>
+          <h3 className="section-title">Submitted ({submittedRoster.length})</h3>
+          {submittedRoster.length === 0 ? (
+            <p className="empty-inline">No submissions yet.</p>
+          ) : (
+            <div className="sub-list">{submittedRoster.map(renderRow)}</div>
+          )}
+
+          <h3 className="section-title" style={{ marginTop: 22 }}>Not submitted ({notSubmittedRoster.length})</h3>
+          {notSubmittedRoster.length === 0 ? (
+            <p className="empty-inline">Everyone has submitted.</p>
+          ) : (
+            <div className="sub-list">{notSubmittedRoster.map(renderRow)}</div>
+          )}
+        </>
       )}
 
       {active && (() => {
