@@ -1,5 +1,4 @@
-
-.qe-review-shell { max-width: 900px; margin: 0 auto; padding: 8px 0 60px; }
+.qe-review-shell { max-width: 760px; margin: 0 auto; padding: 8px 0 60px; }
 .qe-review-header { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin: 20px 0 16px; flex-wrap: wrap; }
 .qe-review-counts { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; font-size: 13.5px; flex-wrap: wrap; }
 .qe-review-nav { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 24px; }
