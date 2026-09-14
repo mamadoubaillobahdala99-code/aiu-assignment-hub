@@ -49,7 +49,57 @@ export function TeacherDashboard({ userId, setScreen }) {
       .select("class_id, student_id, profiles(name)")
       .in("class_id", classIds);
 
-    setData({ classes: classes || [], assignments: assignments || [], submissions: submissions || [], roster: roster || [] });
+    // Question Engine assignments (Reading/Listening built with the
+    // structured builder) never write to `submissions` — same root
+    // cause as the student dashboard bug, fixed the same way: detect
+    // them via exam_sections, then synthesize submission-shaped rows
+    // from student_answers/exam_attempts/assignment_feedback so every
+    // stat and list below (already written against the `submissions`
+    // shape) works correctly without being rewritten.
+    const { data: qeSections } = assignmentIds.length
+      ? await supabase.from("exam_sections").select("assignment_id").in("assignment_id", assignmentIds)
+      : { data: [] };
+    const qeAssignmentIds = new Set((qeSections || []).map((s) => s.assignment_id));
+
+    let qeSubmissions = [];
+    if (qeAssignmentIds.size > 0) {
+      const qeIds = [...qeAssignmentIds];
+      const nameByStudent = new Map((roster || []).map((r) => [r.student_id, r.profiles?.name || "Unknown"]));
+      const autoReleaseByAssignment = new Map((assignments || []).map((a) => [a.id, a.auto_release_score]));
+
+      const { data: answers } = await supabase.from("student_answers").select("assignment_id, student_id, answered_at").in("assignment_id", qeIds);
+      const { data: attempts } = await supabase.from("exam_attempts").select("assignment_id, student_id, started_at").in("assignment_id", qeIds);
+      const { data: feedbackRows } = await supabase.from("assignment_feedback").select("assignment_id, student_id, released_at").in("assignment_id", qeIds);
+
+      const submittedAtByPair = new Map(); // `${assignmentId}:${studentId}` -> latest answered_at
+      for (const row of answers || []) {
+        const key = `${row.assignment_id}:${row.student_id}`;
+        const existing = submittedAtByPair.get(key);
+        if (!existing || new Date(row.answered_at) > new Date(existing)) submittedAtByPair.set(key, row.answered_at);
+      }
+      const startedAtByPair = new Map((attempts || []).map((row) => [`${row.assignment_id}:${row.student_id}`, row.started_at]));
+      const releasedByPair = new Set((feedbackRows || []).filter((row) => row.released_at).map((row) => `${row.assignment_id}:${row.student_id}`));
+
+      const pairKeys = new Set([...submittedAtByPair.keys(), ...startedAtByPair.keys()]);
+      qeSubmissions = [...pairKeys].map((key) => {
+        const [assignmentId, studentId] = key.split(":");
+        const submittedAt = submittedAtByPair.get(key) || null;
+        const isReleased = autoReleaseByAssignment.get(assignmentId) || releasedByPair.has(key);
+        return {
+          id: `qe-${key}`,
+          assignment_id: assignmentId,
+          student_id: studentId,
+          started_at: startedAtByPair.get(key) || null,
+          submitted_at: submittedAt,
+          grade: submittedAt && isReleased ? "auto" : null,
+          profiles: { name: nameByStudent.get(studentId) || "Unknown" },
+        };
+      });
+    }
+
+    const allSubmissions = [...(submissions || []), ...qeSubmissions];
+
+    setData({ classes: classes || [], assignments: assignments || [], submissions: allSubmissions, roster: roster || [] });
     setLoading(false);
   }, [userId]);
 
