@@ -1,4 +1,3 @@
-
 import React from "react";
 import { Check, X as XIcon } from "lucide-react";
 import { HighlightableText } from "./HighlightableText";
@@ -12,6 +11,12 @@ export function MatchingGrid({ questions, answers, onChange, results, disabled, 
 
   return (
     <div className="qe-matching-wrap">
+      <ul className="qe-matching-legend">
+        {choices.map((c) => (
+          <li key={c.letter}><strong>{c.letter}.</strong> {c.text}</li>
+        ))}
+      </ul>
+
       <table className="qe-matching-grid">
         <thead>
           <tr>
@@ -59,12 +64,6 @@ export function MatchingGrid({ questions, answers, onChange, results, disabled, 
           })}
         </tbody>
       </table>
-
-      <ul className="qe-matching-legend">
-        {choices.map((c) => (
-          <li key={c.letter}><strong>{c.letter}.</strong> {c.text}</li>
-        ))}
-      </ul>
     </div>
   );
 }
