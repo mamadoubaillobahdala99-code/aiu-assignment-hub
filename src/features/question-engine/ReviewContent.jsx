@@ -1,10 +1,11 @@
-
 import React from "react";
 import { Check, X as XIcon } from "lucide-react";
 import { QuestionRenderer } from "./QuestionRenderer";
 import { SummaryCompletion } from "./SummaryCompletion";
 import { NotesCompletion } from "./NotesCompletion";
 import { TableCompletion } from "./TableCompletion";
+import { SentenceCompletion } from "./SentenceCompletion";
+import { MatchingGrid } from "./MatchingGrid";
 import { parseCompletionPayload } from "./bulkParse";
 
 // showCorrectAnswers: when false, only ✓/✗ is shown — never the actual
@@ -35,8 +36,21 @@ export function ReviewContent({ sections, answersByQ, resultsByQ, correctAnswers
                   };
                   if (payload.style === "notes") return <NotesCompletion blocks={payload.blocks || []} {...commonProps} />;
                   if (payload.style === "table") return <TableCompletion headers={payload.headers || []} rows={payload.rows || []} {...commonProps} />;
+                  if (payload.style === "sentences") return <SentenceCompletion sentences={payload.sentences || []} {...commonProps} />;
                   return <SummaryCompletion text={payload.text} {...commonProps} />;
                 })()
+              ) : group.questions[0]?.type?.startsWith("matching_") ? (
+                <MatchingGrid
+                  questions={group.questions}
+                  answers={answersByQ}
+                  onChange={() => {}}
+                  results={resultsByQ}
+                  disabled
+                  startNumber={group.startNumber}
+                  assignmentId={assignmentId}
+                  userId={viewerUserId}
+                  correctAnswers={correctMap}
+                />
               ) : (
                 group.questions.map((q, i) => {
                   const num = group.startNumber + i;
