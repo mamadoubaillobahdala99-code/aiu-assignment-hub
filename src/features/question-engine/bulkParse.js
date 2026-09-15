@@ -81,6 +81,35 @@ export function parseBulkMultipleChoice(text) {
 // are almost always short; real sentences usually aren't). Always
 // left editable by the teacher — this is only ever a starting point.
 
+// ---------- Question numbering slots ----------
+// Most questions occupy exactly one number. A "choose N letters"
+// multiple_selection question occupies N numbers on the answer sheet
+// (e.g. "Questions 22-23" for a 2-letter pick) — one set of checkboxes,
+// but N numbered slots, matching how real IELTS answer sheets work.
+// Every screen that numbers questions uses this same function, so the
+// running count can never drift apart between them.
+
+export function questionSlotCount(question) {
+  if (question?.type === "multiple_selection") {
+    return question?.options?.required_count || 1;
+  }
+  return 1;
+}
+
+// Given a list of questions and the number the first one starts at,
+// returns each question's actual number (accounting for any earlier
+// multi-slot questions), the group's overall start/end, and the number
+// the *next* group should start at.
+export function numberQuestions(questions, startNumber) {
+  const numbers = [];
+  let n = startNumber;
+  for (const q of questions) {
+    numbers.push(n);
+    n += questionSlotCount(q);
+  }
+  return { start: startNumber, end: Math.max(startNumber, n - 1), numbers, nextStart: n };
+}
+
 export function guessPassageTitle(text) {
   const lines = text.split("\n");
   const firstLine = (lines[0] || "").trim();
