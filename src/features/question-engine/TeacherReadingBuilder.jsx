@@ -46,7 +46,6 @@ export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast
         setTimeLimit(a.time_limit_minutes ? String(a.time_limit_minutes) : "");
         setAutoReleaseScore(a.auto_release_score ?? true);
         setShowAnswerReview(a.show_answer_review ?? true);
-        setReadingTestType(a.reading_test_type || "academic");
       }
       const { count } = await supabase.from("student_answers").select("id", { count: "exact", head: true }).eq("assignment_id", editAssignmentId);
       setExistingAnswerCount(count || 0);
