@@ -187,11 +187,64 @@ export function parseCompletionPayload(raw) {
   if (!raw) return { style: "paragraph", text: "" };
   try {
     const parsed = JSON.parse(raw);
-    if (parsed && typeof parsed === "object" && (parsed.style === "notes" || parsed.style === "table")) {
+    if (parsed && typeof parsed === "object" && (parsed.style === "notes" || parsed.style === "table" || parsed.style === "sentences")) {
       return parsed;
     }
   } catch {
     // Not JSON — this is the existing plain-paragraph format.
   }
   return { style: "paragraph", text: raw };
+}
+
+// ---------- Matching family (Headings / Information / Features / Sentence Endings) ----------
+// Two independent paste steps, teacher-facing:
+//  1. The shared option bank — one option per line, auto-labelled in
+//     order (roman numerals for Headings, letters for everything else).
+//  2. The items to match — reuses the exact same numbers→blocks→lines
+//     fallback chain already proven for True/False, since it's the
+//     same underlying problem ("how many separate things are there").
+// Both stay fully editable before anything is created.
+
+const ROMAN_NUMERALS = ["i", "ii", "iii", "iv", "v", "vi", "vii", "viii", "ix", "x", "xi", "xii", "xiii", "xiv", "xv", "xvi"];
+
+export function parseMatchingOptions(text, labelStyle) {
+  const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
+  return lines.map((line, i) => ({
+    letter: labelStyle === "roman" ? ROMAN_NUMERALS[i] || String(i + 1) : String.fromCharCode(65 + i),
+    text: line,
+  }));
+}
+
+export function parseMatchingItems(text) {
+  // Same fallback chain as True/False bulk paste — numbered lines,
+  // then blank-line blocks, then one per line.
+  return parseBulkTrueFalse(text).items;
+}
+
+export function defaultInstructionForMatching(matchingType, options) {
+  const bank = (options?.choices || []).map((c) => c.text).join(", ");
+  if (matchingType === "matching_headings") {
+    return `Choose the correct heading for each paragraph from the list of headings below.`;
+  }
+  if (matchingType === "matching_information") {
+    return `Which paragraph contains the following information? Write the correct letter in the box.`;
+  }
+  if (matchingType === "matching_features") {
+    return `Match each statement with the correct option. You may use any letter more than once.`;
+  }
+  if (matchingType === "matching_sentence_endings") {
+    return `Complete each sentence with the correct ending from the box below.`;
+  }
+  return "";
+}
+
+// ---------- Sentence Completion ----------
+// Deliberately no syntax to remember — unlike Notes, which needs "- "
+// for a bullet, here every non-empty pasted line is automatically its
+// own separate numbered sentence. Simplest possible paste for the
+// teacher: one sentence per line, each with its own ___ blank(s).
+
+export function parseSentenceCompletion(text) {
+  const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
+  return lines;
 }
