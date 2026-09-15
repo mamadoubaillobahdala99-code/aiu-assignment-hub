@@ -5,6 +5,8 @@ import { QuestionRenderer } from "./QuestionRenderer";
 import { SummaryCompletion } from "./SummaryCompletion";
 import { NotesCompletion } from "./NotesCompletion";
 import { TableCompletion } from "./TableCompletion";
+import { SentenceCompletion } from "./SentenceCompletion";
+import { MatchingGrid } from "./MatchingGrid";
 import { AudioPlayer } from "./AudioPlayer";
 import { parseCompletionPayload } from "./bulkParse";
 import { HighlightableText } from "./HighlightableText";
@@ -245,8 +247,20 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
               };
               if (payload.style === "notes") return <NotesCompletion blocks={payload.blocks || []} {...commonProps} />;
               if (payload.style === "table") return <TableCompletion headers={payload.headers || []} rows={payload.rows || []} {...commonProps} />;
+              if (payload.style === "sentences") return <SentenceCompletion sentences={payload.sentences || []} {...commonProps} />;
               return <SummaryCompletion text={payload.text} {...commonProps} />;
             })()
+          ) : group.questions[0]?.type?.startsWith("matching_") ? (
+            <MatchingGrid
+              questions={group.questions}
+              answers={answers}
+              onChange={(qid, val) => setAnswers((prev) => ({ ...prev, [qid]: val }))}
+              results={results}
+              disabled={results !== null}
+              startNumber={group.startNumber}
+              assignmentId={assignmentId}
+              userId={userId}
+            />
           ) : (
             group.questions.map((q, i) => (
               <div key={q.id} id={`question-${group.startNumber + i}`} className="qe-numbered-question">
