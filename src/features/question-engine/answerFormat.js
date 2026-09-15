@@ -1,4 +1,3 @@
-
 const TFNG_LABELS = {
   true_false: { positive: "True", negative: "False", not_given: "Not Given" },
   yes_no: { positive: "Yes", negative: "No", not_given: "Not Given" },
@@ -16,7 +15,7 @@ export function formatAnswerValue(question, value) {
     return labels[value] || value;
   }
 
-  if (question.type === "multiple_choice") {
+  if (question.type === "multiple_choice" || question.type.startsWith("matching_")) {
     const choice = question.options?.choices?.find((c) => c.letter === value);
     return choice ? `${value}. ${choice.text}` : String(value);
   }
