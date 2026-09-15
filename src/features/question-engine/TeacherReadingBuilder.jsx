@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from "react";
 import { Plus, X, Check } from "lucide-react";
 import { supabase } from "../../supabaseClient";
 import { TeacherQuestionForm } from "./TeacherQuestionForm";
-import { guessPassageTitle, defaultInstructionFor, parseNotesMarkdown, countBlanksInTexts, parseCompletionPayload, parseSentenceCompletion } from "./bulkParse";
+import { guessPassageTitle, defaultInstructionFor, parseNotesMarkdown, countBlanksInTexts, parseCompletionPayload, parseSentenceCompletion, numberQuestions } from "./bulkParse";
 import { SentenceCompletion } from "./SentenceCompletion";
 import { NotesCompletion } from "./NotesCompletion";
 import { TableCompletion } from "./TableCompletion";
@@ -164,9 +164,9 @@ export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast
     for (const part of parts) {
       const perGroup = [];
       for (const group of part.groups) {
-        const start = counter + 1;
-        counter += group.questions.length;
-        perGroup.push({ start, end: counter });
+        const { start, end, numbers, nextStart } = numberQuestions(group.questions, counter + 1);
+        counter = nextStart - 1;
+        perGroup.push({ start, end, numbers });
       }
       perPart.push(perGroup);
     }
@@ -421,7 +421,7 @@ export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
                 <span className="qe-group-heading-preview">
                   {group.questions.length > 0
-                    ? group.questions.length === 1
+                    ? numbering[pi][gi].start === numbering[pi][gi].end
                       ? `Question ${numbering[pi][gi].start}`
                       : `Questions ${numbering[pi][gi].start}-${numbering[pi][gi].end}`
                     : "New group"}
@@ -518,7 +518,7 @@ export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast
                     ) : (
                       <div className="qe-question-list">
                         {group.questions.map((q, i) => (
-                          <div key={q.id} className="qe-question-row"><Check size={14} className="qe-question-check" /><span>{numbering[pi][gi].start + i}. {q.prompt}</span></div>
+                          <div key={q.id} className="qe-question-row"><Check size={14} className="qe-question-check" /><span>{numbering[pi][gi].numbers[i]}. {q.prompt}</span></div>
                         ))}
                       </div>
                     )}
@@ -880,40 +880,38 @@ export function TableCompletionBuilder({ group, teacherId, skill = "reading", on
         Add rows and columns. Inside a cell, start a line with "- " for a bullet, and use ___ for a blank.
       </p>
 
-      <div style={{ overflowX: "auto" }}>
-        <table className="qe-table-builder-grid">
-          <thead>
-            <tr>
-              <th></th>
-              {headers.map((h, ci) => (
-                <th key={ci}>
-                  <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
-                    <input className="field-input" value={h} onChange={(e) => updateHeader(ci, e.target.value)} />
-                    {headers.length > 1 && <button type="button" className="btn-ghost" onClick={() => removeColumn(ci)}><X size={12} /></button>}
-                  </div>
-                </th>
+      <table className="qe-table-builder-grid">
+        <thead>
+          <tr>
+            <th></th>
+            {headers.map((h, ci) => (
+              <th key={ci}>
+                <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                  <input className="field-input" value={h} onChange={(e) => updateHeader(ci, e.target.value)} />
+                  {headers.length > 1 && <button type="button" className="btn-ghost" onClick={() => removeColumn(ci)}><X size={12} /></button>}
+                </div>
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, ri) => (
+            <tr key={ri}>
+              <th>
+                <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                  <input className="field-input" placeholder="Row label" value={row.label} onChange={(e) => updateRowLabel(ri, e.target.value)} />
+                  {rows.length > 1 && <button type="button" className="btn-ghost" onClick={() => removeRow(ri)}><X size={12} /></button>}
+                </div>
+              </th>
+              {row.cells.map((cell, ci) => (
+                <td key={ci}>
+                  <textarea className="field-input" style={{ minHeight: 60, width: "100%", boxSizing: "border-box" }} value={cell} onChange={(e) => updateCell(ri, ci, e.target.value)} />
+                </td>
               ))}
             </tr>
-          </thead>
-          <tbody>
-            {rows.map((row, ri) => (
-              <tr key={ri}>
-                <th>
-                  <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
-                    <input className="field-input" placeholder="Row label" value={row.label} onChange={(e) => updateRowLabel(ri, e.target.value)} />
-                    {rows.length > 1 && <button type="button" className="btn-ghost" onClick={() => removeRow(ri)}><X size={12} /></button>}
-                  </div>
-                </th>
-                {row.cells.map((cell, ci) => (
-                  <td key={ci}>
-                    <textarea className="field-input" style={{ minHeight: 60, minWidth: 180 }} value={cell} onChange={(e) => updateCell(ri, ci, e.target.value)} />
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+          ))}
+        </tbody>
+      </table>
 
       <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
         <button type="button" className="btn-ghost" onClick={addRow}><Plus size={13} /> Add row</button>
