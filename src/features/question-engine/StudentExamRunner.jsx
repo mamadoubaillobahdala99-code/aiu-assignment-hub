@@ -8,7 +8,7 @@ import { TableCompletion } from "./TableCompletion";
 import { SentenceCompletion } from "./SentenceCompletion";
 import { MatchingGrid } from "./MatchingGrid";
 import { AudioPlayer } from "./AudioPlayer";
-import { parseCompletionPayload } from "./bulkParse";
+import { parseCompletionPayload, numberQuestions } from "./bulkParse";
 import { HighlightableText } from "./HighlightableText";
 
 // The countdown is backed by exam_attempts.started_at on the server, so
@@ -81,9 +81,9 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
           .eq("group_id", g.id)
           .order("order_index");
         const questions = (links || []).map((l) => l.questions);
-        const startNumber = globalCounter + 1;
-        globalCounter += questions.length;
-        groups.push({ id: g.id, instruction: g.instruction, passageText: g.passage_text, questions, startNumber, endNumber: globalCounter });
+        const { start: startNumber, end: endNumber, numbers: questionNumbers, nextStart } = numberQuestions(questions, globalCounter + 1);
+        globalCounter = nextStart - 1;
+        groups.push({ id: g.id, instruction: g.instruction, passageText: g.passage_text, questions, startNumber, endNumber, questionNumbers });
       }
       built.push({ id: s.id, title: s.title, passageTitle: s.passage_title, passageText: s.passage_text, audioUrl: s.audio_url, maxPlays: s.max_plays, groups });
     }
@@ -230,7 +230,7 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
       {activeSection.groups.map((group) => (
         <div key={group.id} className="qe-group-block">
           <div className="qe-group-heading">
-            {group.questions.length === 1 ? `Question ${group.startNumber}` : `Questions ${group.startNumber}-${group.endNumber}`}
+            {group.startNumber === group.endNumber ? `Question ${group.startNumber}` : `Questions ${group.startNumber}-${group.endNumber}`}
           </div>
           {group.instruction && <p className="qe-section-instruction">{group.instruction}</p>}
 
@@ -265,8 +265,8 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
             />
           ) : (
             group.questions.map((q, i) => (
-              <div key={q.id} id={`question-${group.startNumber + i}`} className="qe-numbered-question">
-                <span className="rf-answer-num qe-question-badge">{group.startNumber + i}</span>
+              <div key={q.id} id={`question-${group.questionNumbers[i]}`} className="qe-numbered-question">
+                <span className="rf-answer-num qe-question-badge">{group.questionNumbers[i]}</span>
                 <div style={{ flex: 1 }}>
                   <QuestionRenderer
                     question={q}
@@ -368,7 +368,7 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
               <div className="qe-nav-active-part">
                 <span className="qe-nav-part-label">{s.title}</span>
                 <div className="qe-nav-numbers">
-                  {s.groups.flatMap((group) => Array.from({ length: group.questions.length }, (_, idx) => group.startNumber + idx)).map((num) => (
+                  {s.groups.flatMap((group) => group.questionNumbers).map((num) => (
                     <button
                       key={num}
                       className={`qe-question-nav-item ${num === visibleNum ? "qe-nav-item-visible" : ""}`}
