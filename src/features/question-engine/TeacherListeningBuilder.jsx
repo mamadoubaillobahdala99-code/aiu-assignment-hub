@@ -4,7 +4,7 @@ import { supabase } from "../../supabaseClient";
 import { TeacherQuestionForm } from "./TeacherQuestionForm";
 import { defaultInstructionFor } from "./bulkParse";
 import { AudioFilePicker } from "./AudioFilePicker";
-import { SummaryCompletionBuilder, NotesCompletionBuilder, TableCompletionBuilder } from "./TeacherReadingBuilder";
+import { SummaryCompletionBuilder, NotesCompletionBuilder, TableCompletionBuilder, SentenceCompletionBuilder } from "./TeacherReadingBuilder";
 
 const MAX_LISTENING_PARTS = 4;
 
@@ -416,6 +416,7 @@ export function TeacherListeningBuilder({ classId, teacherId, setScreen, showToa
                         <button type="button" className={`type-chip ${group.completionStyle === "paragraph" ? "active" : ""}`} onClick={() => setCompletionStyle(part.localId, group.localId, "paragraph")}>Plain text</button>
                         <button type="button" className={`type-chip ${group.completionStyle === "notes" ? "active" : ""}`} onClick={() => setCompletionStyle(part.localId, group.localId, "notes")}>Notes</button>
                         <button type="button" className={`type-chip ${group.completionStyle === "table" ? "active" : ""}`} onClick={() => setCompletionStyle(part.localId, group.localId, "table")}>Table</button>
+                        <button type="button" className={`type-chip ${group.completionStyle === "sentences" ? "active" : ""}`} onClick={() => setCompletionStyle(part.localId, group.localId, "sentences")}>Sentences</button>
                       </div>
                     </>
                   )}
@@ -433,6 +434,14 @@ export function TeacherListeningBuilder({ classId, teacherId, setScreen, showToa
                   />
                 ) : group.completionStyle === "table" ? (
                   <TableCompletionBuilder
+                    group={group}
+                    teacherId={teacherId}
+                    skill="listening"
+                    onSummaryTextChange={(text) => updateSummaryText(part.localId, group.localId, text)}
+                    onBlanksCreated={(questions) => onBlanksCreated(part.localId, group.localId, questions)}
+                  />
+                ) : group.completionStyle === "sentences" ? (
+                  <SentenceCompletionBuilder
                     group={group}
                     teacherId={teacherId}
                     skill="listening"
