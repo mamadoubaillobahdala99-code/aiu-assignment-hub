@@ -28,3 +28,7 @@
 .qe-feedback-teacher-note .field-label { color: var(--info); }
 .qe-feedback-content { background: var(--paper-raised); border: 1px solid var(--line); border-radius: 14px; padding: 24px 28px; }
 .qe-feedback-locked { text-align: center; padding: 60px 20px; color: var(--ink-soft); }
+
+.qe-review-passage { margin: 10px 0 18px; }
+.qe-review-passage-text { margin-top: 10px; padding: 14px 16px; background: var(--paper); border: 1px solid var(--line); border-radius: 10px; font-size: 14px; line-height: 1.7; }
+.qe-review-passage-text h4 { margin: 0 0 8px; font-family: 'Fraunces', serif; }
