@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { ArrowLeft } from "lucide-react";
 import { supabase } from "../../supabaseClient";
@@ -28,7 +27,7 @@ export function StudentQuestionEngineFeedback({ assignmentId, userId, setScreen 
 
     const { data: sectionRows } = await supabase
       .from("exam_sections")
-      .select("id, title, order_index")
+      .select("id, title, passage_title, passage_text, audio_url, max_plays, order_index")
       .eq("assignment_id", assignmentId)
       .order("order_index");
 
@@ -53,7 +52,7 @@ export function StudentQuestionEngineFeedback({ assignmentId, userId, setScreen 
         globalCounter += questions.length;
         groups.push({ id: g.id, instruction: g.instruction, passageText: g.passage_text, questions, startNumber, endNumber: globalCounter });
       }
-      built.push({ id: s.id, title: s.title, groups });
+      built.push({ id: s.id, title: s.title, passageTitle: s.passage_title, passageText: s.passage_text, audioUrl: s.audio_url, maxPlays: s.max_plays, groups });
     }
     setSections(built);
 
