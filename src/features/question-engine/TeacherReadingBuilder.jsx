@@ -2,12 +2,14 @@ import React, { useState, useMemo, useEffect } from "react";
 import { Plus, X, Check } from "lucide-react";
 import { supabase } from "../../supabaseClient";
 import { TeacherQuestionForm } from "./TeacherQuestionForm";
-import { guessPassageTitle, defaultInstructionFor, parseNotesMarkdown, countBlanksInTexts, parseCompletionPayload } from "./bulkParse";
+import { guessPassageTitle, defaultInstructionFor, parseNotesMarkdown, countBlanksInTexts, parseCompletionPayload, parseSentenceCompletion } from "./bulkParse";
+import { SentenceCompletion } from "./SentenceCompletion";
 import { NotesCompletion } from "./NotesCompletion";
 import { TableCompletion } from "./TableCompletion";
+import { MatchingBuilder } from "./MatchingBuilder";
 
 function newGroup() {
-  return { localId: crypto.randomUUID(), instruction: "", mode: "questions", completionStyle: "paragraph", questions: [], summaryText: "" };
+  return { localId: crypto.randomUUID(), instruction: "", mode: "questions", completionStyle: "paragraph", matchingType: "matching_information", questions: [], summaryText: "" };
 }
 function newPart() {
   return { localId: crypto.randomUUID(), passageText: "", passageTitle: "", titleTouched: false, groups: [newGroup()] };
@@ -112,6 +114,15 @@ export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast
         p.localId !== partLocalId
           ? p
           : { ...p, groups: p.groups.map((g) => (g.localId === groupLocalId ? { ...g, completionStyle, questions: [], summaryText: "" } : g)) }
+      )
+    );
+  }
+  function setMatchingType(partLocalId, groupLocalId, matchingType) {
+    setParts((prev) =>
+      prev.map((p) =>
+        p.localId !== partLocalId
+          ? p
+          : { ...p, groups: p.groups.map((g) => (g.localId === groupLocalId ? { ...g, matchingType, questions: [] } : g)) }
       )
     );
   }
@@ -434,6 +445,7 @@ export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast
                   <div className="type-row">
                     <button type="button" className={`type-chip ${group.mode === "questions" ? "active" : ""}`} onClick={() => setGroupMode(part.localId, group.localId, "questions")}>Question list</button>
                     <button type="button" className={`type-chip ${group.mode === "completion" ? "active" : ""}`} onClick={() => setGroupMode(part.localId, group.localId, "completion")}>Summary Completion</button>
+                    <button type="button" className={`type-chip ${group.mode === "matching" ? "active" : ""}`} onClick={() => setGroupMode(part.localId, group.localId, "matching")}>Matching</button>
                   </div>
 
                   {group.mode === "completion" && (
@@ -443,13 +455,33 @@ export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast
                         <button type="button" className={`type-chip ${group.completionStyle === "paragraph" ? "active" : ""}`} onClick={() => setCompletionStyle(part.localId, group.localId, "paragraph")}>Plain text</button>
                         <button type="button" className={`type-chip ${group.completionStyle === "notes" ? "active" : ""}`} onClick={() => setCompletionStyle(part.localId, group.localId, "notes")}>Notes</button>
                         <button type="button" className={`type-chip ${group.completionStyle === "table" ? "active" : ""}`} onClick={() => setCompletionStyle(part.localId, group.localId, "table")}>Table</button>
+                        <button type="button" className={`type-chip ${group.completionStyle === "sentences" ? "active" : ""}`} onClick={() => setCompletionStyle(part.localId, group.localId, "sentences")}>Sentences</button>
+                      </div>
+                    </>
+                  )}
+
+                  {group.mode === "matching" && (
+                    <>
+                      <label className="field-label" style={{ marginTop: 14 }}>Matching type</label>
+                      <div className="type-row">
+                        <button type="button" className={`type-chip ${group.matchingType === "matching_headings" ? "active" : ""}`} onClick={() => setMatchingType(part.localId, group.localId, "matching_headings")}>Headings</button>
+                        <button type="button" className={`type-chip ${group.matchingType === "matching_information" ? "active" : ""}`} onClick={() => setMatchingType(part.localId, group.localId, "matching_information")}>Information</button>
+                        <button type="button" className={`type-chip ${group.matchingType === "matching_features" ? "active" : ""}`} onClick={() => setMatchingType(part.localId, group.localId, "matching_features")}>Features</button>
+                        <button type="button" className={`type-chip ${group.matchingType === "matching_sentence_endings" ? "active" : ""}`} onClick={() => setMatchingType(part.localId, group.localId, "matching_sentence_endings")}>Sentence Endings</button>
                       </div>
                     </>
                   )}
                 </>
               )}
 
-              {group.mode === "completion" ? (
+              {group.mode === "matching" ? (
+                <MatchingBuilder
+                  group={group}
+                  teacherId={teacherId}
+                  matchingType={group.matchingType}
+                  onQuestionsCreated={(questions) => onBlanksCreated(part.localId, group.localId, questions)}
+                />
+              ) : group.mode === "completion" ? (
                 group.completionStyle === "notes" ? (
                   <NotesCompletionBuilder
                     group={group}
@@ -459,6 +491,13 @@ export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast
                   />
                 ) : group.completionStyle === "table" ? (
                   <TableCompletionBuilder
+                    group={group}
+                    teacherId={teacherId}
+                    onSummaryTextChange={(text) => updateSummaryText(part.localId, group.localId, text)}
+                    onBlanksCreated={(questions) => onBlanksCreated(part.localId, group.localId, questions)}
+                  />
+                ) : group.completionStyle === "sentences" ? (
+                  <SentenceCompletionBuilder
                     group={group}
                     teacherId={teacherId}
                     onSummaryTextChange={(text) => updateSummaryText(part.localId, group.localId, text)}
@@ -881,6 +920,97 @@ export function TableCompletionBuilder({ group, teacherId, skill = "reading", on
         <button type="button" className="btn-ghost" onClick={addRow}><Plus size={13} /> Add row</button>
         <button type="button" className="btn-ghost" onClick={addColumn}><Plus size={13} /> Add column</button>
       </div>
+
+      {blankCount > 0 && (
+        <div className="qe-bulk-preview">
+          <div className="field-label" style={{ marginTop: 14 }}>{blankCount} blank{blankCount > 1 ? "s" : ""} detected — enter the accepted answer(s) for each</div>
+          {Array.from({ length: blankCount }).map((_, i) => (
+            <div key={i} className="qe-bulk-row">
+              <div className="qe-bulk-text">Blank {i + 1}</div>
+              <input className="field-input" placeholder="e.g. prosperity, size (comma-separated if more than one is accepted)" value={accepted[i] || ""} onChange={(e) => setAccepted((prev) => ({ ...prev, [i]: e.target.value }))} />
+            </div>
+          ))}
+        </div>
+      )}
+
+      {error && <div className="field-error">{error}</div>}
+
+      <button className="btn-primary" style={{ marginTop: 16 }} disabled={!allFilled || busy} onClick={createBlanks}>
+        {busy ? "Saving…" : `Save ${blankCount || ""} blank${blankCount > 1 ? "s" : ""}`}
+      </button>
+    </div>
+  );
+}
+
+// ---------- Sentence Completion builder, local to this file ----------
+// No syntax to remember, unlike Notes — every pasted non-empty line is
+// automatically its own separate numbered sentence.
+export function SentenceCompletionBuilder({ group, teacherId, skill = "reading", onSummaryTextChange, onBlanksCreated }) {
+  const [text, setText] = useState("");
+  const [accepted, setAccepted] = useState({});
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const sentences = useMemo(() => parseSentenceCompletion(text), [text]);
+  const blankCount = useMemo(() => countBlanksInTexts(sentences), [sentences]);
+  const alreadyCreated = group.questions.length > 0;
+  const allFilled = blankCount > 0 && Array.from({ length: blankCount }).every((_, i) => (accepted[i] || "").trim());
+
+  async function createBlanks() {
+    if (!allFilled) return;
+    setBusy(true);
+    setError("");
+    const created = [];
+    for (let i = 0; i < blankCount; i++) {
+      const alternatives = accepted[i].split(",").map((a) => a.trim()).filter(Boolean);
+      const { data: question, error: qError } = await supabase
+        .from("questions")
+        .insert({ teacher_id: teacherId, type: "gap_fill", skill, prompt: `Gap ${i + 1}`, options: {} })
+        .select()
+        .single();
+      if (qError || !question) {
+        setBusy(false);
+        setError(`Stopped at blank ${i + 1}: ` + (qError?.message || "unknown error"));
+        return;
+      }
+      const { error: kError } = await supabase.from("question_answer_key").insert({ question_id: question.id, correct_answer: alternatives });
+      if (kError) {
+        setBusy(false);
+        setError(`Blank ${i + 1} created, but its answer key failed: ` + kError.message);
+        return;
+      }
+      created.push(question);
+    }
+    onSummaryTextChange(JSON.stringify({ style: "sentences", sentences }));
+    setBusy(false);
+    onBlanksCreated(created);
+  }
+
+  if (alreadyCreated) {
+    const payload = parseCompletionPayload(group.summaryText);
+    return (
+      <div style={{ marginTop: 14 }}>
+        <SentenceCompletion sentences={payload.sentences || []} questions={group.questions} answers={{}} onChange={() => {}} disabled startNumber={1} />
+        <div className="qe-question-list">
+          {group.questions.map((q, i) => <div key={q.id} className="qe-question-row"><Check size={14} className="qe-question-check" /><span>Blank {i + 1} — answer saved</span></div>)}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ marginTop: 14 }}>
+      <label className="field-label">Sentences (paste)</label>
+      <p className="field-hint" style={{ marginTop: 0, marginBottom: 8 }}>
+        One sentence per line — no special formatting needed. Mark each blank with three or more underscores.
+      </p>
+      <textarea
+        className="field-input textarea"
+        style={{ minHeight: 140 }}
+        placeholder={"The findings at Kalambo Falls revealed that ___.\nEvidence from high-altitude regions suggests that ___."}
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+      />
 
       {blankCount > 0 && (
         <div className="qe-bulk-preview">
