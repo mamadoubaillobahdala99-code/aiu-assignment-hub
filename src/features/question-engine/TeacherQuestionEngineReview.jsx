@@ -5,6 +5,7 @@ import { CenterSpinner } from "../../components/shared";
 import { ScoreRing } from "./ScoreRing";
 import { ReviewContent } from "./ReviewContent";
 import { formatAnswerValue } from "./answerFormat";
+import { numberQuestions } from "./bulkParse";
 import { computeIeltsBand } from "./bandConversion";
 
 export function TeacherQuestionEngineReview({ assignmentId, studentId, studentName, onBack, showToast }) {
@@ -51,9 +52,9 @@ export function TeacherQuestionEngineReview({ assignmentId, studentId, studentNa
           .eq("group_id", g.id)
           .order("order_index");
         const questions = (links || []).map((l) => l.questions);
-        const startNumber = globalCounter + 1;
-        globalCounter += questions.length;
-        groups.push({ id: g.id, instruction: g.instruction, passageText: g.passage_text, questions, startNumber, endNumber: globalCounter });
+        const { start: startNumber, end: endNumber, numbers: questionNumbers, nextStart } = numberQuestions(questions, globalCounter + 1);
+        globalCounter = nextStart - 1;
+        groups.push({ id: g.id, instruction: g.instruction, passageText: g.passage_text, questions, startNumber, endNumber, questionNumbers });
       }
       built.push({ id: s.id, title: s.title, passageTitle: s.passage_title, passageText: s.passage_text, audioUrl: s.audio_url, maxPlays: s.max_plays, groups });
     }
@@ -100,6 +101,7 @@ export function TeacherQuestionEngineReview({ assignmentId, studentId, studentNa
   useEffect(() => { load(); }, [load]);
 
   const allQuestions = useMemo(() => sections.flatMap((s) => s.groups.flatMap((g) => g.questions)), [sections]);
+  const allQuestionNumbers = useMemo(() => numberQuestions(allQuestions, 1).numbers, [allQuestions]);
   const totalPoints = useMemo(() => allQuestions.reduce((sum, q) => sum + (q.points || 1), 0), [allQuestions]);
   const earnedPoints = useMemo(
     () => allQuestions.reduce((sum, q) => sum + (resultsByQ[q.id]?.earned ?? 0), 0),
@@ -169,8 +171,8 @@ export function TeacherQuestionEngineReview({ assignmentId, studentId, studentNa
 
       <div className="qe-review-nav">
         {allQuestions.map((q, i) => (
-          <a key={q.id} href={`#review-question-${i + 1}`} className={`qe-review-nav-pill ${resultsByQ[q.id]?.isCorrect ? "correct" : "incorrect"}`}>
-            {i + 1}
+          <a key={q.id} href={`#review-question-${allQuestionNumbers[i]}`} className={`qe-review-nav-pill ${resultsByQ[q.id]?.isCorrect ? "correct" : "incorrect"}`}>
+            {allQuestionNumbers[i]}
           </a>
         ))}
       </div>
