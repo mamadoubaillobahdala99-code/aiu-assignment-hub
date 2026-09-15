@@ -4,7 +4,7 @@ export const CSS = `
 :root {
   --paper: #FAFAF7;
   --paper-raised: #F8F7F2;
-  --ink: #1B2820;
+  --ink: #12140F;
   --ink-soft: #5B6960;
   --teal: #0E6B5C;
   --teal-soft: #DCEAE4;
