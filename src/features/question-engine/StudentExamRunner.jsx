@@ -154,20 +154,22 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
   async function submitAll() {
     if (submitting || results !== null) return;
     setSubmitting(true);
-    const newResults = {};
     for (const q of allQuestions) {
       const response = answers[q.id];
       if (response === undefined) continue;
-      const { data, error } = await supabase.rpc("submit_student_answer", {
+      await supabase.rpc("submit_student_answer", {
         p_assignment_id: assignmentId,
         p_question_id: q.id,
         p_response: response,
       });
-      if (!error && data) newResults[q.id] = { isCorrect: data.is_correct, earned: data.points_earned };
     }
     setSubmitting(false);
-    setResults(newResults);
     showToast?.("Submitted");
+    // Re-enter through the same bridge that routed us here — now that
+    // answers exist, it will correctly switch to the dedicated results
+    // screen (or the "waiting for feedback" screen) instead of this
+    // exam-taking layout.
+    setScreen({ name: "assignment-student", classId, assignmentId });
   }
 
   // Draggable divider between the passage and the questions — the
@@ -289,7 +291,7 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
       ))}
 
       {results === null && (
-        <button className="btn-primary" style={{ width: "100%", justifyContent: "center" }} disabled={!allAnswered || submitting} onClick={submitAll}>
+        <button className="btn-primary" style={{ width: "100%", justifyContent: "center" }} disabled={submitting} onClick={submitAll}>
           {submitting ? "Submitting…" : "Submit assignment"}
         </button>
       )}
@@ -312,6 +314,7 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
             )}
             {activeSection.audioUrl && (
               <AudioPlayer
+                key={activeSection.id}
                 url={activeSection.audioUrl}
                 maxPlays={activeSection.maxPlays}
                 assignmentId={assignmentId}
