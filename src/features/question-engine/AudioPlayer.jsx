@@ -14,7 +14,7 @@ function formatTime(sec) {
 // API directly). Falls back to local-only counting if that RPC hasn't
 // been migrated in yet, so playback still works either way. Unlimited
 // Parts never call the RPC — there's nothing to enforce or display.
-export function AudioPlayer({ url, filename, maxPlays, assignmentId, userId, sectionId }) {
+export function AudioPlayer({ url, filename, maxPlays, assignmentId, userId, sectionId, inline = false }) {
   const audioRef = useRef(null);
   const panelRef = useRef(null);
   const [playsUsed, setPlaysUsed] = useState(0);
@@ -157,7 +157,7 @@ export function AudioPlayer({ url, filename, maxPlays, assignmentId, userId, sec
     if (locked) e.preventDefault();
   }
 
-  const style = pos ? { top: pos.y, left: pos.x, right: "auto" } : undefined;
+  const style = inline ? { position: "static", boxShadow: "none" } : pos ? { top: pos.y, left: pos.x, right: "auto" } : undefined;
 
   return (
     <div className="qe-audio-player" ref={panelRef} style={style}>
@@ -171,7 +171,7 @@ export function AudioPlayer({ url, filename, maxPlays, assignmentId, userId, sec
         onEnded={() => { setPlaying(false); setActive(false); }}
       />
 
-      <div className="qe-audio-drag-handle" onMouseDown={handleDragStart}>
+      <div className="qe-audio-drag-handle" onMouseDown={inline ? undefined : handleDragStart} style={inline ? { cursor: "default" } : undefined}>
         <GripHorizontal size={14} />
         <Headphones size={16} />
         <span className="qe-audio-filename">{filename || "Audio"}</span>
