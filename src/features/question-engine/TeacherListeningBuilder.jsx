@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from "react";
 import { Plus, X, Check } from "lucide-react";
 import { supabase } from "../../supabaseClient";
 import { TeacherQuestionForm } from "./TeacherQuestionForm";
-import { defaultInstructionFor } from "./bulkParse";
+import { defaultInstructionFor, numberQuestions } from "./bulkParse";
 import { AudioFilePicker } from "./AudioFilePicker";
 import { SummaryCompletionBuilder, NotesCompletionBuilder, TableCompletionBuilder, SentenceCompletionBuilder } from "./TeacherReadingBuilder";
 
@@ -131,9 +131,9 @@ export function TeacherListeningBuilder({ classId, teacherId, setScreen, showToa
     for (const part of parts) {
       const perGroup = [];
       for (const group of part.groups) {
-        const start = counter + 1;
-        counter += group.questions.length;
-        perGroup.push({ start, end: counter });
+        const { start, end, numbers, nextStart } = numberQuestions(group.questions, counter + 1);
+        counter = nextStart - 1;
+        perGroup.push({ start, end, numbers });
       }
       perPart.push(perGroup);
     }
@@ -384,7 +384,7 @@ export function TeacherListeningBuilder({ classId, teacherId, setScreen, showToa
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
                 <span className="qe-group-heading-preview">
                   {group.questions.length > 0
-                    ? group.questions.length === 1
+                    ? numbering[pi][gi].start === numbering[pi][gi].end
                       ? `Question ${numbering[pi][gi].start}`
                       : `Questions ${numbering[pi][gi].start}-${numbering[pi][gi].end}`
                     : "New group"}
@@ -465,7 +465,7 @@ export function TeacherListeningBuilder({ classId, teacherId, setScreen, showToa
                     ) : (
                       <div className="qe-question-list">
                         {group.questions.map((q, i) => (
-                          <div key={q.id} className="qe-question-row"><Check size={14} className="qe-question-check" /><span>{numbering[pi][gi].start + i}. {q.prompt}</span></div>
+                          <div key={q.id} className="qe-question-row"><Check size={14} className="qe-question-check" /><span>{numbering[pi][gi].numbers[i]}. {q.prompt}</span></div>
                         ))}
                       </div>
                     )}
