@@ -5,6 +5,7 @@ import { CenterSpinner } from "../../components/shared";
 import { ScoreRing } from "./ScoreRing";
 import { ReviewContent } from "./ReviewContent";
 import { formatAnswerValue } from "./answerFormat";
+import { numberQuestions } from "./bulkParse";
 import { computeIeltsBand } from "./bandConversion";
 
 export function StudentQuestionEngineFeedback({ assignmentId, userId, setScreen }) {
@@ -48,9 +49,9 @@ export function StudentQuestionEngineFeedback({ assignmentId, userId, setScreen 
           .eq("group_id", g.id)
           .order("order_index");
         const questions = (links || []).map((l) => l.questions);
-        const startNumber = globalCounter + 1;
-        globalCounter += questions.length;
-        groups.push({ id: g.id, instruction: g.instruction, passageText: g.passage_text, questions, startNumber, endNumber: globalCounter });
+        const { start: startNumber, end: endNumber, numbers: questionNumbers, nextStart } = numberQuestions(questions, globalCounter + 1);
+        globalCounter = nextStart - 1;
+        groups.push({ id: g.id, instruction: g.instruction, passageText: g.passage_text, questions, startNumber, endNumber, questionNumbers });
       }
       built.push({ id: s.id, title: s.title, passageTitle: s.passage_title, passageText: s.passage_text, audioUrl: s.audio_url, maxPlays: s.max_plays, groups });
     }
