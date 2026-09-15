@@ -40,32 +40,39 @@ export function parseBulkTrueFalse(text) {
 }
 
 // ---------- Multiple Choice bulk parsing ----------
-// Numbered questions only — the one format that reliably tells us
-// where one question's options end and the next question begins.
+// Blank-line-separated blocks (same convention as True/False): within
+// each block, any line(s) before the first recognized letter option
+// are the prompt, then each letter line becomes an option. No numbering
+// required on the prompt, and the letter can be followed by punctuation
+// ("A." "A)" "A:") or a space — either is enough, neither is mandatory
+// on top of the other. A bare letter glued directly to a word (e.g.
+// "Apple") is deliberately NOT treated as an option, to avoid
+// mistaking an ordinary sentence for a lettered choice.
 
 export function parseBulkMultipleChoice(text) {
-  const lines = text.split("\n");
-  const numberRe = /^\s*(\d+)[.)]\s*(.+?)\s*$/;
-  const letterRe = /^\s*([A-Za-z])[.)]?\s+(.+?)\s*$/;
+  const blocks = text.split(/\n\s*\n/).map((b) => b.trim()).filter(Boolean);
+  const letterRe = /^\s*([A-Za-z])(?:[.):]\s*|\s+)(.+?)\s*$/;
+  const leadingNumberRe = /^\s*\d+[.)]\s*/;
 
   const questions = [];
-  let current = null;
-
-  for (const rawLine of lines) {
-    const numMatch = rawLine.match(numberRe);
-    if (numMatch) {
-      if (current) questions.push(current);
-      current = { key: numMatch[1], prompt: numMatch[2], choices: [] };
-      continue;
+  blocks.forEach((block, bi) => {
+    const lines = block.split("\n").map((l) => l.trim()).filter(Boolean);
+    const promptLines = [];
+    const choices = [];
+    for (const line of lines) {
+      const m = line.match(letterRe);
+      if (m) {
+        choices.push({ letter: m[1].toUpperCase(), text: m[2] });
+      } else if (choices.length === 0) {
+        promptLines.push(line.replace(leadingNumberRe, ""));
+      }
     }
-    const letterMatch = rawLine.match(letterRe);
-    if (letterMatch && current) {
-      current.choices.push({ letter: letterMatch[1].toUpperCase(), text: letterMatch[2] });
+    if (promptLines.length > 0 && choices.length >= 2) {
+      questions.push({ key: String(bi + 1), prompt: promptLines.join(" "), choices });
     }
-  }
-  if (current) questions.push(current);
+  });
 
-  return questions.filter((q) => q.choices.length >= 2);
+  return questions;
 }
 
 // ---------- Passage title guess ----------
