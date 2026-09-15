@@ -7,7 +7,7 @@ import { TableCompletion } from "./TableCompletion";
 import { SentenceCompletion } from "./SentenceCompletion";
 import { MatchingGrid } from "./MatchingGrid";
 import { AudioPlayer } from "./AudioPlayer";
-import { parseCompletionPayload } from "./bulkParse";
+import { parseCompletionPayload, numberQuestions } from "./bulkParse";
 
 // Shown above a Part's questions on the review/feedback screens — lets
 // the student (or teacher) look back at the original passage or replay
@@ -82,9 +82,10 @@ export function ReviewContent({ sections, answersByQ, resultsByQ, correctAnswers
                   userId={viewerUserId}
                   correctAnswers={correctMap}
                 />
-              ) : (
-                group.questions.map((q, i) => {
-                  const num = group.startNumber + i;
+              ) : (() => {
+                const groupNumbers = numberQuestions(group.questions, group.startNumber).numbers;
+                return group.questions.map((q, i) => {
+                  const num = groupNumbers[i];
                   const result = resultsByQ[q.id];
                   return (
                     <div key={q.id} id={`review-question-${num}`} className="qe-numbered-question qe-review-question">
@@ -101,7 +102,7 @@ export function ReviewContent({ sections, answersByQ, resultsByQ, correctAnswers
                     </div>
                   );
                 })
-              )}
+              })()}
             </div>
           ))}
         </div>
