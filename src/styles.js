@@ -104,7 +104,9 @@ body { margin: 0; }
 .nav-item.active { background: var(--teal); color: #fff; }
 .nav-item.logout { color: #8AA097; margin-top: auto; }
 
-.main { flex: 1; min-width: 0; padding: 40px 44px; overflow-y: auto; height: 100%; }
+.main { flex: 1; min-width: 0; overflow-y: auto; height: 100%; display: flex; flex-direction: column; }
+.main > .app-topbar { position: sticky; top: 0; z-index: 5; }
+.main > *:not(.app-topbar) { padding: 40px 44px; }
 .page { max-width: 880px; }
 .page.narrow { max-width: 560px; }
 /* Wider, centered variant used only by the Reading/Listening builder
