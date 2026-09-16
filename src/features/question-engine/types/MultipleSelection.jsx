@@ -1,24 +1,37 @@
 import React from "react";
+import { Check, X as XIcon } from "lucide-react";
 import { HighlightableText } from "../HighlightableText";
 
-export function MultipleSelection({ questionId, choices = [], requiredCount = 2, value = [], onChange, disabled, assignmentId, userId }) {
+// correctAnswer (an array of letters) is only passed on review screens.
+// When present, the question is being reviewed rather than taken: every
+// option shows ✓/✗ directly in the list, and nothing is dimmed — the
+// student can't change anything anyway, so full legibility matters more
+// than signalling which options are still pickable.
+export function MultipleSelection({ questionId, choices = [], requiredCount = 2, value = [], onChange, disabled, assignmentId, userId, correctAnswer }) {
   const atLimit = value.length >= requiredCount;
+  const reviewing = Array.isArray(correctAnswer) && correctAnswer.length > 0;
+  const selected = Array.isArray(value) ? value : [];
 
   function toggle(letter) {
-    if (value.includes(letter)) {
-      onChange(value.filter((l) => l !== letter));
+    if (selected.includes(letter)) {
+      onChange(selected.filter((l) => l !== letter));
     } else if (!atLimit) {
-      onChange([...value, letter]);
+      onChange([...selected, letter]);
     }
   }
 
   return (
     <div className="qe-question">
-      <p className="qe-ms-hint">Choose {requiredCount} — {value.length} of {requiredCount} selected</p>
+      {!reviewing && (
+        <p className="qe-ms-hint">Choose {requiredCount} — {selected.length} of {requiredCount} selected</p>
+      )}
       <div className="qe-options">
         {choices.map((choice) => {
-          const checked = value.includes(choice.letter);
-          const lockedOut = !checked && atLimit;
+          const checked = selected.includes(choice.letter);
+          const isCorrectOption = reviewing && correctAnswer.includes(choice.letter);
+          const wronglyPicked = reviewing && checked && !isCorrectOption;
+          // Never dim anything while reviewing.
+          const lockedOut = !reviewing && !checked && atLimit;
           return (
             <label key={choice.letter} className={`qe-option ${checked ? "qe-option-selected" : ""} ${lockedOut ? "qe-option-locked" : ""}`}>
               <input
@@ -33,6 +46,8 @@ export function MultipleSelection({ questionId, choices = [], requiredCount = 2,
               ) : (
                 <span>{choice.text}</span>
               )}
+              {isCorrectOption && <Check size={15} className="qe-option-mark qe-option-mark-correct" />}
+              {wronglyPicked && <XIcon size={15} className="qe-option-mark qe-option-mark-wrong" />}
             </label>
           );
         })}
