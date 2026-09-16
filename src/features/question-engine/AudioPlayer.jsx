@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Play, Pause, Volume2, Headphones, GripHorizontal } from "lucide-react";
+import { Play, Pause, Volume2, Headphones, GripHorizontal, X } from "lucide-react";
 import { supabase } from "../../supabaseClient";
 
 function formatTime(sec) {
@@ -14,7 +14,7 @@ function formatTime(sec) {
 // API directly). Falls back to local-only counting if that RPC hasn't
 // been migrated in yet, so playback still works either way. Unlimited
 // Parts never call the RPC — there's nothing to enforce or display.
-export function AudioPlayer({ url, filename, maxPlays, assignmentId, userId, sectionId, inline = false }) {
+export function AudioPlayer({ url, filename, maxPlays, assignmentId, userId, sectionId, inline = false, onClose }) {
   const audioRef = useRef(null);
   const panelRef = useRef(null);
   const [playsUsed, setPlaysUsed] = useState(0);
@@ -175,6 +175,11 @@ export function AudioPlayer({ url, filename, maxPlays, assignmentId, userId, sec
         <GripHorizontal size={14} />
         <Headphones size={16} />
         <span className="qe-audio-filename">{filename || "Audio"}</span>
+        {onClose && (
+          <button type="button" className="qe-audio-close" onMouseDown={(e) => e.stopPropagation()} onClick={onClose} title="Close">
+            <X size={14} />
+          </button>
+        )}
       </div>
 
       {isLimited && (
