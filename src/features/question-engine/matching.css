@@ -1,6 +1,7 @@
 .qe-matching-wrap { margin: 8px 0; }
-.qe-matching-grid { border-collapse: collapse; width: 100%; font-size: 14px; }
-.qe-matching-grid th, .qe-matching-grid td { border: 1px solid var(--line); padding: 10px 12px; text-align: center; vertical-align: middle; overflow-wrap: break-word; word-break: normal; }
+.qe-matching-grid { border-collapse: collapse; width: 100%; table-layout: fixed; font-size: 14px; }
+.qe-matching-grid th, .qe-matching-grid td { border: 1px solid var(--line); padding: 10px 8px; text-align: center; vertical-align: middle; overflow-wrap: break-word; word-break: break-word; }
+.qe-matching-grid th:not(:first-child), .qe-matching-grid td.qe-matching-cell { width: 46px; }
 .qe-matching-grid thead th { background: rgba(0, 0, 0, 0.03); font-weight: 600; }
 .qe-matching-prompt { text-align: left !important; }
 .qe-matching-cell input[type="radio"] { width: 16px; height: 16px; accent-color: var(--teal); cursor: pointer; }
