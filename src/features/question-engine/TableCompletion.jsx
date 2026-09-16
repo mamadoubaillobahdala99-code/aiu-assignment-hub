@@ -55,10 +55,10 @@ export function TableCompletion({ headers, rows, questions, answers, onChange, r
                   {results[question.id]?.isCorrect ? "✓" : "✗"}
                 </span>
               )}
-              {results && !results[question.id]?.isCorrect && correctAnswers?.[question.id] && (
-                <span className="qe-review-correct-inline"> (correct: {correctAnswers[question.id]})</span>
-              )}
             </span>
+          )}
+          {question && results && !results[question.id]?.isCorrect && correctAnswers?.[question.id] && (
+            <span className="qe-review-correct-inline">correct: {correctAnswers[question.id]}</span>
           )}
         </React.Fragment>
       );
