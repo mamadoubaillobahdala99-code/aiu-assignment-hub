@@ -87,6 +87,7 @@ export function Shell({ profile, setProfile, userId, onSignOut, screen, setScree
       </aside>
 
       <main className="main">
+        <div className="app-topbar">Assignment Hub</div>
         {screen.name === "dashboard" && isTeacher && <TeacherDashboard userId={userId} setScreen={setScreen} />}
         {screen.name === "reading-builder" && isTeacher && (
           <TeacherReadingBuilder classId={screen.classId} teacherId={userId} setScreen={setScreen} showToast={showToast} editAssignmentId={screen.editAssignmentId} />
