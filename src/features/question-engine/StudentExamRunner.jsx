@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { ArrowLeft, Clock, GripVertical, ChevronLeft, ChevronRight } from "lucide-react";
+import { ArrowLeft, GripVertical, ChevronLeft, ChevronRight, Headphones } from "lucide-react";
 import { supabase } from "../../supabaseClient";
 import { QuestionRenderer } from "./QuestionRenderer";
 import { SummaryCompletion } from "./SummaryCompletion";
@@ -31,6 +31,8 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
   const [started, setStarted] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [className, setClassName] = useState("");
+  const [audioOpen, setAudioOpen] = useState(false);
+  const [teacherName, setTeacherName] = useState("");
 
   const load = useCallback(async () => {
     const { data: a } = await supabase.from("assignments").select("*").eq("id", assignmentId).single();
@@ -40,8 +42,12 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
     // best-effort: if it fails, the sidebar simply omits it rather than
     // the whole assignment failing to open.
     if (a?.class_id) {
-      const { data: cls } = await supabase.from("classes").select("name").eq("id", a.class_id).single();
+      const { data: cls } = await supabase.from("classes").select("name, teacher_id").eq("id", a.class_id).single();
       if (cls?.name) setClassName(cls.name);
+      if (cls?.teacher_id) {
+        const { data: t } = await supabase.from("profiles").select("name").eq("id", cls.teacher_id).single();
+        if (t?.name) setTeacherName(t.name);
+      }
     }
 
     // Server-side timer: record (or fetch) the real start time so a
@@ -256,8 +262,6 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
   const totalPointsPossible = allQuestions.reduce((sum, q) => sum + (q.points || 1), 0);
   const totalPointsEarned = results ? Object.values(results).reduce((sum, r) => sum + (r.earned || 0), 0) : 0;
 
-  const mm = remainingSec !== null ? String(Math.floor(Math.max(0, remainingSec) / 60)).padStart(2, "0") : null;
-  const ss = remainingSec !== null ? String(Math.max(0, remainingSec) % 60).padStart(2, "0") : null;
 
   const isListening = assignment.type === "Listening";
 
@@ -348,21 +352,22 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
 
           {sidebarOpen && (
             <div className="qe-exam-sidebar-inner">
-              <div className="qe-exam-sidebar-title">{assignment.title}</div>
-              {className && <div className="qe-exam-sidebar-class">{className}</div>}
+              {teacherName && <div className="qe-exam-teacher-band">{teacherName}</div>}
+              <div className="qe-exam-sidebar-title">Assignment</div>
 
-              <div className="qe-exam-sidebar-section">
-                <div className="qe-exam-sidebar-label">{assignment.type}</div>
-                <div className="qe-exam-sidebar-value">
-                  Part {activeIndex + 1} of {sections.length}
-                  {partRangeStart !== null && ` · Questions ${partRangeStart}-${partRangeEnd}`}
-                </div>
-              </div>
+              {isListening && activeSection.audioUrl && (
+                <button
+                  className={`qe-exam-sidebar-item ${audioOpen ? "active" : ""}`}
+                  onClick={() => setAudioOpen((v) => !v)}
+                >
+                  <Headphones size={15} /> Audio file
+                </button>
+              )}
 
-              {mm !== null && results === null && (
+              {className && (
                 <div className="qe-exam-sidebar-section">
-                  <div className="qe-exam-sidebar-label">Time remaining</div>
-                  <div className="qe-exam-sidebar-timer"><Clock size={15} /> {mm}:{ss}</div>
+                  <div className="qe-exam-sidebar-label">Class</div>
+                  <div className="qe-exam-sidebar-value">{className}</div>
                 </div>
               )}
 
@@ -380,6 +385,7 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
         </aside>
 
         <div className="qe-exam-main">
+          <div className="app-topbar qe-exam-topbar">Assignment</div>
           {isListening ? (
         <div className="qe-exam-body qe-listening-body" ref={bodyRef}>
           <div className="qe-listening-panel" ref={questionsPanelRef}>
@@ -387,7 +393,7 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
             {partRangeStart !== null && (
               <p className="qe-part-quicksummary">Listen and answer questions {partRangeStart}-{partRangeEnd}</p>
             )}
-            {activeSection.audioUrl && (
+            {activeSection.audioUrl && audioOpen && (
               <AudioPlayer
                 key={activeSection.id}
                 url={activeSection.audioUrl}
@@ -395,6 +401,7 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
                 assignmentId={assignmentId}
                 userId={userId}
                 sectionId={activeSection.id}
+                onClose={() => setAudioOpen(false)}
               />
             )}
             {questionsContent}
