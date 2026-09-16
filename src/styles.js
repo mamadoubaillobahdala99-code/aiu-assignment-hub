@@ -198,7 +198,7 @@ body { margin: 0; }
 .hl-word.hl-yellow { background: #F2D24B; color: var(--ink); }
 .hl-word.hl-green { background: #A9DDAB; color: var(--ink); }
 .hl-word.hl-red { background: #F0B4B4; color: var(--ink); }
-.reading-text { cursor: default; }
+.reading-text { cursor: default; color: var(--ink); }
 .hl-word { cursor: pointer; border-radius: 3px; padding: 0 1px; transition: background .1s; }
 .hl-word:hover { background: rgba(14,107,92,0.12); }
 
