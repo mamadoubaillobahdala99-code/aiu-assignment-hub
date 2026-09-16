@@ -12,14 +12,17 @@ import { HighlightableText } from "./HighlightableText";
 // type component automatically — any future type built the same way
 // (accepting them and using HighlightableText for its option text)
 // gets highlighting for free, with no new plumbing required.
-export function QuestionRenderer({ question, value, onChange, disabled, assignmentId, userId }) {
+// correctAnswer is optional and only supplied by review screens. When
+// present, each type component marks the right/wrong options inline
+// instead of the answer being restated separately underneath.
+export function QuestionRenderer({ question, value, onChange, disabled, assignmentId, userId, correctAnswer }) {
   const prompt = assignmentId && userId ? (
     <HighlightableText assignmentId={assignmentId} userId={userId} scopeType="question" scopeId={question.id} text={question.prompt} className="qe-prompt-highlightable" />
   ) : (
     <p className="qe-prompt">{question.prompt}</p>
   );
 
-  const commonProps = { questionId: question.id, value, onChange, disabled, assignmentId, userId };
+  const commonProps = { questionId: question.id, value, onChange, disabled, assignmentId, userId, correctAnswer };
 
   switch (question.type) {
     case "true_false_not_given":
