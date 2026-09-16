@@ -182,6 +182,7 @@ export function TeacherQuestionEngineReview({ assignmentId, studentId, studentNa
         answersByQ={answersByQ}
         resultsByQ={resultsByQ}
         correctAnswersFormatted={correctAnswersFormatted}
+        correctAnswersRaw={correctByQ}
         showCorrectAnswers
         assignmentId={assignmentId}
         viewerUserId={studentId}
