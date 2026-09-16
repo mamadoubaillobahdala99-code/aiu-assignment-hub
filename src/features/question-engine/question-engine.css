@@ -48,7 +48,7 @@
 
 .qe-exam-body { flex: 1; min-height: 0; display: flex; overflow: hidden; width: 100%; }
 
-.qe-passage-panel { flex: 0 0 auto; min-width: 0; height: 100%; overflow-y: auto; padding: 24px 28px; background: var(--paper-raised); box-sizing: border-box; }
+.qe-passage-panel { flex: 0 0 auto; min-width: 0; height: 100%; overflow-y: auto; padding: 24px 28px; background: var(--paper); border-right: 1px solid var(--line); box-sizing: border-box; }
 .qe-passage-panel-inner { width: 100%; }
 
 /* .asg-desc is the class that actually produces the "small card" look
@@ -59,7 +59,7 @@
 .qe-resizer { flex-shrink: 0; width: 14px; cursor: col-resize; display: flex; align-items: center; justify-content: center; color: var(--ink-soft); background: var(--line); touch-action: none; }
 .qe-resizer:hover { color: var(--teal); }
 
-.qe-questions-panel { flex: 0 0 auto; min-width: 0; height: 100%; overflow-y: auto; padding: 24px 28px; background: var(--paper-raised); box-sizing: border-box; }
+.qe-questions-panel { flex: 0 0 auto; min-width: 0; height: 100%; overflow-y: auto; padding: 24px 28px; background: var(--paper); box-sizing: border-box; }
 
 .qe-nav-bar { flex-shrink: 0; width: 100%; display: flex; align-items: stretch; background: var(--paper); border-top: 1px solid var(--line); box-sizing: border-box; }
 .qe-nav-part-segment { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: center; border-right: 1px solid var(--line); padding: 10px 16px; box-sizing: border-box; }
@@ -85,3 +85,27 @@ body.qe-resizing { user-select: none; cursor: col-resize; }
 .qe-form { max-width: 480px; }
 .qe-incorrect { background: var(--rose-soft) !important; }
 .qe-incorrect .feedback-band { color: var(--rose) !important; }
+
+/* ---------- Exam start screen ---------- */
+.qe-start-screen { display: flex; align-items: center; justify-content: center; height: 100%; padding: 24px; box-sizing: border-box; background: var(--paper); }
+.qe-start-card { max-width: 460px; width: 100%; text-align: center; background: var(--paper-raised); border: 1px solid var(--line); border-radius: 16px; padding: 40px 36px; }
+.qe-start-meta { font-size: 13.5px; color: var(--ink-soft); margin: 10px 0 0; }
+.qe-start-note { font-size: 13px; color: var(--ink); margin: 16px 0 0; line-height: 1.6; }
+.qe-start-btn { margin-top: 24px; width: 100%; justify-content: center; }
+
+/* ---------- Exam sidebar ---------- */
+.qe-exam-layout { display: flex; height: 100%; width: 100%; }
+.qe-exam-sidebar { position: relative; flex: 0 0 auto; width: 240px; background: var(--sidebar); color: var(--sidebar-text); display: flex; flex-direction: column; transition: width .18s ease; }
+.qe-exam-sidebar.collapsed { width: 24px; }
+.qe-exam-sidebar-toggle { position: absolute; top: 14px; right: -13px; z-index: 5; width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--line); background: var(--paper); color: var(--ink); display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; }
+.qe-exam-sidebar-inner { padding: 22px 18px; overflow-y: auto; display: flex; flex-direction: column; height: 100%; box-sizing: border-box; }
+.qe-exam-sidebar-title { font-family: 'Fraunces', serif; font-size: 16px; font-weight: 600; line-height: 1.35; color: #fff; }
+.qe-exam-sidebar-class { font-size: 12.5px; opacity: 0.75; margin-top: 4px; }
+.qe-exam-sidebar-section { margin-top: 22px; }
+.qe-exam-sidebar-label { font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; letter-spacing: 0.09em; text-transform: uppercase; opacity: 0.6; margin-bottom: 6px; }
+.qe-exam-sidebar-value { font-size: 13.5px; }
+.qe-exam-sidebar-timer { display: flex; align-items: center; gap: 7px; font-family: 'IBM Plex Mono', monospace; font-size: 17px; font-weight: 500; color: #fff; }
+.qe-exam-sidebar-submit { width: 100%; justify-content: center; margin-top: auto; }
+.qe-exam-sidebar-exit { display: flex; align-items: center; gap: 7px; background: none; border: none; color: var(--sidebar-text); opacity: 0.7; font-family: inherit; font-size: 12.5px; cursor: pointer; padding: 12px 0 0; }
+.qe-exam-sidebar-exit:hover { opacity: 1; }
+.qe-exam-main { flex: 1 1 auto; min-width: 0; height: 100%; display: flex; flex-direction: column; }
