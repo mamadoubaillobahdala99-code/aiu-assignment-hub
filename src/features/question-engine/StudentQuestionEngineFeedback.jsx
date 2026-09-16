@@ -147,6 +147,7 @@ export function StudentQuestionEngineFeedback({ assignmentId, userId, setScreen 
           answersByQ={answersByQ}
           resultsByQ={resultsByQ}
           correctAnswersFormatted={correctAnswersFormatted}
+          correctAnswersRaw={correctByQ}
           showCorrectAnswers
           assignmentId={assignmentId}
           viewerUserId={userId}
