@@ -41,8 +41,15 @@ function SectionPassage({ section }) {
 // showCorrectAnswers: when false, only ✓/✗ is shown — never the actual
 // correct answer text (used for the student view when show_answer_review
 // is off, or as a defensive default).
-export function ReviewContent({ sections, answersByQ, resultsByQ, correctAnswersFormatted, showCorrectAnswers, assignmentId, viewerUserId }) {
+//
+// correctAnswersRaw carries the stored answer values (a letter, or an
+// array of letters) so option-based types can mark the right option
+// directly in the list. correctAnswersFormatted is the human-readable
+// version, still needed by gap-fill style questions that have no option
+// list to mark.
+export function ReviewContent({ sections, answersByQ, resultsByQ, correctAnswersFormatted, correctAnswersRaw, showCorrectAnswers, assignmentId, viewerUserId }) {
   const correctMap = showCorrectAnswers ? correctAnswersFormatted : {};
+  const rawMap = showCorrectAnswers ? (correctAnswersRaw || {}) : {};
 
   return (
     <div className="qe-review-content">
@@ -87,15 +94,20 @@ export function ReviewContent({ sections, answersByQ, resultsByQ, correctAnswers
                 return group.questions.map((q, i) => {
                   const num = groupNumbers[i];
                   const result = resultsByQ[q.id];
+                  // Option-based types mark ✓/✗ directly in their own
+                  // option list, so restating the answer below would be
+                  // redundant. Only types without an option list still
+                  // need the written-out answer.
+                  const marksOptionsInline = ["true_false_not_given", "multiple_choice", "multiple_selection"].includes(q.type);
                   return (
                     <div key={q.id} id={`review-question-${num}`} className="qe-numbered-question qe-review-question">
                       <span className="rf-answer-num qe-question-badge">{num}</span>
                       <div style={{ flex: 1 }}>
-                        <QuestionRenderer question={q} value={answersByQ[q.id] ?? null} onChange={() => {}} disabled assignmentId={assignmentId} userId={viewerUserId} />
+                        <QuestionRenderer question={q} value={answersByQ[q.id] ?? null} onChange={() => {}} disabled assignmentId={assignmentId} userId={viewerUserId} correctAnswer={rawMap[q.id]} />
                         <div className={result?.isCorrect ? "qe-result-correct" : "qe-result-incorrect"}>
                           {result ? (result.isCorrect ? <><Check size={13} /> Correct</> : <><XIcon size={13} /> Incorrect</>) : "Not answered"}
                         </div>
-                        {result && !result.isCorrect && correctMap[q.id] && (
+                        {!marksOptionsInline && result && !result.isCorrect && correctMap[q.id] && (
                           <div className="qe-review-correct-answer">Correct answer: {correctMap[q.id]}</div>
                         )}
                       </div>
