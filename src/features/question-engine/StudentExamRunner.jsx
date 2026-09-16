@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { ArrowLeft, Clock, GripVertical } from "lucide-react";
+import { ArrowLeft, Clock, GripVertical, ChevronLeft, ChevronRight } from "lucide-react";
 import { supabase } from "../../supabaseClient";
 import { QuestionRenderer } from "./QuestionRenderer";
 import { SummaryCompletion } from "./SummaryCompletion";
@@ -28,10 +28,21 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
   const bodyRef = useRef(null);
   const questionsPanelRef = useRef(null);
   const [visibleNum, setVisibleNum] = useState(null);
+  const [started, setStarted] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [className, setClassName] = useState("");
 
   const load = useCallback(async () => {
     const { data: a } = await supabase.from("assignments").select("*").eq("id", assignmentId).single();
     setAssignment(a || null);
+
+    // Class name, for the exam sidebar. Fetched separately and
+    // best-effort: if it fails, the sidebar simply omits it rather than
+    // the whole assignment failing to open.
+    if (a?.class_id) {
+      const { data: cls } = await supabase.from("classes").select("name").eq("id", a.class_id).single();
+      if (cls?.name) setClassName(cls.name);
+    }
 
     // Server-side timer: record (or fetch) the real start time so a
     // refresh can't reset the countdown. Falls back to the old
@@ -116,7 +127,7 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
   useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
-    if (remainingSec === null || results !== null) return;
+    if (!started || remainingSec === null || results !== null) return;
     if (remainingSec <= 0) {
       submitAll();
       return;
@@ -206,6 +217,37 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
   const activePassageText = activeSection.passageText || assignment.description || "";
   const activeTitle = activeSection.passageTitle || assignment.title;
 
+  const totalQuestionCount = sections.reduce((sum, s) => sum + s.groups.reduce((gs, g) => gs + g.questions.length, 0), 0);
+
+  // Shown once, before the exam actually begins. The countdown is held
+  // until the student presses Start (see the timer effect above), so
+  // nobody loses time on a screen they haven't read yet.
+  if (!started && results === null) {
+    return (
+      <div className="wf-overlay qe-exam-shell">
+        <div className="qe-start-screen">
+          <div className="qe-start-card">
+            <div className="eyebrow">{assignment.type}</div>
+            <h1 className="page-title" style={{ marginTop: 4 }}>{assignment.title}</h1>
+            <p className="qe-start-meta">
+              {sections.length} part{sections.length > 1 ? "s" : ""} · {totalQuestionCount} question{totalQuestionCount > 1 ? "s" : ""}
+              {assignment.time_limit_minutes ? ` · ${assignment.time_limit_minutes} minutes` : ""}
+            </p>
+            {assignment.time_limit_minutes && (
+              <p className="qe-start-note">
+                Your timer starts when you press Start. When the time runs out, your answers are submitted automatically.
+              </p>
+            )}
+            <button className="btn-primary qe-start-btn" onClick={() => setStarted(true)}>Start exam</button>
+            <button className="back-link" style={{ marginTop: 14 }} onClick={() => setScreen({ name: "home" })}>
+              <ArrowLeft size={14} /> Back to assignments
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const perPartMinutes = assignment.time_limit_minutes ? Math.max(1, Math.round(assignment.time_limit_minutes / sections.length)) : null;
   const partQuestionNumbers = activeSection.groups.flatMap((g) => [g.startNumber, g.endNumber]);
   const partRangeStart = partQuestionNumbers.length ? Math.min(...partQuestionNumbers) : null;
@@ -289,23 +331,56 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
           )}
         </div>
       ))}
-
-      {results === null && (
-        <button className="btn-primary" style={{ width: "100%", justifyContent: "center" }} disabled={submitting} onClick={submitAll}>
-          {submitting ? "Submitting…" : "Submit assignment"}
-        </button>
-      )}
     </>
   );
 
   return (
     <div className="wf-overlay qe-exam-shell">
-      <div className="wf-topbar">
-        <button className="back-link" onClick={() => setScreen({ name: "home" })}><ArrowLeft size={14} /> Exit</button>
-        {mm !== null && results === null ? <div className="wf-timer"><Clock size={15} /> {mm}:{ss}</div> : <div />}
-      </div>
+      <div className="qe-exam-layout">
+        <aside className={`qe-exam-sidebar ${sidebarOpen ? "" : "collapsed"}`}>
+          <button
+            className="qe-exam-sidebar-toggle"
+            onClick={() => setSidebarOpen((v) => !v)}
+            title={sidebarOpen ? "Hide panel" : "Show panel"}
+          >
+            {sidebarOpen ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
+          </button>
 
-      {isListening ? (
+          {sidebarOpen && (
+            <div className="qe-exam-sidebar-inner">
+              <div className="qe-exam-sidebar-title">{assignment.title}</div>
+              {className && <div className="qe-exam-sidebar-class">{className}</div>}
+
+              <div className="qe-exam-sidebar-section">
+                <div className="qe-exam-sidebar-label">{assignment.type}</div>
+                <div className="qe-exam-sidebar-value">
+                  Part {activeIndex + 1} of {sections.length}
+                  {partRangeStart !== null && ` · Questions ${partRangeStart}-${partRangeEnd}`}
+                </div>
+              </div>
+
+              {mm !== null && results === null && (
+                <div className="qe-exam-sidebar-section">
+                  <div className="qe-exam-sidebar-label">Time remaining</div>
+                  <div className="qe-exam-sidebar-timer"><Clock size={15} /> {mm}:{ss}</div>
+                </div>
+              )}
+
+              {results === null && (
+                <button className="btn-primary qe-exam-sidebar-submit" disabled={submitting} onClick={submitAll}>
+                  {submitting ? "Submitting…" : "Submit exam"}
+                </button>
+              )}
+
+              <button className="qe-exam-sidebar-exit" onClick={() => setScreen({ name: "home" })}>
+                <ArrowLeft size={14} /> Exit
+              </button>
+            </div>
+          )}
+        </aside>
+
+        <div className="qe-exam-main">
+          {isListening ? (
         <div className="qe-exam-body qe-listening-body" ref={bodyRef}>
           <div className="qe-listening-panel" ref={questionsPanelRef}>
             <p className="qe-part-tag">{activeSection.title}</p>
@@ -382,6 +457,8 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
             </div>
           );
         })}
+          </div>
+        </div>
       </div>
     </div>
   );
