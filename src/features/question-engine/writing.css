@@ -66,3 +66,86 @@
 .qe-nav-part-segment.qe-wr-nav-active { background: var(--teal-soft); box-shadow: inset 0 3px 0 var(--teal); }
 .qe-wr-nav-pill { font-weight: 500; }
 .qe-wr-nav-active .qe-wr-nav-pill { color: var(--teal); }
+
+/* ---------- Structured Writing — error marks (teacher correction) ---------- */
+.qe-wr-editor mark,
+.qe-wr-view mark { background: #FDE2E2; color: inherit; border-bottom: 2px solid #D93025; padding: 0 1px; border-radius: 2px; }
+.qe-wr-marking .qe-wr-editor mark,
+.qe-wr-view-marks mark { cursor: pointer; }
+.qe-wr-editor mark[data-note]::after,
+.qe-wr-view mark[data-note]::after { content: ""; display: inline-block; width: 6px; height: 6px; margin-left: 2px; border-radius: 50%; background: #D93025; vertical-align: super; }
+.qe-wr-view-marks mark:hover { background: #FBC9C9; }
+
+/* In marking mode the note window may overflow the writing frame. */
+.qe-wr-editor-wrap.qe-wr-marking { position: relative; overflow: visible; }
+.qe-wr-marking .qe-wr-toolbar { border-radius: 8px 8px 0 0; }
+.qe-wr-mark-btn { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px; border-radius: 6px; border: 1px solid #E8A7A7; background: #FDE2E2; color: #A4231A; font-family: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer; }
+.qe-wr-mark-btn:hover:not(:disabled) { background: #FBC9C9; }
+.qe-wr-mark-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.qe-wr-note-popup { position: absolute; z-index: 30; width: 290px; background: #fff; border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18); padding: 10px 12px 12px; box-sizing: border-box; }
+.qe-wr-note-head { display: flex; align-items: center; justify-content: space-between; font-size: 12px; font-weight: 700; color: #A4231A; margin-bottom: 6px; }
+.qe-wr-note-close { background: none; border: none; color: var(--ink-soft); cursor: pointer; padding: 2px; display: flex; }
+.qe-wr-note-input { min-height: 70px !important; font-size: 13px; }
+.qe-wr-note-actions { display: flex; justify-content: space-between; gap: 8px; margin-top: 8px; }
+.qe-wr-note-remove { color: #A4231A; }
+
+/* Read-only text (original, or corrected copy for the student) */
+.qe-wr-view { font-size: 15.5px; line-height: 1.75; color: var(--ink); white-space: pre-wrap; overflow-wrap: break-word; background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 18px 22px; min-height: 200px; box-sizing: border-box; }
+.qe-wr-view p { margin: 0 0 0.9em; }
+.qe-wr-view-empty { color: var(--ink-soft); font-style: italic; }
+
+/* ---------- Teacher correction screen ---------- */
+.qe-wrv-status { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; font-weight: 600; color: var(--ink-soft); background: var(--paper); border: 1px solid var(--line); border-radius: 999px; padding: 4px 10px; }
+.qe-wrv-status.published { color: var(--teal); background: var(--teal-soft); border-color: var(--teal); }
+
+.qe-wrv-tabs { display: flex; gap: 6px; padding: 12px 28px 0; border-bottom: 1px solid var(--line); background: var(--paper-raised); flex-shrink: 0; }
+.qe-wrv-tab { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 8px 16px 10px; border: 1px solid transparent; border-bottom: none; border-radius: 8px 8px 0 0; background: none; font-family: inherit; font-size: 13.5px; font-weight: 700; color: var(--ink-soft); cursor: pointer; margin-bottom: -1px; }
+.qe-wrv-tab.active { background: var(--paper); border-color: var(--line); color: var(--ink); }
+.qe-wrv-tab-meta { font-size: 11.5px; font-weight: 500; color: var(--ink-soft); }
+.qe-wrf-tabs { padding: 0; background: none; margin-top: 22px; }
+
+.qe-wrv-question { border: 1px solid var(--line); border-radius: 8px; background: var(--paper-raised); padding: 10px 14px; margin-bottom: 12px; }
+.qe-wrv-question summary { cursor: pointer; font-size: 13.5px; font-weight: 700; color: var(--ink); }
+.qe-wrv-question[open] summary { margin-bottom: 10px; }
+.qe-wrv-question-img { display: block; max-width: 100%; max-height: 420px; object-fit: contain; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
+
+.qe-wrv-viewbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+.qe-wrv-toggle { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: #fff; }
+.qe-wrv-toggle button { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border: none; background: none; font-family: inherit; font-size: 13px; font-weight: 600; color: var(--ink-soft); cursor: pointer; }
+.qe-wrv-toggle button + button { border-left: 1px solid var(--line); }
+.qe-wrv-toggle button.active { background: var(--teal-soft); color: var(--teal); }
+.qe-wrv-reset { font-size: 12.5px; }
+
+.qe-wrv-editor { height: 62vh; min-height: 360px; display: flex; flex-direction: column; }
+.qe-wrv-original .qe-wr-view { min-height: 62vh; }
+.qe-wrv-hint { font-size: 12.5px; color: var(--ink-soft); margin: 8px 0 0; line-height: 1.5; }
+
+.qe-wrv-overall { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
+.qe-wrv-overall-input { max-width: 120px; margin-top: 6px; text-align: center; font-size: 16px; font-weight: 700; }
+.qe-wrv-invalid { border-color: var(--rose) !important; background: var(--rose-soft, #FBEAEC); }
+.qe-wrv-small { font-weight: 500; font-size: 12px; }
+.qe-wrv-link { background: none; border: none; padding: 0; color: var(--teal); font-family: inherit; font-size: inherit; font-weight: 600; text-decoration: underline; cursor: pointer; }
+.qe-wrv-actions { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
+
+/* ---------- Student feedback screen ---------- */
+.qe-wrf-summary { display: flex; gap: 16px; margin-top: 18px; flex-wrap: wrap; }
+.qe-wrf-band { flex: 0 0 auto; min-width: 150px; background: var(--teal); color: #fff; border-radius: 12px; padding: 16px 20px; }
+.qe-wrf-band .qe-wrf-band-label { color: rgba(255, 255, 255, 0.8); }
+.qe-wrf-band-label { display: flex; align-items: center; gap: 6px; font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; letter-spacing: 0.09em; text-transform: uppercase; color: var(--ink-soft); }
+.qe-wrf-band-value { font-family: 'Fraunces', serif; font-size: 40px; font-weight: 600; line-height: 1.1; margin-top: 4px; }
+.qe-wrf-comment { flex: 1; min-width: 260px; background: var(--paper-raised); border: 1px solid var(--line); border-radius: 12px; padding: 14px 18px; }
+.qe-wrf-comment p { margin: 8px 0 0; font-size: 14.5px; line-height: 1.6; white-space: pre-wrap; }
+
+.qe-wrf-body { display: flex; gap: 24px; margin-top: 18px; align-items: flex-start; }
+.qe-wrf-text { flex: 2; min-width: 0; }
+.qe-wrf-side { flex: 1; min-width: 260px; max-width: 360px; display: flex; flex-direction: column; gap: 14px; position: sticky; top: 56px; }
+.qe-wrf-markcount { font-size: 12.5px; color: #A4231A; font-weight: 600; }
+.qe-wrf-note { border: 1px solid #E8A7A7; background: #FFF5F5; border-radius: 10px; padding: 12px 14px; }
+.qe-wrf-note-quote { font-size: 13px; font-weight: 700; color: #A4231A; margin-bottom: 6px; }
+.qe-wrf-note p { margin: 0 0 8px; font-size: 14px; line-height: 1.55; white-space: pre-wrap; }
+@media (max-width: 900px) {
+  .qe-wrf-body { flex-direction: column; }
+  .qe-wrf-side { max-width: none; width: 100%; position: static; }
+}
+.qe-wrf-note .qe-wrv-link { font-size: 12.5px; }
