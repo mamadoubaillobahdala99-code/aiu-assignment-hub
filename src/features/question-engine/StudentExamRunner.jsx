@@ -10,19 +10,53 @@ import { MatchingGrid } from "./MatchingGrid";
 import { AudioPlayer } from "./AudioPlayer";
 import { parseCompletionPayload, numberQuestions, questionSlotCount } from "./bulkParse";
 import { HighlightableText } from "./HighlightableText";
+import { useExamTimer, ExamTimerDisplay } from "./ExamTimer";
 
-// The countdown is backed by exam_attempts.started_at on the server, so
-// a page refresh recomputes the remaining time instead of restarting
-// it. If exam_attempts hasn't been migrated in yet, this falls back to
-// the old client-only behavior rather than breaking the assignment.
+// The countdown comes from useExamTimer: the start time is written once
+// by the server (when the student presses Start) and the remaining time
+// is computed from the server clock — a refresh, a reconnection or a
+// changed computer clock never gives time back. The database also
+// refuses answers once the time is over.
+// Answers are kept in this browser while the exam is open (a refresh
+// doesn't lose them) and are sent automatically when the time runs out.
 
-export function StudentExamRunner({ userId, classId, assignmentId, setScreen, showToast }) {
+const localKey = (userId, assignmentId) => `aiu-exam-answers:${userId}:${assignmentId}`;
+function readLocalAnswers(userId, assignmentId) {
+  try {
+    const raw = window.localStorage.getItem(localKey(userId, assignmentId));
+    const parsed = raw ? JSON.parse(raw) : null;
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+function writeLocalAnswers(userId, assignmentId, answers) {
+  try {
+    window.localStorage.setItem(localKey(userId, assignmentId), JSON.stringify(answers));
+  } catch {
+    /* storage unavailable: the exam still works, only refresh-recovery is lost */
+  }
+}
+function clearLocalAnswers(userId, assignmentId) {
+  try {
+    window.localStorage.removeItem(localKey(userId, assignmentId));
+  } catch {
+    /* ignore */
+  }
+}
+
+export function StudentExamRunner({ userId, classId, assignmentId, setScreen, showToast, onSubmitted }) {
   const [assignment, setAssignment] = useState(null);
   const [sections, setSections] = useState([]); // [{ id, title, passageText, groups: [...] }]
   const [activeIndex, setActiveIndex] = useState(0);
   const [answers, setAnswers] = useState({});
   const [results, setResults] = useState(null);
-  const [remainingSec, setRemainingSec] = useState(null);
+  const [loaded, setLoaded] = useState(false);
+  const [timeOver, setTimeOver] = useState(false);
+  const [startError, setStartError] = useState("");
+  const [starting, setStarting] = useState(false);
+  const autoSubmittedRef = useRef(false);
+  const timer = useExamTimer(assignmentId, true);
   const [submitting, setSubmitting] = useState(false);
   const [leftWidthPct, setLeftWidthPct] = useState(56);
   const bodyRef = useRef(null);
@@ -48,31 +82,6 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
       if (cls?.teacher_id) {
         const { data: t } = await supabase.from("profiles").select("name").eq("id", cls.teacher_id).single();
         if (t?.name) setTeacherName(t.name);
-      }
-    }
-
-    // Server-side timer: record (or fetch) the real start time so a
-    // refresh can't reset the countdown. Falls back to the old
-    // client-only behavior if exam_attempts hasn't been migrated in
-    // yet, rather than breaking the whole assignment load.
-    let startedAt = null;
-    await supabase
-      .from("exam_attempts")
-      .upsert({ assignment_id: assignmentId, student_id: userId }, { onConflict: "assignment_id,student_id", ignoreDuplicates: true });
-    const { data: attempt } = await supabase
-      .from("exam_attempts")
-      .select("started_at")
-      .eq("assignment_id", assignmentId)
-      .eq("student_id", userId)
-      .maybeSingle();
-    startedAt = attempt?.started_at || null;
-
-    if (a?.time_limit_minutes) {
-      if (startedAt) {
-        const elapsedSec = Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000);
-        setRemainingSec(Math.max(0, a.time_limit_minutes * 60 - elapsedSec));
-      } else {
-        setRemainingSec(a.time_limit_minutes * 60);
       }
     }
 
@@ -127,22 +136,45 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
         });
         setAnswers(restoredAnswers);
         if (anyGraded) setResults(restoredResults);
+      } else {
+        // Not submitted yet: bring back the answers kept in this browser.
+        const local = readLocalAnswers(userId, assignmentId);
+        if (local) setAnswers(local);
       }
     }
+    setLoaded(true);
   }, [assignmentId, userId]);
 
   useEffect(() => { load(); }, [load]);
 
+  // Keep the answers in this browser while the exam is open.
   useEffect(() => {
-    if (!started || remainingSec === null || results !== null) return;
-    if (remainingSec <= 0) {
-      submitAll();
-      return;
-    }
-    const t = setTimeout(() => setRemainingSec((s) => s - 1), 1000);
-    return () => clearTimeout(t);
+    if (!loaded || !started || results !== null || timeOver) return;
+    writeLocalAnswers(userId, assignmentId, answers);
+  }, [answers, loaded, started, results, timeOver, userId, assignmentId]);
+
+  // Already started earlier (refresh, other device): go straight back to
+  // the exam — the start screen would wrongly suggest the time hasn't begun.
+  useEffect(() => {
+    if (loaded && timer.hasStarted && timer.status !== "expired" && results === null && !started) setStarted(true);
+  }, [loaded, timer.hasStarted, timer.status, results, started]);
+
+  // Time is up (now, or while the student was away): send what we have.
+  useEffect(() => {
+    if (!loaded || timer.status !== "expired" || results !== null || timeOver || autoSubmittedRef.current) return;
+    autoSubmittedRef.current = true;
+    submitAll(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [remainingSec, results]);
+  }, [loaded, timer.status, results, timeOver]);
+
+  async function startExam() {
+    setStartError("");
+    setStarting(true);
+    const ok = await timer.start();
+    setStarting(false);
+    if (ok) setStarted(true);
+    else setStartError("The exam could not be started. Check your connection and try again.");
+  }
 
   // Highlights the question the student is currently reading, in the
   // bottom nav bar — recomputed whenever the active Part changes.
@@ -207,21 +239,37 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
 
   // The time-up auto-submit calls submitAll directly (no dialog); only
   // the student's own click goes through this confirmation.
-  async function submitAll() {
+  async function submitAll(timeUp = false) {
     if (submitting || results !== null) return;
     setConfirmOpen(false);
     setSubmitting(true);
+    let sent = 0;
+    let refusedForTime = false;
     for (const q of allQuestions) {
       const response = answers[q.id];
       if (response === undefined) continue;
-      await supabase.rpc("submit_student_answer", {
+      const { error } = await supabase.rpc("submit_student_answer", {
         p_assignment_id: assignmentId,
         p_question_id: q.id,
         p_response: response,
       });
+      if (!error) sent++;
+      else if (/Time is over|Exam not started/i.test(error.message || "")) refusedForTime = true;
     }
     setSubmitting(false);
-    showToast?.("Submitted");
+    if (sent === 0 && (refusedForTime || timeUp)) {
+      // Nothing could be sent (the time was already over, or no answer
+      // was given before the end).
+      clearLocalAnswers(userId, assignmentId);
+      setTimeOver(true);
+      return;
+    }
+    clearLocalAnswers(userId, assignmentId);
+    showToast?.(timeUp ? "Time is up — your answers were submitted" : "Submitted");
+    if (onSubmitted) {
+      onSubmitted();
+      return;
+    }
     // Re-enter through the same bridge that routed us here — now that
     // answers exist, it will correctly switch to the dedicated results
     // screen (or the "waiting for feedback" screen) instead of this
@@ -248,6 +296,18 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
     }
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
+  }
+
+  if (timeOver) {
+    return (
+      <div className="page">
+        <button className="back-link" onClick={() => setScreen({ name: "home" })}><ArrowLeft size={14} /> Back to assignments</button>
+        <div className="qe-feedback-locked">
+          <p><strong>The time for this exam is over.</strong></p>
+          <p>No answers could be submitted after the end of the time limit.</p>
+        </div>
+      </div>
+    );
   }
 
   if (!assignment || sections.length === 0) {
@@ -284,7 +344,10 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
                 Your timer starts when you press Start. When the time runs out, your answers are submitted automatically.
               </p>
             )}
-            <button className="btn-primary qe-start-btn" onClick={() => setStarted(true)}>Start exam</button>
+            {startError && <div className="field-error" style={{ marginTop: 14 }}>{startError}</div>}
+            <button className="btn-primary qe-start-btn" disabled={starting || timer.status === "loading" || timer.status === "expired"} onClick={startExam}>
+              {starting ? "Starting…" : "Start exam"}
+            </button>
             <button className="back-link" style={{ marginTop: 14 }} onClick={() => setScreen({ name: "home" })}>
               <ArrowLeft size={14} /> Back to assignments
             </button>
@@ -425,7 +488,10 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
         </aside>
 
         <div className="qe-exam-main">
-          <div className="app-topbar qe-exam-topbar">Assignment</div>
+          <div className="app-topbar qe-exam-topbar">
+            Assignment
+            {timer.status === "running" && results === null && <ExamTimerDisplay remainingSec={timer.remainingSec} />}
+          </div>
           {isListening ? (
         <div className="qe-exam-body qe-listening-body" ref={bodyRef}>
           <div className="qe-listening-panel" ref={questionsPanelRef}>
@@ -533,7 +599,7 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
 
             <div className="qe-confirm-actions">
               <button className="btn-ghost" onClick={() => setConfirmOpen(false)}>Keep working</button>
-              <button className="btn-primary" disabled={submitting} onClick={submitAll}>
+              <button className="btn-primary" disabled={submitting} onClick={() => submitAll(false)}>
                 {submitting ? "Submitting…" : "Submit exam"}
               </button>
             </div>
