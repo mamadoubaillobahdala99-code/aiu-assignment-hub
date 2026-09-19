@@ -1,1 +1,29 @@
 
+/* ---------- Structured Speaking ---------- */
+
+/* "Viewed" badge (consult-only assignments) */
+.status-badge.viewed { background: var(--teal-soft); color: var(--teal); }
+
+/* Teacher builder — documents list */
+.qe-sp-doclist { display: flex; flex-direction: column; gap: 6px; }
+.qe-sp-docrow { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff; font-size: 13.5px; color: var(--ink); }
+.qe-sp-docrow-new { border-style: dashed; }
+.qe-sp-docname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.qe-sp-docmeta { flex-shrink: 0; font-size: 12px; color: var(--ink-soft); }
+.qe-sp-docremove { flex-shrink: 0; font-size: 12.5px; padding: 4px 8px; }
+
+/* Student viewer */
+.qe-sp-sidebar-note { font-size: 12.5px; opacity: 0.85; line-height: 1.5; }
+.qe-sp-panel .qe-passage-title { margin-bottom: 18px; }
+.qe-sp-questions { font-size: 15.5px; line-height: 1.8; color: var(--ink); white-space: pre-line; overflow-wrap: break-word; }
+.qe-sp-cuecard { font-size: 15.5px; line-height: 1.75; color: var(--ink); white-space: pre-line; overflow-wrap: break-word; background: #fff; border: 1.5px solid var(--ink); border-radius: 6px; padding: 22px 26px; box-shadow: 4px 4px 0 var(--line); max-width: 640px; }
+
+.qe-sp-docs { margin-top: 28px; display: flex; flex-direction: column; gap: 14px; }
+.qe-sp-docs-title { font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; letter-spacing: 0.09em; text-transform: uppercase; color: var(--ink-soft); }
+.qe-sp-doc { border: 1px solid var(--line); border-radius: 10px; background: #fff; overflow: hidden; }
+.qe-sp-doc-head { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-bottom: 1px solid var(--line); background: var(--paper-raised); font-size: 13.5px; color: var(--ink); }
+.qe-sp-download { flex-shrink: 0; display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; padding: 4px 10px; text-decoration: none; }
+.qe-sp-doc-img { display: block; max-width: 100%; height: auto; margin: 0 auto; }
+.qe-sp-doc-audio { display: block; width: calc(100% - 24px); margin: 12px; }
+.qe-sp-doc-pdf { display: block; width: 100%; height: 70vh; border: none; background: var(--paper); }
+.qe-sp-doc-note { margin: 0; padding: 12px; font-size: 13px; color: var(--ink-soft); }
