@@ -106,7 +106,7 @@ body { margin: 0; }
 
 .main { flex: 1; min-width: 0; overflow-y: auto; height: 100%; display: flex; flex-direction: column; }
 .main > .app-topbar { position: sticky; top: 0; z-index: 5; }
-.main > *:not(.app-topbar) { padding: 40px 44px; }
+.main > *:not(.app-topbar):not(.wf-overlay) { padding: 40px 44px; }
 .page { max-width: 880px; }
 .page.narrow { max-width: 560px; }
 /* Wider, centered variant used only by the Reading/Listening builder
