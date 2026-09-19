@@ -22,6 +22,9 @@ export function AssignmentOpenBridge({ userId, classId, assignmentId, setScreen,
   const [isReleased, setIsReleased] = useState(false);
   const [isWriting, setIsWriting] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
+  // Bumped after a Reading/Listening submission so the routing below runs
+  // again (results screen or "waiting for feedback" instead of the exam).
+  const [recheck, setRecheck] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -102,7 +105,7 @@ export function AssignmentOpenBridge({ userId, classId, assignmentId, setScreen,
       }
     })();
     return () => { cancelled = true; };
-  }, [assignmentId, userId]);
+  }, [assignmentId, userId, recheck]);
 
   if (checking) return <CenterSpinner />;
 
@@ -134,7 +137,16 @@ export function AssignmentOpenBridge({ userId, classId, assignmentId, setScreen,
   }
 
   if (!hasSubmitted) {
-    return <StudentExamRunner userId={userId} classId={classId} assignmentId={assignmentId} setScreen={setScreen} showToast={showToast} />;
+    return (
+      <StudentExamRunner
+        userId={userId}
+        classId={classId}
+        assignmentId={assignmentId}
+        setScreen={setScreen}
+        showToast={showToast}
+        onSubmitted={() => { setChecking(true); setRecheck((n) => n + 1); }}
+      />
+    );
   }
 
   if (isReleased) {
