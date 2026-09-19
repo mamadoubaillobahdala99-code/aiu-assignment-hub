@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { ArrowLeft, Clock } from "lucide-react";
 import { supabase } from "../../supabaseClient";
 import { StudentExamRunner } from "./StudentExamRunner";
+import { StudentWritingRunner } from "./StudentWritingRunner";
 import { StudentQuestionEngineFeedback } from "./StudentQuestionEngineFeedback";
 import { AssignmentStudent } from "../assignment-hub/AssignmentStudent";
 import { CenterSpinner } from "../../components/shared";
@@ -28,13 +29,22 @@ export function AssignmentOpenBridge({ userId, classId, assignmentId, setScreen,
         .eq("assignment_id", assignmentId);
       const structured = (count || 0) > 0;
 
-      // Structured Writing has no student_answers — it gets its own
-      // student screen (coming next). Until then, show a holding message
-      // instead of an empty exam.
+      // Structured Writing stores its answers in writing_responses (not
+      // student_answers) and has its own exam screen.
       let writing = false;
+      let writingSubmitted = false;
       if (structured) {
         const { data: t } = await supabase.from("assignments").select("type").eq("id", assignmentId).single();
         writing = t?.type === "Writing";
+        if (writing) {
+          const { count: sentCount } = await supabase
+            .from("writing_responses")
+            .select("id", { count: "exact", head: true })
+            .eq("assignment_id", assignmentId)
+            .eq("student_id", userId)
+            .not("submitted_at", "is", null);
+          writingSubmitted = (sentCount || 0) > 0;
+        }
       }
 
       let submitted = false;
@@ -66,7 +76,7 @@ export function AssignmentOpenBridge({ userId, classId, assignmentId, setScreen,
       if (!cancelled) {
         setIsStructured(structured);
         setIsWriting(writing);
-        setHasSubmitted(submitted);
+        setHasSubmitted(writing ? writingSubmitted : submitted);
         setIsReleased(released);
         setChecking(false);
       }
@@ -80,15 +90,17 @@ export function AssignmentOpenBridge({ userId, classId, assignmentId, setScreen,
     return <AssignmentStudent userId={userId} classId={classId} assignmentId={assignmentId} setScreen={setScreen} showToast={showToast} />;
   }
 
-  if (isWriting) {
+  // Writing: exam screen until submitted, then the waiting message below
+  // (the teacher's correction screen comes with the next delivery).
+  if (isWriting && !hasSubmitted) {
     return (
-      <div className="page">
-        <button className="back-link" onClick={() => setScreen({ name: "home" })}><ArrowLeft size={14} /> Back to assignments</button>
-        <div className="qe-feedback-locked">
-          <Clock size={22} style={{ marginBottom: 10 }} />
-          <p>This Writing assignment will open very soon.</p>
-        </div>
-      </div>
+      <StudentWritingRunner
+        userId={userId}
+        assignmentId={assignmentId}
+        setScreen={setScreen}
+        showToast={showToast}
+        onSubmitted={() => setHasSubmitted(true)}
+      />
     );
   }
 
