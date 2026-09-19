@@ -41,6 +41,18 @@ export function StudentHome({ userId, setScreen, showToast }) {
         : { data: [] };
     const submittedIds = new Set((myAnswers || []).map((r) => r.assignment_id));
 
+    // Structured Writing keeps its answers in writing_responses: a saved
+    // draft means "in progress", a submitted text means "submitted".
+    const writingIds = (assignments || []).filter((a) => a.type === "Writing" && qeAssignmentIds.has(a.id)).map((a) => a.id);
+    const { data: myWriting } =
+      writingIds.length > 0
+        ? await supabase.from("writing_responses").select("assignment_id, submitted_at").eq("student_id", userId).in("assignment_id", writingIds)
+        : { data: [] };
+    for (const w of myWriting || []) {
+      if (w.submitted_at) submittedIds.add(w.assignment_id);
+      else attemptedIds.add(w.assignment_id);
+    }
+
     const { data: myFeedback } =
       qeAssignmentIds.size > 0
         ? await supabase.from("assignment_feedback").select("assignment_id, released_at").eq("student_id", userId).in("assignment_id", [...qeAssignmentIds])
