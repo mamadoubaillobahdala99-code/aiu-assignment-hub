@@ -4,6 +4,7 @@ import { supabase } from "../../supabaseClient";
 import { uid, makeCode, TYPES, fmtDate, fmtDueDateTime, daysUntil, wordCount, isPdfUrl } from "../../lib/utils";
 import { AttachmentPreview, PageHeader, EmptyState, CenterSpinner, StatusBadge } from "../../components/shared";
 import { TeacherQuestionEngineReview } from "../question-engine/TeacherQuestionEngineReview";
+import { TeacherWritingReview } from "../question-engine/TeacherWritingReview";
 
 const CRITERIA = [
   { key: "score_task_achievement", label: "Task Achievement" },
@@ -25,6 +26,10 @@ export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen,
   const [submissions, setSubmissions] = useState([]);
   const [isStructured, setIsStructured] = useState(false);
   const [structuredStudentIds, setStructuredStudentIds] = useState(new Set());
+  // Structured Writing only: who has started (draft saved) and whose
+  // correction is published — for the In progress / Graded badges.
+  const [writingStartedIds, setWritingStartedIds] = useState(new Set());
+  const [writingReleasedIds, setWritingReleasedIds] = useState(new Set());
   const [active, setActive] = useState(null);
   const [activeStructuredStudent, setActiveStructuredStudent] = useState(null);
   const [gradeDraft, setGradeDraft] = useState("");
@@ -54,7 +59,15 @@ export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen,
     const structured = (sectionCount || 0) > 0;
     setIsStructured(structured);
 
-    if (structured) {
+    if (structured && a?.type === "Writing") {
+      // Structured Writing: answers live in writing_responses, not student_answers.
+      const { data: wr } = await supabase.from("writing_responses").select("student_id, submitted_at").eq("assignment_id", assignmentId);
+      setStructuredStudentIds(new Set((wr || []).filter((row) => row.submitted_at).map((row) => row.student_id)));
+      setWritingStartedIds(new Set((wr || []).map((row) => row.student_id)));
+      const { data: fb } = await supabase.from("assignment_feedback").select("student_id, released_at").eq("assignment_id", assignmentId);
+      setWritingReleasedIds(new Set((fb || []).filter((row) => row.released_at).map((row) => row.student_id)));
+      setSubmissions([]);
+    } else if (structured) {
       const { data: sa } = await supabase.from("student_answers").select("student_id").eq("assignment_id", assignmentId);
       setStructuredStudentIds(new Set((sa || []).map((row) => row.student_id)));
       setSubmissions([]);
@@ -245,6 +258,18 @@ export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen,
 
   if (!assignment) return <CenterSpinner />;
 
+  if (activeStructuredStudent && assignment.type === "Writing") {
+    return (
+      <TeacherWritingReview
+        assignmentId={assignmentId}
+        studentId={activeStructuredStudent.id}
+        studentName={activeStructuredStudent.name}
+        onBack={() => { setActiveStructuredStudent(null); load(); }}
+        showToast={showToast}
+      />
+    );
+  }
+
   if (activeStructuredStudent) {
     return (
       <TeacherQuestionEngineReview
@@ -266,6 +291,12 @@ export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen,
   const notSubmittedRoster = roster.filter((s) => !submittedRoster.includes(s));
 
   function statusFor(student) {
+    if (isStructured && assignment.type === "Writing") {
+      if (writingReleasedIds.has(student.id) && structuredStudentIds.has(student.id)) return "graded";
+      if (structuredStudentIds.has(student.id)) return "submitted";
+      if (writingStartedIds.has(student.id)) return "in-progress";
+      return "pending";
+    }
     if (isStructured) return structuredStudentIds.has(student.id) ? "submitted" : "pending";
     const sub = submissions.find((x) => x.student_id === student.id);
     if (sub?.grade) return "graded";
