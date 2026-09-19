@@ -242,28 +242,45 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
   async function submitAll(timeUp = false) {
     if (submitting || results !== null) return;
     setConfirmOpen(false);
-    setSubmitting(true);
-    let sent = 0;
-    let refusedForTime = false;
+
+    // Every answered question, sent in ONE call. The database checks the
+    // student, the questions, the time, and refuses a second submission.
+    const payload = {};
     for (const q of allQuestions) {
-      const response = answers[q.id];
-      if (response === undefined) continue;
-      const { error } = await supabase.rpc("submit_student_answer", {
-        p_assignment_id: assignmentId,
-        p_question_id: q.id,
-        p_response: response,
-      });
-      if (!error) sent++;
-      else if (/Time is over|Exam not started/i.test(error.message || "")) refusedForTime = true;
+      if (answers[q.id] !== undefined) payload[q.id] = answers[q.id];
     }
-    setSubmitting(false);
-    if (sent === 0 && (refusedForTime || timeUp)) {
-      // Nothing could be sent (the time was already over, or no answer
-      // was given before the end).
+    if (timeUp && Object.keys(payload).length === 0) {
+      // Time ran out with no answer given: nothing to send.
       clearLocalAnswers(userId, assignmentId);
       setTimeOver(true);
       return;
     }
+
+    setSubmitting(true);
+    const { error } = await supabase.rpc("submit_student_answers", {
+      p_assignment_id: assignmentId,
+      p_answers: payload,
+    });
+    setSubmitting(false);
+
+    if (error) {
+      const msg = error.message || "";
+      if (/Time is over|Exam not started/i.test(msg)) {
+        clearLocalAnswers(userId, assignmentId);
+        setTimeOver(true);
+        return;
+      }
+      if (/Already submitted/i.test(msg)) {
+        // Already sent earlier (e.g. from another tab): show the result screen.
+        clearLocalAnswers(userId, assignmentId);
+        if (onSubmitted) onSubmitted();
+        return;
+      }
+      autoSubmittedRef.current = false;
+      showToast?.("Your answers could not be submitted. Check your internet connection and try again.");
+      return;
+    }
+
     clearLocalAnswers(userId, assignmentId);
     showToast?.(timeUp ? "Time is up — your answers were submitted" : "Submitted");
     if (onSubmitted) {
