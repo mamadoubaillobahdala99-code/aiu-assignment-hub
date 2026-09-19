@@ -118,6 +118,9 @@ export function ClassDetail({ classId, setScreen, showToast }) {
             <button className="btn-ghost" onClick={() => setScreen({ name: "writing-builder", classId })}>
               <Plus size={13} /> Structured Writing
             </button>
+            <button className="btn-ghost" onClick={() => setScreen({ name: "speaking-builder", classId })}>
+              <Plus size={13} /> Structured Speaking
+            </button>
           </div>
           <AssignmentsTab classId={classId} assignments={assignments} onCreated={load} onOpen={(a) => setScreen({ name: "assignment-teacher", classId, assignmentId: a.id })} />
         </>
@@ -168,6 +171,7 @@ function StudentInClassDetail({ student, classId, assignments, onBack, setScreen
       let submittedQe = new Set();
       let attemptedQe = new Set();
       let releasedQe = new Set();
+      let viewedQe = new Set();
       if (qeIds.size > 0) {
         const qeIdList = [...qeIds];
         const { data: answers } = await supabase.from("student_answers").select("assignment_id").eq("student_id", student.studentId).in("assignment_id", qeIdList);
@@ -183,13 +187,21 @@ function StudentInClassDetail({ student, classId, assignments, onBack, setScreen
             else attemptedQe.add(w.assignment_id);
           }
         }
+        // Structured Speaking is consult-only: "viewed" instead of "submitted".
+        const speakingIdList = assignments.filter((x) => x.type === "Speaking" && qeIds.has(x.id)).map((x) => x.id);
+        if (speakingIdList.length > 0) {
+          const { data: sv } = await supabase.from("speaking_views").select("assignment_id").eq("student_id", student.studentId).in("assignment_id", speakingIdList);
+          viewedQe = new Set((sv || []).map((r) => r.assignment_id));
+        }
         const { data: fb } = await supabase.from("assignment_feedback").select("assignment_id, released_at").eq("student_id", student.studentId).in("assignment_id", qeIdList);
         releasedQe = new Set((fb || []).filter((r) => r.released_at).map((r) => r.assignment_id));
       }
 
       const map = {};
       for (const a of assignments) {
-        if (qeIds.has(a.id)) {
+        if (qeIds.has(a.id) && a.type === "Speaking") {
+          map[a.id] = viewedQe.has(a.id) ? "viewed" : "to-view";
+        } else if (qeIds.has(a.id)) {
           if (submittedQe.has(a.id)) {
             const isReleased = a.auto_release_score || releasedQe.has(a.id);
             map[a.id] = isReleased ? "graded" : "submitted";
