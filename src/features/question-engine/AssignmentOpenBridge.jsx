@@ -17,6 +17,7 @@ export function AssignmentOpenBridge({ userId, classId, assignmentId, setScreen,
   const [isStructured, setIsStructured] = useState(false);
   const [hasSubmitted, setHasSubmitted] = useState(false);
   const [isReleased, setIsReleased] = useState(false);
+  const [isWriting, setIsWriting] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -27,9 +28,18 @@ export function AssignmentOpenBridge({ userId, classId, assignmentId, setScreen,
         .eq("assignment_id", assignmentId);
       const structured = (count || 0) > 0;
 
+      // Structured Writing has no student_answers — it gets its own
+      // student screen (coming next). Until then, show a holding message
+      // instead of an empty exam.
+      let writing = false;
+      if (structured) {
+        const { data: t } = await supabase.from("assignments").select("type").eq("id", assignmentId).single();
+        writing = t?.type === "Writing";
+      }
+
       let submitted = false;
       let released = false;
-      if (structured) {
+      if (structured && !writing) {
         const { count: answerCount } = await supabase
           .from("student_answers")
           .select("id", { count: "exact", head: true })
@@ -55,6 +65,7 @@ export function AssignmentOpenBridge({ userId, classId, assignmentId, setScreen,
 
       if (!cancelled) {
         setIsStructured(structured);
+        setIsWriting(writing);
         setHasSubmitted(submitted);
         setIsReleased(released);
         setChecking(false);
@@ -67,6 +78,18 @@ export function AssignmentOpenBridge({ userId, classId, assignmentId, setScreen,
 
   if (!isStructured) {
     return <AssignmentStudent userId={userId} classId={classId} assignmentId={assignmentId} setScreen={setScreen} showToast={showToast} />;
+  }
+
+  if (isWriting) {
+    return (
+      <div className="page">
+        <button className="back-link" onClick={() => setScreen({ name: "home" })}><ArrowLeft size={14} /> Back to assignments</button>
+        <div className="qe-feedback-locked">
+          <Clock size={22} style={{ marginBottom: 10 }} />
+          <p>This Writing assignment will open very soon.</p>
+        </div>
+      </div>
+    );
   }
 
   if (!hasSubmitted) {
