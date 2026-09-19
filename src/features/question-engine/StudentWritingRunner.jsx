@@ -3,6 +3,7 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import { ArrowLeft, GripVertical, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, RotateCcw } from "lucide-react";
 import { supabase } from "../../supabaseClient";
 import { WritingEditor } from "./WritingEditor";
+import { useExamTimer, ExamTimerDisplay } from "./ExamTimer";
 
 // Structured Writing — student exam screen.
 // Same shell as Reading/Listening (start screen, black sidebar, green
@@ -25,7 +26,12 @@ export function StudentWritingRunner({ userId, assignmentId, setScreen, showToas
   const [drafts, setDrafts] = useState({}); // sectionId -> { html, words }
   const [activeIndex, setActiveIndex] = useState(0);
   const [started, setStarted] = useState(false);
-  const [remainingSec, setRemainingSec] = useState(null);
+  const [startError, setStartError] = useState("");
+  const [starting, setStarting] = useState(false);
+  const autoSubmittedRef = useRef(false);
+  // Secure countdown: start time written once by the server, remaining
+  // time computed from the server clock (see ExamTimer.jsx).
+  const timer = useExamTimer(assignmentId, true);
   const [submitting, setSubmitting] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -171,40 +177,30 @@ export function StudentWritingRunner({ userId, assignmentId, setScreen, showToas
     };
   }, [flushSaves]);
 
-  // ---------- Timer (server-backed start time, same as Reading/Listening) ----------
+  // ---------- Timer (secure, server clock — see ExamTimer.jsx) ----------
 
   async function startExam() {
-    if (assignment?.time_limit_minutes) {
-      await supabase
-        .from("exam_attempts")
-        .upsert({ assignment_id: assignmentId, student_id: userId }, { onConflict: "assignment_id,student_id", ignoreDuplicates: true });
-      const { data: attempt } = await supabase
-        .from("exam_attempts")
-        .select("started_at")
-        .eq("assignment_id", assignmentId)
-        .eq("student_id", userId)
-        .maybeSingle();
-      const total = assignment.time_limit_minutes * 60;
-      if (attempt?.started_at) {
-        const elapsed = Math.floor((Date.now() - new Date(attempt.started_at).getTime()) / 1000);
-        setRemainingSec(Math.max(0, total - elapsed));
-      } else {
-        setRemainingSec(total);
-      }
-    }
-    setStarted(true);
+    setStartError("");
+    setStarting(true);
+    const ok = await timer.start();
+    setStarting(false);
+    if (ok) setStarted(true);
+    else setStartError("The exam could not be started. Check your connection and try again.");
   }
 
+  // Already started earlier (refresh, other device): back to the exam directly.
   useEffect(() => {
-    if (!started || remainingSec === null || submittedRef.current) return;
-    if (remainingSec <= 0) {
-      submitAll(true);
-      return;
-    }
-    const t = setTimeout(() => setRemainingSec((s) => s - 1), 1000);
-    return () => clearTimeout(t);
+    if (sections !== null && timer.hasStarted && timer.status !== "expired" && !started && !submittedRef.current) setStarted(true);
+  }, [sections, timer.hasStarted, timer.status, started]);
+
+  // Time is up — now, or while the student was away: the texts already
+  // saved on the server are submitted automatically.
+  useEffect(() => {
+    if (sections === null || timer.status !== "expired" || submittedRef.current || autoSubmittedRef.current) return;
+    autoSubmittedRef.current = true;
+    submitAll(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [remainingSec, started]);
+  }, [sections, timer.status]);
 
   // ---------- Submit ----------
 
@@ -317,7 +313,10 @@ export function StudentWritingRunner({ userId, assignmentId, setScreen, showToas
               Your text is saved automatically as you type. Pasting text is not allowed.
               {assignment.time_limit_minutes ? " Your timer starts when you press Start. When the time runs out, your writing is submitted automatically." : ""}
             </p>
-            <button className="btn-primary qe-start-btn" onClick={startExam}>Start exam</button>
+            {startError && <div className="field-error" style={{ marginTop: 14 }}>{startError}</div>}
+            <button className="btn-primary qe-start-btn" disabled={starting || timer.status === "loading" || timer.status === "expired"} onClick={startExam}>
+              {starting ? "Starting…" : "Start exam"}
+            </button>
             <button className="back-link" style={{ marginTop: 14 }} onClick={() => setScreen({ name: "home" })}>
               <ArrowLeft size={14} /> Back to assignments
             </button>
@@ -363,7 +362,10 @@ export function StudentWritingRunner({ userId, assignmentId, setScreen, showToas
         </aside>
 
         <div className="qe-exam-main">
-          <div className="app-topbar qe-exam-topbar">Assignment</div>
+          <div className="app-topbar qe-exam-topbar">
+            Assignment
+            {timer.status === "running" && <ExamTimerDisplay remainingSec={timer.remainingSec} />}
+          </div>
           <div className="qe-exam-body" ref={bodyRef}>
             <div className="qe-passage-panel qe-wr-prompt-panel" style={{ flexBasis: `${leftWidthPct}%` }}>
               <p className="qe-part-tag">{active.title}</p>
