@@ -78,6 +78,21 @@ export function TeacherDashboard({ userId, setScreen }) {
         if (!existing || new Date(row.answered_at) > new Date(existing)) submittedAtByPair.set(key, row.answered_at);
       }
       const startedAtByPair = new Map((attempts || []).map((row) => [`${row.assignment_id}:${row.student_id}`, row.started_at]));
+
+      // Structured Writing answers live in writing_responses: submitted
+      // texts count as submissions, saved drafts as "started".
+      const writingIds = (assignments || []).filter((x) => x.type === "Writing" && qeAssignmentIds.has(x.id)).map((x) => x.id);
+      if (writingIds.length > 0) {
+        const { data: wr } = await supabase.from("writing_responses").select("assignment_id, student_id, created_at, submitted_at").in("assignment_id", writingIds);
+        for (const row of wr || []) {
+          const key = `${row.assignment_id}:${row.student_id}`;
+          if (row.submitted_at) {
+            const existing = submittedAtByPair.get(key);
+            if (!existing || new Date(row.submitted_at) > new Date(existing)) submittedAtByPair.set(key, row.submitted_at);
+          }
+          if (!startedAtByPair.has(key)) startedAtByPair.set(key, row.created_at);
+        }
+      }
       const releasedByPair = new Set((feedbackRows || []).filter((row) => row.released_at).map((row) => `${row.assignment_id}:${row.student_id}`));
 
       const pairKeys = new Set([...submittedAtByPair.keys(), ...startedAtByPair.keys()]);
