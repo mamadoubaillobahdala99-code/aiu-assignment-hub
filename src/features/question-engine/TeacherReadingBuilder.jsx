@@ -19,7 +19,7 @@ export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast
   const [title, setTitle] = useState("");
   const [titleTouched, setTitleTouched] = useState(false);
   const [dueDate, setDueDate] = useState("");
-  const [timeLimit, setTimeLimit] = useState("60");
+  const [timeLimit, setTimeLimit] = useState(""); // empty = no timer (the teacher adds one only if wanted)
   const [autoReleaseScore, setAutoReleaseScore] = useState(true);
   const [showAnswerReview, setShowAnswerReview] = useState(true);
   const readingTestType = "academic"; // only option now — General Training was removed
@@ -367,7 +367,7 @@ export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast
         </div>
         <div style={{ flex: 1 }}>
           <label className="field-label">Time limit, minutes (optional)</label>
-          <input type="number" min="1" className="field-input" value={timeLimit} onChange={(e) => setTimeLimit(e.target.value)} />
+          <input type="number" min="1" className="field-input" placeholder="No timer" value={timeLimit} onChange={(e) => setTimeLimit(e.target.value)} />
         </div>
       </div>
 
