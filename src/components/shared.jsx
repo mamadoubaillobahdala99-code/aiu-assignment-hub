@@ -1,5 +1,6 @@
 import React from "react";
 import { BookOpen, Users, Plus, Check, Clock, AlertTriangle, LogOut, GraduationCap, FileText, ChevronRight, X, Copy, CheckCircle2, Headphones, PenLine, Mic, ListChecks, ArrowLeft, Loader2, Timer, Highlighter } from "lucide-react";
+import { Eye } from "lucide-react";
 import { isPdfUrl, isAudioUrl } from "../lib/utils";
 
 export function AttachmentPreview({ url }) {
@@ -65,6 +66,9 @@ export function StatusBadge({ status }) {
   if (status === "graded") return <span className="status-badge graded"><CheckCircle2 size={13} /> Graded</span>;
   if (status === "submitted") return <span className="status-badge submitted"><Check size={13} /> Submitted</span>;
   if (status === "in-progress") return <span className="status-badge inprogress"><Timer size={13} /> In progress</span>;
+  // Structured Speaking (consult only): nothing is submitted.
+  if (status === "viewed") return <span className="status-badge viewed"><Eye size={13} /> Viewed</span>;
+  if (status === "to-view") return <span className="status-badge pending"><Eye size={13} /> Not viewed yet</span>;
   return <span className="status-badge pending"><Clock size={13} /> Not submitted</span>;
 }
 
