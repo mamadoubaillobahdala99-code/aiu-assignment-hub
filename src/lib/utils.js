@@ -16,6 +16,9 @@ export const TYPES = {
   Listening: { icon: Headphones, color: "var(--teal)", timeLimit: 40, targetWords: null },
   "Writing Task 1": { icon: PenLine, color: "var(--amber)", timeLimit: 20, targetWords: 150 },
   "Writing Task 2": { icon: PenLine, color: "var(--amber)", timeLimit: 40, targetWords: 250 },
+  // Structured Writing (Question Engine) — created only from the
+  // "Structured Writing" builder, never from the old quick form.
+  Writing: { icon: PenLine, color: "var(--amber)", timeLimit: 60, targetWords: null, structuredOnly: true },
   Speaking: { icon: Mic, color: "var(--amber)", timeLimit: null, targetWords: null },
   Other: { icon: ListChecks, color: "var(--ink-soft)", timeLimit: null, targetWords: null },
 };
