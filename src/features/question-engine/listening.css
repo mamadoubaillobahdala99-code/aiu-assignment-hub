@@ -5,20 +5,20 @@
    equal specificity to a single-class rule, and depending on CSS
    import order it can win and silently freeze the screen. A compound
    selector always wins regardless of load order. */
-.qe-exam-body.qe-listening-body { justify-content: flex-start; overflow-y: auto; background: var(--paper); }
+/* align-items: flex-start is essential: the default (stretch) forced the
+   panel to exactly the viewport's height, so long Parts spilled out
+   below its visible edge. Now the panel is as tall as its content and
+   the whole page scrolls — one continuous "A4 page" per Part. */
+.qe-exam-body.qe-listening-body { justify-content: flex-start; align-items: flex-start; overflow-y: auto; background: var(--paper); }
 
-/* A visibly distinct "card" so the question area reads as its own
-   surface against the page background, and scrolls internally so every
-   question stays reachable no matter how many there are. */
+/* No framed card — questions sit directly on the page, exam.net style,
+   in a centered reading column. */
 .qe-listening-panel {
   width: 100%;
   max-width: 820px;
-  margin: 24px auto 40px;
-  padding: 28px 28px 40px;
+  margin: 0 auto;
+  padding: 28px 32px 56px;
   box-sizing: border-box;
-  background: var(--paper);
-  border: 1px solid var(--line);
-  border-radius: 14px;
   overflow-wrap: break-word;
 }
 
