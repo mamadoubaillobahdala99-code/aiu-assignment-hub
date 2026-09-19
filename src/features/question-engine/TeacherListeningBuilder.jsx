@@ -18,7 +18,7 @@ function newPart() {
 export function TeacherListeningBuilder({ classId, teacherId, setScreen, showToast, editAssignmentId }) {
   const [title, setTitle] = useState("");
   const [dueDate, setDueDate] = useState("");
-  const [timeLimit, setTimeLimit] = useState("60");
+  const [timeLimit, setTimeLimit] = useState(""); // empty = no timer (the teacher adds one only if wanted)
   const [autoReleaseScore, setAutoReleaseScore] = useState(true);
   const [showAnswerReview, setShowAnswerReview] = useState(true);
   const [parts, setParts] = useState([newPart()]);
@@ -330,7 +330,7 @@ export function TeacherListeningBuilder({ classId, teacherId, setScreen, showToa
         </div>
         <div style={{ flex: 1 }}>
           <label className="field-label">Time limit, minutes (optional)</label>
-          <input type="number" min="1" className="field-input" value={timeLimit} onChange={(e) => setTimeLimit(e.target.value)} />
+          <input type="number" min="1" className="field-input" placeholder="No timer" value={timeLimit} onChange={(e) => setTimeLimit(e.target.value)} />
         </div>
       </div>
 
