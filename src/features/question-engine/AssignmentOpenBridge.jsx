@@ -3,6 +3,7 @@ import { ArrowLeft, Clock } from "lucide-react";
 import { supabase } from "../../supabaseClient";
 import { StudentExamRunner } from "./StudentExamRunner";
 import { StudentWritingRunner } from "./StudentWritingRunner";
+import { StudentWritingFeedback } from "./StudentWritingFeedback";
 import { StudentQuestionEngineFeedback } from "./StudentQuestionEngineFeedback";
 import { AssignmentStudent } from "../assignment-hub/AssignmentStudent";
 import { CenterSpinner } from "../../components/shared";
@@ -47,6 +48,20 @@ export function AssignmentOpenBridge({ userId, classId, assignmentId, setScreen,
         }
       }
 
+      // Writing is always marked by the teacher: results show only once
+      // the feedback is published (the student can read that row only
+      // after publication — database rule).
+      let writingReleased = false;
+      if (writing && writingSubmitted) {
+        const { data: wfb } = await supabase
+          .from("assignment_feedback")
+          .select("released_at")
+          .eq("assignment_id", assignmentId)
+          .eq("student_id", userId)
+          .maybeSingle();
+        writingReleased = Boolean(wfb?.released_at);
+      }
+
       let submitted = false;
       let released = false;
       if (structured && !writing) {
@@ -77,7 +92,7 @@ export function AssignmentOpenBridge({ userId, classId, assignmentId, setScreen,
         setIsStructured(structured);
         setIsWriting(writing);
         setHasSubmitted(writing ? writingSubmitted : submitted);
-        setIsReleased(released);
+        setIsReleased(writing ? writingReleased : released);
         setChecking(false);
       }
     })();
@@ -102,6 +117,10 @@ export function AssignmentOpenBridge({ userId, classId, assignmentId, setScreen,
         onSubmitted={() => setHasSubmitted(true)}
       />
     );
+  }
+
+  if (isWriting && isReleased) {
+    return <StudentWritingFeedback assignmentId={assignmentId} userId={userId} setScreen={setScreen} />;
   }
 
   if (!hasSubmitted) {
