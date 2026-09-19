@@ -1,1 +1,27 @@
 
+/* Structured Writing — teacher builder */
+.qe-writing-task-block { margin-top: 18px; }
+
+.qe-writing-image-drop {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 18px;
+  border: 1.5px dashed var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink-soft);
+  font-size: 13.5px;
+  cursor: pointer;
+}
+.qe-writing-image-drop:hover { border-color: var(--teal); color: var(--teal); }
+
+.qe-writing-image-preview { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.qe-writing-image-preview img {
+  max-width: 100%;
+  max-height: 360px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  object-fit: contain;
+}
