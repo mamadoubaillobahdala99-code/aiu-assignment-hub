@@ -8,7 +8,7 @@ import { TableCompletion } from "./TableCompletion";
 import { SentenceCompletion } from "./SentenceCompletion";
 import { MatchingGrid } from "./MatchingGrid";
 import { AudioPlayer } from "./AudioPlayer";
-import { parseCompletionPayload, numberQuestions } from "./bulkParse";
+import { parseCompletionPayload, numberQuestions, questionSlotCount } from "./bulkParse";
 import { HighlightableText } from "./HighlightableText";
 
 // The countdown is backed by exam_attempts.started_at on the server, so
@@ -33,6 +33,7 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
   const [className, setClassName] = useState("");
   const [audioOpen, setAudioOpen] = useState(false);
   const [teacherName, setTeacherName] = useState("");
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   const load = useCallback(async () => {
     const { data: a } = await supabase.from("assignments").select("*").eq("id", assignmentId).single();
@@ -148,6 +149,11 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
   useEffect(() => {
     const panel = questionsPanelRef.current;
     if (!panel) return;
+    // The element that actually scrolls: in Reading it's the questions
+    // panel itself; in Listening the whole page (bodyRef) scrolls and the
+    // panel just grows with its content, so observing the panel there
+    // would always report the first question as "visible".
+    const scrollRoot = assignment?.type === "Listening" ? bodyRef.current : panel;
     const targets = panel.querySelectorAll('[id^="question-"]');
     if (targets.length === 0) return;
 
@@ -159,17 +165,51 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
         const num = parseInt(topMost.target.id.replace("question-", ""), 10);
         if (!isNaN(num)) setVisibleNum(num);
       },
-      { root: panel, threshold: 0.4 }
+      { root: scrollRoot, threshold: 0.4 }
     );
     targets.forEach((el) => observer.observe(el));
     return () => observer.disconnect();
-  }, [activeIndex, sections]);
+  }, [activeIndex, sections, assignment, started]);
 
   const allQuestions = sections.flatMap((s) => s.groups.flatMap((g) => g.questions));
   const allAnswered = allQuestions.length > 0 && allQuestions.every((q) => answers[q.id] !== undefined);
 
+  // Every answer-sheet number still empty, with the Part it lives in —
+  // for the submit confirmation. A "choose N letters" question counts
+  // each slot separately, so picking 1 of 2 leaves one number listed.
+  function hasAnswer(v) {
+    if (v === undefined || v === null) return false;
+    if (Array.isArray(v)) return v.length > 0;
+    if (typeof v === "string") return v.trim() !== "";
+    return true;
+  }
+  const unansweredSlots = [];
+  sections.forEach((s, si) => {
+    s.groups.forEach((g) => {
+      g.questions.forEach((q, qi) => {
+        const first = g.questionNumbers[qi];
+        const slots = questionSlotCount(q);
+        const v = answers[q.id];
+        const filled = q.type === "multiple_selection"
+          ? Math.min(Array.isArray(v) ? v.length : 0, slots)
+          : hasAnswer(v) ? slots : 0;
+        for (let n = first + filled; n < first + slots; n++) unansweredSlots.push({ num: n, partIndex: si });
+      });
+    });
+  });
+
+  function jumpToQuestion(num, partIndex) {
+    setConfirmOpen(false);
+    setActiveIndex(partIndex);
+    // Wait for that Part to render before scrolling to it.
+    setTimeout(() => document.getElementById(`question-${num}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 60);
+  }
+
+  // The time-up auto-submit calls submitAll directly (no dialog); only
+  // the student's own click goes through this confirmation.
   async function submitAll() {
     if (submitting || results !== null) return;
+    setConfirmOpen(false);
     setSubmitting(true);
     for (const q of allQuestions) {
       const response = answers[q.id];
@@ -372,7 +412,7 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
               )}
 
               {results === null && (
-                <button className="btn-primary qe-exam-sidebar-submit" disabled={submitting} onClick={submitAll}>
+                <button className="btn-primary qe-exam-sidebar-submit" disabled={submitting} onClick={() => setConfirmOpen(true)}>
                   {submitting ? "Submitting…" : "Submit exam"}
                 </button>
               )}
@@ -467,6 +507,39 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
           </div>
         </div>
       </div>
+
+      {confirmOpen && (
+        <div className="qe-confirm-backdrop" onClick={() => setConfirmOpen(false)}>
+          <div className="qe-confirm-card" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+            <h2 className="qe-confirm-title">Submit exam</h2>
+            <p className="qe-confirm-text">Are you sure you want to finish and submit? You can't change your answers afterwards.</p>
+
+            {unansweredSlots.length > 0 ? (
+              <>
+                <p className="qe-confirm-text" style={{ fontWeight: 600 }}>
+                  {unansweredSlots.length} question{unansweredSlots.length > 1 ? "s have" : " has"} no answer yet:
+                </p>
+                <div className="qe-confirm-unanswered">
+                  {unansweredSlots.map((u) => (
+                    <button key={u.num} className="qe-confirm-chip" onClick={() => jumpToQuestion(u.num, u.partIndex)} title="Go to this question">
+                      {u.num}
+                    </button>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <p className="qe-confirm-text qe-confirm-allset">All questions have an answer.</p>
+            )}
+
+            <div className="qe-confirm-actions">
+              <button className="btn-ghost" onClick={() => setConfirmOpen(false)}>Keep working</button>
+              <button className="btn-primary" disabled={submitting} onClick={submitAll}>
+                {submitting ? "Submitting…" : "Submit exam"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
