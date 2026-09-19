@@ -48,6 +48,14 @@ export function StudentClassDetail({ classId, userId, setScreen, showToast }) {
       else attemptedIds.add(w.assignment_id);
     }
 
+    // Structured Speaking is consult-only: "Viewed" once opened.
+    const speakingIds = (assignments || []).filter((a) => a.type === "Speaking" && qeAssignmentIds.has(a.id)).map((a) => a.id);
+    const { data: myViews } =
+      speakingIds.length > 0
+        ? await supabase.from("speaking_views").select("assignment_id").eq("student_id", userId).in("assignment_id", speakingIds)
+        : { data: [] };
+    const viewedIds = new Set((myViews || []).map((r) => r.assignment_id));
+
     const { data: myFeedback } =
       qeAssignmentIds.size > 0
         ? await supabase.from("assignment_feedback").select("assignment_id, released_at").eq("student_id", userId).in("assignment_id", [...qeAssignmentIds])
@@ -56,7 +64,9 @@ export function StudentClassDetail({ classId, userId, setScreen, showToast }) {
 
     const combined = (assignments || []).map((a) => {
       let status;
-      if (qeAssignmentIds.has(a.id)) {
+      if (qeAssignmentIds.has(a.id) && a.type === "Speaking") {
+        status = viewedIds.has(a.id) ? "viewed" : "to-view";
+      } else if (qeAssignmentIds.has(a.id)) {
         if (submittedIds.has(a.id)) {
           const released = a.auto_release_score || releasedIds.has(a.id);
           status = released ? "graded" : "submitted";
