@@ -114,7 +114,7 @@ export function TeacherDashboard({ userId, setScreen }) {
 
     const allSubmissions = [...(submissions || []), ...qeSubmissions];
 
-    setData({ classes: classes || [], assignments: assignments || [], submissions: allSubmissions, roster: roster || [] });
+    setData({ classes: classes || [], assignments: assignments || [], submissions: allSubmissions, roster: roster || [], qeAssignmentIds: [...qeAssignmentIds] });
     setLoading(false);
   }, [userId]);
 
@@ -123,6 +123,7 @@ export function TeacherDashboard({ userId, setScreen }) {
   if (loading || !data) return <CenterSpinner />;
 
   const { classes, assignments, submissions, roster } = data;
+  const qeAssignmentIdSet = new Set(data.qeAssignmentIds || []);
 
   const totalAssignments = assignments.length;
   const activeClasses = classes.length;
@@ -151,7 +152,8 @@ export function TeacherDashboard({ userId, setScreen }) {
     }));
 
   const missingWork = [];
-  const overdueAssignments = assignments.filter((a) => a.due_date && new Date(a.due_date) < today);
+  // Structured Speaking is consult-only (nothing to submit), so it never counts as missing work.
+  const overdueAssignments = assignments.filter((a) => a.due_date && new Date(a.due_date) < today && !(a.type === "Speaking" && qeAssignmentIdSet.has(a.id)));
   for (const a of overdueAssignments) {
     const classRoster = roster.filter((r) => r.class_id === a.class_id);
     for (const r of classRoster) {
