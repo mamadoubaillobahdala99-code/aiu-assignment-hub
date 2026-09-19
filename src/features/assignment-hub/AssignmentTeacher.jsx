@@ -5,6 +5,7 @@ import { uid, makeCode, TYPES, fmtDate, fmtDueDateTime, daysUntil, wordCount, is
 import { AttachmentPreview, PageHeader, EmptyState, CenterSpinner, StatusBadge } from "../../components/shared";
 import { TeacherQuestionEngineReview } from "../question-engine/TeacherQuestionEngineReview";
 import { TeacherWritingReview } from "../question-engine/TeacherWritingReview";
+import { deleteUnusedSpeakingFiles } from "../question-engine/speaking";
 
 const CRITERIA = [
   { key: "score_task_achievement", label: "Task Achievement" },
@@ -30,6 +31,8 @@ export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen,
   // correction is published — for the In progress / Graded badges.
   const [writingStartedIds, setWritingStartedIds] = useState(new Set());
   const [writingReleasedIds, setWritingReleasedIds] = useState(new Set());
+  // Structured Speaking only (consult, nothing submitted): who opened it.
+  const [speakingViewedIds, setSpeakingViewedIds] = useState(new Set());
   const [active, setActive] = useState(null);
   const [activeStructuredStudent, setActiveStructuredStudent] = useState(null);
   const [gradeDraft, setGradeDraft] = useState("");
@@ -59,7 +62,12 @@ export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen,
     const structured = (sectionCount || 0) > 0;
     setIsStructured(structured);
 
-    if (structured && a?.type === "Writing") {
+    if (structured && a?.type === "Speaking") {
+      const { data: sv } = await supabase.from("speaking_views").select("student_id").eq("assignment_id", assignmentId);
+      setSpeakingViewedIds(new Set((sv || []).map((row) => row.student_id)));
+      setStructuredStudentIds(new Set());
+      setSubmissions([]);
+    } else if (structured && a?.type === "Writing") {
       // Structured Writing: answers live in writing_responses, not student_answers.
       const { data: wr } = await supabase.from("writing_responses").select("student_id, submitted_at").eq("assignment_id", assignmentId);
       setStructuredStudentIds(new Set((wr || []).filter((row) => row.submitted_at).map((row) => row.student_id)));
@@ -130,7 +138,16 @@ export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen,
       }
     }
 
+    // Structured Speaking: remember its documents, to remove the files
+    // from storage once the assignment itself is gone.
+    let speakingDocs = [];
+    if (isStructured && assignment?.type === "Speaking") {
+      const { data: sp } = await supabase.from("exam_sections").select("documents").eq("assignment_id", assignmentId);
+      speakingDocs = (sp || []).flatMap((row) => (Array.isArray(row.documents) ? row.documents : []));
+    }
+
     const { error } = await supabase.from("assignments").delete().eq("id", assignmentId);
+    if (!error && speakingDocs.length > 0) await deleteUnusedSpeakingFiles(supabase, speakingDocs, teacherId);
     setDeleting(false);
     if (error) {
       showToast("Could not delete assignment: " + error.message);
@@ -186,6 +203,8 @@ export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen,
           max_plays: section.max_plays,
           image_url: section.image_url,
           task_number: section.task_number,
+          speaking_part: section.speaking_part,
+          documents: section.documents || [],
           order_index: section.order_index,
         })
         .select()
@@ -287,10 +306,18 @@ export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen,
 
   // Two groups, per Phase 25 — submitted students first, not-submitted
   // after, instead of one flat list.
-  const submittedRoster = roster.filter((s) => (isStructured ? structuredStudentIds.has(s.id) : Boolean(submissions.find((x) => x.student_id === s.id)?.submitted_at)));
+  const isSpeakingStructured = isStructured && assignment.type === "Speaking";
+  const submittedRoster = roster.filter((s) =>
+    isSpeakingStructured
+      ? speakingViewedIds.has(s.id)
+      : isStructured
+      ? structuredStudentIds.has(s.id)
+      : Boolean(submissions.find((x) => x.student_id === s.id)?.submitted_at)
+  );
   const notSubmittedRoster = roster.filter((s) => !submittedRoster.includes(s));
 
   function statusFor(student) {
+    if (isSpeakingStructured) return speakingViewedIds.has(student.id) ? "viewed" : "to-view";
     if (isStructured && assignment.type === "Writing") {
       if (writingReleasedIds.has(student.id) && structuredStudentIds.has(student.id)) return "graded";
       if (structuredStudentIds.has(student.id)) return "submitted";
@@ -335,7 +362,14 @@ export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen,
               className="btn-ghost"
               onClick={() =>
                 setScreen({
-                  name: assignment.type === "Listening" ? "listening-builder" : assignment.type === "Writing" ? "writing-builder" : "reading-builder",
+                  name:
+                    assignment.type === "Listening"
+                      ? "listening-builder"
+                      : assignment.type === "Writing"
+                      ? "writing-builder"
+                      : assignment.type === "Speaking"
+                      ? "speaking-builder"
+                      : "reading-builder",
                   classId,
                   editAssignmentId: assignmentId,
                 })
@@ -388,16 +422,16 @@ export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen,
         <EmptyState icon={<Users size={24} />} title="No students in this class yet" />
       ) : (
         <>
-          <h3 className="section-title">Submitted ({submittedRoster.length})</h3>
+          <h3 className="section-title">{isSpeakingStructured ? "Viewed" : "Submitted"} ({submittedRoster.length})</h3>
           {submittedRoster.length === 0 ? (
-            <p className="empty-inline">No submissions yet.</p>
+            <p className="empty-inline">{isSpeakingStructured ? "No student has opened it yet." : "No submissions yet."}</p>
           ) : (
             <div className="sub-list">{submittedRoster.map(renderRow)}</div>
           )}
 
-          <h3 className="section-title" style={{ marginTop: 22 }}>Not submitted ({notSubmittedRoster.length})</h3>
+          <h3 className="section-title" style={{ marginTop: 22 }}>{isSpeakingStructured ? "Not viewed yet" : "Not submitted"} ({notSubmittedRoster.length})</h3>
           {notSubmittedRoster.length === 0 ? (
-            <p className="empty-inline">Everyone has submitted.</p>
+            <p className="empty-inline">{isSpeakingStructured ? "Everyone has opened it." : "Everyone has submitted."}</p>
           ) : (
             <div className="sub-list">{notSubmittedRoster.map(renderRow)}</div>
           )}
