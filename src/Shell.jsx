@@ -13,9 +13,11 @@ import { AssignmentOpenBridge } from "./features/question-engine/AssignmentOpenB
 import { TeacherReadingBuilder } from "./features/question-engine/TeacherReadingBuilder";
 import { TeacherListeningBuilder } from "./features/question-engine/TeacherListeningBuilder";
 import { TeacherWritingBuilder } from "./features/question-engine/TeacherWritingBuilder";
+import { TeacherSpeakingBuilder } from "./features/question-engine/TeacherSpeakingBuilder";
 import "./features/question-engine/reading-builder.css";
 import "./features/question-engine/listening.css";
 import "./features/question-engine/writing.css";
+import "./features/question-engine/speaking.css";
 
 export function Shell({ profile, setProfile, userId, onSignOut, screen, setScreen, showToast }) {
   const isTeacher = profile.role === "teacher";
@@ -99,6 +101,9 @@ export function Shell({ profile, setProfile, userId, onSignOut, screen, setScree
         )}
         {screen.name === "writing-builder" && isTeacher && (
           <TeacherWritingBuilder classId={screen.classId} teacherId={userId} setScreen={setScreen} showToast={showToast} editAssignmentId={screen.editAssignmentId} />
+        )}
+        {screen.name === "speaking-builder" && isTeacher && (
+          <TeacherSpeakingBuilder classId={screen.classId} teacherId={userId} setScreen={setScreen} showToast={showToast} editAssignmentId={screen.editAssignmentId} />
         )}
         {screen.name === "home" && isTeacher && <TeacherHome userId={userId} setScreen={setScreen} showToast={showToast} />}
         {screen.name === "home" && !isTeacher && <StudentHome userId={userId} setScreen={setScreen} showToast={showToast} />}
