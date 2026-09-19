@@ -171,6 +171,8 @@ export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen,
           passage_text: section.passage_text,
           audio_url: section.audio_url,
           max_plays: section.max_plays,
+          image_url: section.image_url,
+          task_number: section.task_number,
           order_index: section.order_index,
         })
         .select()
@@ -302,7 +304,7 @@ export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen,
               className="btn-ghost"
               onClick={() =>
                 setScreen({
-                  name: assignment.type === "Listening" ? "listening-builder" : "reading-builder",
+                  name: assignment.type === "Listening" ? "listening-builder" : assignment.type === "Writing" ? "writing-builder" : "reading-builder",
                   classId,
                   editAssignmentId: assignmentId,
                 })
