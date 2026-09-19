@@ -137,7 +137,7 @@ export function AssignmentsTab({ classId, assignments, onCreated, onOpen }) {
 
           <label className="field-label" style={{ marginTop: 14 }}>Type</label>
           <div className="type-row">
-            {Object.keys(TYPES).map((t) => (
+            {Object.keys(TYPES).filter((t) => !TYPES[t].structuredOnly).map((t) => (
               <button key={t} className={`type-chip ${type === t ? "active" : ""}`} onClick={() => selectType(t)}>{t}</button>
             ))}
           </div>
