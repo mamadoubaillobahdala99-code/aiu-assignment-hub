@@ -115,6 +115,9 @@ export function ClassDetail({ classId, setScreen, showToast }) {
             <button className="btn-ghost" onClick={() => setScreen({ name: "listening-builder", classId })}>
               <Plus size={13} /> Structured Listening
             </button>
+            <button className="btn-ghost" onClick={() => setScreen({ name: "writing-builder", classId })}>
+              <Plus size={13} /> Structured Writing
+            </button>
           </div>
           <AssignmentsTab classId={classId} assignments={assignments} onCreated={load} onOpen={(a) => setScreen({ name: "assignment-teacher", classId, assignmentId: a.id })} />
         </>
