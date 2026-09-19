@@ -4,6 +4,7 @@ import { supabase } from "../../supabaseClient";
 import { StudentExamRunner } from "./StudentExamRunner";
 import { StudentWritingRunner } from "./StudentWritingRunner";
 import { StudentWritingFeedback } from "./StudentWritingFeedback";
+import { StudentSpeakingViewer } from "./StudentSpeakingViewer";
 import { StudentQuestionEngineFeedback } from "./StudentQuestionEngineFeedback";
 import { AssignmentStudent } from "../assignment-hub/AssignmentStudent";
 import { CenterSpinner } from "../../components/shared";
@@ -20,6 +21,7 @@ export function AssignmentOpenBridge({ userId, classId, assignmentId, setScreen,
   const [hasSubmitted, setHasSubmitted] = useState(false);
   const [isReleased, setIsReleased] = useState(false);
   const [isWriting, setIsWriting] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -34,9 +36,11 @@ export function AssignmentOpenBridge({ userId, classId, assignmentId, setScreen,
       // student_answers) and has its own exam screen.
       let writing = false;
       let writingSubmitted = false;
+      let speaking = false;
       if (structured) {
         const { data: t } = await supabase.from("assignments").select("type").eq("id", assignmentId).single();
         writing = t?.type === "Writing";
+        speaking = t?.type === "Speaking";
         if (writing) {
           const { count: sentCount } = await supabase
             .from("writing_responses")
@@ -64,7 +68,7 @@ export function AssignmentOpenBridge({ userId, classId, assignmentId, setScreen,
 
       let submitted = false;
       let released = false;
-      if (structured && !writing) {
+      if (structured && !writing && !speaking) {
         const { count: answerCount } = await supabase
           .from("student_answers")
           .select("id", { count: "exact", head: true })
@@ -91,6 +95,7 @@ export function AssignmentOpenBridge({ userId, classId, assignmentId, setScreen,
       if (!cancelled) {
         setIsStructured(structured);
         setIsWriting(writing);
+        setIsSpeaking(speaking);
         setHasSubmitted(writing ? writingSubmitted : submitted);
         setIsReleased(writing ? writingReleased : released);
         setChecking(false);
@@ -103,6 +108,11 @@ export function AssignmentOpenBridge({ userId, classId, assignmentId, setScreen,
 
   if (!isStructured) {
     return <AssignmentStudent userId={userId} classId={classId} assignmentId={assignmentId} setScreen={setScreen} showToast={showToast} />;
+  }
+
+  // Structured Speaking: consult only — no submission, no results.
+  if (isSpeaking) {
+    return <StudentSpeakingViewer userId={userId} assignmentId={assignmentId} setScreen={setScreen} />;
   }
 
   // Writing: exam screen until submitted, then the waiting message below
