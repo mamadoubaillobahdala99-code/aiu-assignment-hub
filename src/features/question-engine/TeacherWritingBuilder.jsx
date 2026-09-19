@@ -24,7 +24,7 @@ function emptyTask() {
 export function TeacherWritingBuilder({ classId, teacherId, setScreen, showToast, editAssignmentId }) {
   const [title, setTitle] = useState("");
   const [dueDate, setDueDate] = useState("");
-  const [timeLimit, setTimeLimit] = useState("60");
+  const [timeLimit, setTimeLimit] = useState(""); // empty = no timer (the teacher adds one only if wanted)
   const [task1, setTask1] = useState(emptyTask());
   const [task2, setTask2] = useState(emptyTask());
   const [fileInputKey, setFileInputKey] = useState(0);
@@ -233,7 +233,7 @@ export function TeacherWritingBuilder({ classId, teacherId, setScreen, showToast
         </div>
         <div style={{ flex: 1 }}>
           <label className="field-label">Time limit, minutes (optional)</label>
-          <input type="number" min="1" className="field-input" value={timeLimit} onChange={(e) => setTimeLimit(e.target.value)} />
+          <input type="number" min="1" className="field-input" placeholder="No timer" value={timeLimit} onChange={(e) => setTimeLimit(e.target.value)} />
         </div>
       </div>
 
