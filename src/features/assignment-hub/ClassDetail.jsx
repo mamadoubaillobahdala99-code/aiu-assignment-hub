@@ -174,6 +174,15 @@ function StudentInClassDetail({ student, classId, assignments, onBack, setScreen
         submittedQe = new Set((answers || []).map((a) => a.assignment_id));
         const { data: attempts } = await supabase.from("exam_attempts").select("assignment_id").eq("student_id", student.studentId).in("assignment_id", qeIdList);
         attemptedQe = new Set((attempts || []).map((a) => a.assignment_id));
+        // Structured Writing answers live in writing_responses.
+        const writingIdList = assignments.filter((x) => x.type === "Writing" && qeIds.has(x.id)).map((x) => x.id);
+        if (writingIdList.length > 0) {
+          const { data: wr } = await supabase.from("writing_responses").select("assignment_id, submitted_at").eq("student_id", student.studentId).in("assignment_id", writingIdList);
+          for (const w of wr || []) {
+            if (w.submitted_at) submittedQe.add(w.assignment_id);
+            else attemptedQe.add(w.assignment_id);
+          }
+        }
         const { data: fb } = await supabase.from("assignment_feedback").select("assignment_id, released_at").eq("student_id", student.studentId).in("assignment_id", qeIdList);
         releasedQe = new Set((fb || []).filter((r) => r.released_at).map((r) => r.assignment_id));
       }
