@@ -78,6 +78,16 @@ export function AssignmentOpenBridge({ userId, classId, assignmentId, setScreen,
           .eq("assignment_id", assignmentId)
           .eq("student_id", userId);
         submitted = (answerCount || 0) > 0;
+        if (!submitted) {
+          // A submission with no answer at all is still a submission.
+          const { data: att } = await supabase
+            .from("exam_attempts")
+            .select("submitted_at")
+            .eq("assignment_id", assignmentId)
+            .eq("student_id", userId)
+            .maybeSingle();
+          submitted = Boolean(att?.submitted_at);
+        }
 
         if (submitted) {
           const { data: a } = await supabase.from("assignments").select("auto_release_score").eq("id", assignmentId).single();
