@@ -8,14 +8,19 @@ import { HighlightableText } from "./HighlightableText";
 export function MatchingGrid({ questions, answers, onChange, results, disabled, startNumber = 1, assignmentId, userId, correctAnswers }) {
   if (questions.length === 0) return null;
   const choices = questions[0].options?.choices || [];
+  // Map/plan labelling: the letters are on the image itself, so the
+  // choices have no text and the legend is not shown.
+  const legend = choices.filter((c) => c.text && c.text.trim());
 
   return (
     <div className="qe-matching-wrap">
-      <ul className="qe-matching-legend">
-        {choices.map((c) => (
-          <li key={c.letter}><strong>{c.letter}.</strong> {c.text}</li>
-        ))}
-      </ul>
+      {legend.length > 0 && (
+        <ul className="qe-matching-legend">
+          {legend.map((c) => (
+            <li key={c.letter}><strong>{c.letter}.</strong> {c.text}</li>
+          ))}
+        </ul>
+      )}
 
       <table className="qe-matching-grid">
         <thead>
