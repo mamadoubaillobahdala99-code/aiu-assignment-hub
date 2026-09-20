@@ -17,7 +17,7 @@ export function formatAnswerValue(question, value) {
 
   if (question.type === "multiple_choice" || question.type.startsWith("matching_")) {
     const choice = question.options?.choices?.find((c) => c.letter === value);
-    return choice ? `${value}. ${choice.text}` : String(value);
+    return choice && choice.text ? `${value}. ${choice.text}` : String(value);
   }
 
   if (question.type === "multiple_selection") {
