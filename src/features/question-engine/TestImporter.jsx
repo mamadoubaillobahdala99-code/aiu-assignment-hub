@@ -148,7 +148,7 @@ export function TestImporter({ classId, teacherId, skill: initialSkill = "readin
     setEditing({});
     setInstructions({});
     if (!title.trim()) {
-      const guess = skill === "reading" ? parsed[0]?.passageTitle : "";
+      const guess = parsed[0]?.docTitle || (skill === "reading" ? parsed[0]?.passageTitle : "");
       if (guess) setTitle(guess);
     }
     setStep("preview");
