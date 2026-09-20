@@ -11,7 +11,7 @@ const LABELS = {
   matching_sentence_endings: { title: "Matching Sentence Endings", labelStyle: "letter", optionsHint: "Paste each sentence ending on its own line — lettered A, B, C… automatically.", itemsHint: "Paste each sentence beginning, one per line (or numbered, or separated by a blank line)." },
 };
 
-export function MatchingBuilder({ group, teacherId, matchingType, onQuestionsCreated }) {
+export function MatchingBuilder({ group, teacherId, matchingType, onQuestionsCreated, skill = "reading" }) {
   const meta = LABELS[matchingType] || LABELS.matching_information;
   const [optionsText, setOptionsText] = useState("");
   const [itemsText, setItemsText] = useState("");
@@ -32,7 +32,7 @@ export function MatchingBuilder({ group, teacherId, matchingType, onQuestionsCre
     for (let i = 0; i < items.length; i++) {
       const { data: question, error: qError } = await supabase
         .from("questions")
-        .insert({ teacher_id: teacherId, type: matchingType, skill: "reading", prompt: items[i].text, options: { choices: options } })
+        .insert({ teacher_id: teacherId, type: matchingType, skill, prompt: items[i].text, options: { choices: options } })
         .select()
         .single();
       if (qError || !question) {
