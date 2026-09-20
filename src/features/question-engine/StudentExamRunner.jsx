@@ -11,6 +11,7 @@ import { AudioPlayer } from "./AudioPlayer";
 import { parseCompletionPayload, numberQuestions, questionSlotCount } from "./bulkParse";
 import { HighlightableText } from "./HighlightableText";
 import { useExamTimer, ExamTimerDisplay } from "./ExamTimer";
+import { GroupImage } from "./GroupImage";
 
 // The countdown comes from useExamTimer: the start time is written once
 // by the server (when the student presses Start) and the remaining time
@@ -96,7 +97,7 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
     for (const s of sectionRows || []) {
       const { data: groupRows } = await supabase
         .from("question_groups")
-        .select("id, instruction, passage_text, order_index")
+        .select("id, instruction, passage_text, image_url, order_index")
         .eq("section_id", s.id)
         .order("order_index");
 
@@ -110,7 +111,7 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
         const questions = (links || []).map((l) => l.questions);
         const { start: startNumber, end: endNumber, numbers: questionNumbers, nextStart } = numberQuestions(questions, globalCounter + 1);
         globalCounter = nextStart - 1;
-        groups.push({ id: g.id, instruction: g.instruction, passageText: g.passage_text, questions, startNumber, endNumber, questionNumbers });
+        groups.push({ id: g.id, instruction: g.instruction, passageText: g.passage_text, imageUrl: g.image_url, questions, startNumber, endNumber, questionNumbers });
       }
       built.push({ id: s.id, title: s.title, passageTitle: s.passage_title, passageText: s.passage_text, audioUrl: s.audio_url, maxPlays: s.max_plays, groups });
     }
@@ -399,6 +400,7 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
             {group.startNumber === group.endNumber ? `Question ${group.startNumber}` : `Questions ${group.startNumber}-${group.endNumber}`}
           </div>
           {group.instruction && <p className="qe-section-instruction">{group.instruction}</p>}
+          {group.imageUrl && <GroupImage url={group.imageUrl} />}
 
           {group.passageText ? (
             (() => {
