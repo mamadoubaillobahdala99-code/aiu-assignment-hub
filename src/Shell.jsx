@@ -12,6 +12,7 @@ import { Profile } from "./features/assignment-hub/Profile";
 import { AssignmentOpenBridge } from "./features/question-engine/AssignmentOpenBridge";
 import { TeacherReadingBuilder } from "./features/question-engine/TeacherReadingBuilder";
 import { TeacherListeningBuilder } from "./features/question-engine/TeacherListeningBuilder";
+import { TestImporter } from "./features/question-engine/TestImporter";
 import { TeacherWritingBuilder } from "./features/question-engine/TeacherWritingBuilder";
 import { TeacherSpeakingBuilder } from "./features/question-engine/TeacherSpeakingBuilder";
 import "./features/question-engine/reading-builder.css";
@@ -98,6 +99,9 @@ export function Shell({ profile, setProfile, userId, onSignOut, screen, setScree
         )}
         {screen.name === "listening-builder" && isTeacher && (
           <TeacherListeningBuilder classId={screen.classId} teacherId={userId} setScreen={setScreen} showToast={showToast} editAssignmentId={screen.editAssignmentId} />
+        )}
+        {screen.name === "test-importer" && isTeacher && (
+          <TestImporter classId={screen.classId} teacherId={userId} skill={screen.skill} setScreen={setScreen} showToast={showToast} />
         )}
         {screen.name === "writing-builder" && isTeacher && (
           <TeacherWritingBuilder classId={screen.classId} teacherId={userId} setScreen={setScreen} showToast={showToast} editAssignmentId={screen.editAssignmentId} />
