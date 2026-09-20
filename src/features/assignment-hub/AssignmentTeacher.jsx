@@ -178,6 +178,9 @@ export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen,
         auto_release_score: assignment.auto_release_score,
         show_answer_review: assignment.show_answer_review,
         reading_test_type: assignment.reading_test_type,
+        listening_audio_url: assignment.listening_audio_url,
+        listening_exam_mode: assignment.listening_exam_mode,
+        listening_check_minutes: assignment.listening_check_minutes,
         due_date: null,
       })
       .select()
