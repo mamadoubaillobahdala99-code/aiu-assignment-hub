@@ -2,13 +2,14 @@ import React, { useState, useMemo, useEffect } from "react";
 import { Plus, X, Check } from "lucide-react";
 import { supabase } from "../../supabaseClient";
 import { TeacherQuestionForm } from "./TeacherQuestionForm";
-import { guessPassageTitle, defaultInstructionFor, parseNotesMarkdown, countBlanksInTexts, parseCompletionPayload, parseSentenceCompletion, numberQuestions } from "./bulkParse";
+import { guessPassageTitle, defaultInstructionFor, parseNotesMarkdown, countBlanksInTexts, parseCompletionPayload, parseSentenceCompletion, numberQuestions, splitAlternatives, FORM_INSTRUCTION, FLOWCHART_INSTRUCTION, WORDBANK_INSTRUCTION, SHORT_ANSWER_INSTRUCTION } from "./bulkParse";
 import { SentenceCompletion } from "./SentenceCompletion";
 import { NotesCompletion } from "./NotesCompletion";
 import { TableCompletion } from "./TableCompletion";
 import { MatchingBuilder } from "./MatchingBuilder";
 import { LabellingBuilder } from "./LabellingBuilder";
 import { GroupImagePicker } from "./GroupImage";
+import { FormCompletionBuilder, FlowchartCompletionBuilder, WordBankCompletionBuilder, ShortAnswerBuilder } from "./CompletionExtraBuilders";
 
 function newGroup() {
   return { localId: crypto.randomUUID(), instruction: "", mode: "questions", completionStyle: "paragraph", matchingType: "matching_information", labellingKind: "map", imageUrl: "", questions: [], summaryText: "" };
@@ -471,6 +472,7 @@ export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast
                     <button type="button" className={`type-chip ${group.mode === "completion" ? "active" : ""}`} onClick={() => setGroupMode(part.localId, group.localId, "completion")}>Summary Completion</button>
                     <button type="button" className={`type-chip ${group.mode === "matching" ? "active" : ""}`} onClick={() => setGroupMode(part.localId, group.localId, "matching")}>Matching</button>
                     <button type="button" className={`type-chip ${group.mode === "labelling" ? "active" : ""}`} onClick={() => setGroupMode(part.localId, group.localId, "labelling")}>Labelling (map / plan / diagram)</button>
+                    <button type="button" className={`type-chip ${group.mode === "shortanswer" ? "active" : ""}`} onClick={() => setGroupMode(part.localId, group.localId, "shortanswer")}>Short answer</button>
                   </div>
 
                   {group.mode === "labelling" && (
@@ -491,6 +493,9 @@ export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast
                         <button type="button" className={`type-chip ${group.completionStyle === "notes" ? "active" : ""}`} onClick={() => setCompletionStyle(part.localId, group.localId, "notes")}>Notes</button>
                         <button type="button" className={`type-chip ${group.completionStyle === "table" ? "active" : ""}`} onClick={() => setCompletionStyle(part.localId, group.localId, "table")}>Table</button>
                         <button type="button" className={`type-chip ${group.completionStyle === "sentences" ? "active" : ""}`} onClick={() => setCompletionStyle(part.localId, group.localId, "sentences")}>Sentences</button>
+                        <button type="button" className={`type-chip ${group.completionStyle === "form" ? "active" : ""}`} onClick={() => setCompletionStyle(part.localId, group.localId, "form")}>Form</button>
+                        <button type="button" className={`type-chip ${group.completionStyle === "flowchart" ? "active" : ""}`} onClick={() => setCompletionStyle(part.localId, group.localId, "flowchart")}>Flow-chart</button>
+                        <button type="button" className={`type-chip ${group.completionStyle === "wordbank" ? "active" : ""}`} onClick={() => setCompletionStyle(part.localId, group.localId, "wordbank")}>Summary + word list</button>
                       </div>
                     </>
                   )}
@@ -532,6 +537,13 @@ export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast
                   kind={group.labellingKind}
                   onQuestionsCreated={(questions, instr) => onLabellingCreated(part.localId, group.localId, questions, instr)}
                 />
+              ) : group.mode === "shortanswer" ? (
+                <ShortAnswerBuilder
+                  group={group}
+                  teacherId={teacherId}
+                  skill="reading"
+                  onQuestionsCreated={(questions) => onLabellingCreated(part.localId, group.localId, questions, SHORT_ANSWER_INSTRUCTION)}
+                />
               ) : group.mode === "matching" ? (
                 <MatchingBuilder
                   group={group}
@@ -553,6 +565,30 @@ export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast
                     teacherId={teacherId}
                     onSummaryTextChange={(text) => updateSummaryText(part.localId, group.localId, text)}
                     onBlanksCreated={(questions) => onBlanksCreated(part.localId, group.localId, questions)}
+                  />
+                ) : group.completionStyle === "form" ? (
+                  <FormCompletionBuilder
+                    group={group}
+                    teacherId={teacherId}
+                    skill="reading"
+                    onSummaryTextChange={(text) => updateSummaryText(part.localId, group.localId, text)}
+                    onBlanksCreated={(questions) => onLabellingCreated(part.localId, group.localId, questions, FORM_INSTRUCTION)}
+                  />
+                ) : group.completionStyle === "flowchart" ? (
+                  <FlowchartCompletionBuilder
+                    group={group}
+                    teacherId={teacherId}
+                    skill="reading"
+                    onSummaryTextChange={(text) => updateSummaryText(part.localId, group.localId, text)}
+                    onBlanksCreated={(questions) => onLabellingCreated(part.localId, group.localId, questions, FLOWCHART_INSTRUCTION)}
+                  />
+                ) : group.completionStyle === "wordbank" ? (
+                  <WordBankCompletionBuilder
+                    group={group}
+                    teacherId={teacherId}
+                    skill="reading"
+                    onSummaryTextChange={(text) => updateSummaryText(part.localId, group.localId, text)}
+                    onBlanksCreated={(questions) => onLabellingCreated(part.localId, group.localId, questions, WORDBANK_INSTRUCTION)}
                   />
                 ) : group.completionStyle === "sentences" ? (
                   <SentenceCompletionBuilder
@@ -622,7 +658,7 @@ export function SummaryCompletionBuilder({ group, teacherId, skill = "reading", 
 
   const blankCount = useMemo(() => Math.max(0, localText.split(/_{3,}/).length - 1), [localText]);
   const alreadyCreated = group.questions.length > 0;
-  const allFilled = blankCount > 0 && Array.from({ length: blankCount }).every((_, i) => (accepted[i] || "").trim());
+  const allFilled = blankCount > 0 && Array.from({ length: blankCount }).every((_, i) => splitAlternatives(accepted[i]).length > 0);
 
   function handleTextChange(text) {
     setLocalText(text);
@@ -635,7 +671,7 @@ export function SummaryCompletionBuilder({ group, teacherId, skill = "reading", 
     setError("");
     const created = [];
     for (let i = 0; i < blankCount; i++) {
-      const alternatives = accepted[i].split(",").map((a) => a.trim()).filter(Boolean);
+      const alternatives = splitAlternatives(accepted[i]);
       const { data: question, error: qError } = await supabase
         .from("questions")
         .insert({ teacher_id: teacherId, type: "gap_fill", skill, prompt: `Gap ${i + 1}`, options: {} })
@@ -681,7 +717,7 @@ export function SummaryCompletionBuilder({ group, teacherId, skill = "reading", 
           {Array.from({ length: blankCount }).map((_, i) => (
             <div key={i} className="qe-bulk-row">
               <div className="qe-bulk-text">Blank {i + 1}</div>
-              <input className="field-input" placeholder="e.g. prosperity, size (comma-separated if more than one is accepted)" value={accepted[i] || ""} onChange={(e) => setAccepted((prev) => ({ ...prev, [i]: e.target.value }))} />
+              <input className="field-input" placeholder="e.g. prosperity, size (separate accepted answers with , or /)" value={accepted[i] || ""} onChange={(e) => setAccepted((prev) => ({ ...prev, [i]: e.target.value }))} />
             </div>
           ))}
         </div>
@@ -714,7 +750,7 @@ export function NotesCompletionBuilder({ group, teacherId, skill = "reading", on
   const activeBlocks = inputMode === "markdown" ? parsedMarkdown.blocks : visualBlocks;
   const blankCount = useMemo(() => countBlanksInTexts(activeBlocks.map((b) => b.text)), [activeBlocks]);
   const alreadyCreated = group.questions.length > 0;
-  const allFilled = blankCount > 0 && Array.from({ length: blankCount }).every((_, i) => (accepted[i] || "").trim());
+  const allFilled = blankCount > 0 && Array.from({ length: blankCount }).every((_, i) => splitAlternatives(accepted[i]).length > 0);
 
   function switchToVisual() {
     const seed = parsedMarkdown.blocks.length > 0 ? parsedMarkdown.blocks : [{ type: "bullet", text: markdownText.trim() }];
@@ -738,7 +774,7 @@ export function NotesCompletionBuilder({ group, teacherId, skill = "reading", on
     setError("");
     const created = [];
     for (let i = 0; i < blankCount; i++) {
-      const alternatives = accepted[i].split(",").map((a) => a.trim()).filter(Boolean);
+      const alternatives = splitAlternatives(accepted[i]);
       const { data: question, error: qError } = await supabase
         .from("questions")
         .insert({ teacher_id: teacherId, type: "gap_fill", skill, prompt: `Gap ${i + 1}`, options: {} })
@@ -834,7 +870,7 @@ export function NotesCompletionBuilder({ group, teacherId, skill = "reading", on
           {Array.from({ length: blankCount }).map((_, i) => (
             <div key={i} className="qe-bulk-row">
               <div className="qe-bulk-text">Blank {i + 1}</div>
-              <input className="field-input" placeholder="e.g. prosperity, size (comma-separated if more than one is accepted)" value={accepted[i] || ""} onChange={(e) => setAccepted((prev) => ({ ...prev, [i]: e.target.value }))} />
+              <input className="field-input" placeholder="e.g. prosperity, size (separate accepted answers with , or /)" value={accepted[i] || ""} onChange={(e) => setAccepted((prev) => ({ ...prev, [i]: e.target.value }))} />
             </div>
           ))}
         </div>
@@ -863,7 +899,7 @@ export function TableCompletionBuilder({ group, teacherId, skill = "reading", on
 
   const blankCount = useMemo(() => countBlanksInTexts(rows.flatMap((r) => r.cells)), [rows]);
   const alreadyCreated = group.questions.length > 0;
-  const allFilled = blankCount > 0 && Array.from({ length: blankCount }).every((_, i) => (accepted[i] || "").trim());
+  const allFilled = blankCount > 0 && Array.from({ length: blankCount }).every((_, i) => splitAlternatives(accepted[i]).length > 0);
 
   function addColumn() {
     setHeaders((prev) => [...prev, `Column ${prev.length + 1}`]);
@@ -896,7 +932,7 @@ export function TableCompletionBuilder({ group, teacherId, skill = "reading", on
     setError("");
     const created = [];
     for (let i = 0; i < blankCount; i++) {
-      const alternatives = accepted[i].split(",").map((a) => a.trim()).filter(Boolean);
+      const alternatives = splitAlternatives(accepted[i]);
       const { data: question, error: qError } = await supabase
         .from("questions")
         .insert({ teacher_id: teacherId, type: "gap_fill", skill, prompt: `Gap ${i + 1}`, options: {} })
@@ -983,7 +1019,7 @@ export function TableCompletionBuilder({ group, teacherId, skill = "reading", on
           {Array.from({ length: blankCount }).map((_, i) => (
             <div key={i} className="qe-bulk-row">
               <div className="qe-bulk-text">Blank {i + 1}</div>
-              <input className="field-input" placeholder="e.g. prosperity, size (comma-separated if more than one is accepted)" value={accepted[i] || ""} onChange={(e) => setAccepted((prev) => ({ ...prev, [i]: e.target.value }))} />
+              <input className="field-input" placeholder="e.g. prosperity, size (separate accepted answers with , or /)" value={accepted[i] || ""} onChange={(e) => setAccepted((prev) => ({ ...prev, [i]: e.target.value }))} />
             </div>
           ))}
         </div>
@@ -1010,7 +1046,7 @@ export function SentenceCompletionBuilder({ group, teacherId, skill = "reading",
   const sentences = useMemo(() => parseSentenceCompletion(text), [text]);
   const blankCount = useMemo(() => countBlanksInTexts(sentences), [sentences]);
   const alreadyCreated = group.questions.length > 0;
-  const allFilled = blankCount > 0 && Array.from({ length: blankCount }).every((_, i) => (accepted[i] || "").trim());
+  const allFilled = blankCount > 0 && Array.from({ length: blankCount }).every((_, i) => splitAlternatives(accepted[i]).length > 0);
 
   async function createBlanks() {
     if (!allFilled) return;
@@ -1018,7 +1054,7 @@ export function SentenceCompletionBuilder({ group, teacherId, skill = "reading",
     setError("");
     const created = [];
     for (let i = 0; i < blankCount; i++) {
-      const alternatives = accepted[i].split(",").map((a) => a.trim()).filter(Boolean);
+      const alternatives = splitAlternatives(accepted[i]);
       const { data: question, error: qError } = await supabase
         .from("questions")
         .insert({ teacher_id: teacherId, type: "gap_fill", skill, prompt: `Gap ${i + 1}`, options: {} })
@@ -1074,7 +1110,7 @@ export function SentenceCompletionBuilder({ group, teacherId, skill = "reading",
           {Array.from({ length: blankCount }).map((_, i) => (
             <div key={i} className="qe-bulk-row">
               <div className="qe-bulk-text">Blank {i + 1}</div>
-              <input className="field-input" placeholder="e.g. prosperity, size (comma-separated if more than one is accepted)" value={accepted[i] || ""} onChange={(e) => setAccepted((prev) => ({ ...prev, [i]: e.target.value }))} />
+              <input className="field-input" placeholder="e.g. prosperity, size (separate accepted answers with , or /)" value={accepted[i] || ""} onChange={(e) => setAccepted((prev) => ({ ...prev, [i]: e.target.value }))} />
             </div>
           ))}
         </div>
