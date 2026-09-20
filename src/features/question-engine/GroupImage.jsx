@@ -14,7 +14,9 @@ const ZOOM_MIN = 0.5;
 const ZOOM_MAX = 3;
 const ZOOM_STEP = 0.25;
 
-export function GroupImage({ url, alt = "Figure for these questions" }) {
+// allowBlob: only for the teacher's importer preview (an image read from a
+// Word file that isn't uploaded yet); students only ever get https links.
+export function GroupImage({ url, alt = "Figure for these questions", allowBlob = false }) {
   const [zoom, setZoom] = useState(1);
   const [fullscreen, setFullscreen] = useState(false);
 
@@ -27,7 +29,7 @@ export function GroupImage({ url, alt = "Figure for these questions" }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [fullscreen]);
 
-  if (!isSafeUrl(url)) return null;
+  if (!isSafeUrl(url) && !(allowBlob && String(url || "").startsWith("blob:"))) return null;
   const change = (d) => setZoom((z) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round((z + d) * 100) / 100)));
 
   return (
@@ -62,7 +64,8 @@ const ACCEPTED = ["image/png", "image/jpeg", "image/webp", "image/gif"];
 
 // Teacher side: pick an image for a group. Uploaded straight away (like
 // the audio picker) so the preview is the real stored file.
-export function GroupImagePicker({ teacherId, value, onChange, label = "Image (optional)", hint, required = false }) {
+// previewUrl: what to show when value is not a web link yet (importer).
+export function GroupImagePicker({ teacherId, value, onChange, label = "Image (optional)", hint, required = false, previewUrl }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [inputKey, setInputKey] = useState(0);
@@ -101,7 +104,7 @@ export function GroupImagePicker({ teacherId, value, onChange, label = "Image (o
       </label>
       {value ? (
         <div className="qe-gimg-picker-preview">
-          <img src={value} alt="" />
+          <img src={previewUrl || value} alt="" />
           <button type="button" className="btn-ghost" onClick={() => onChange("")}><X size={13} /> Remove image</button>
         </div>
       ) : (
