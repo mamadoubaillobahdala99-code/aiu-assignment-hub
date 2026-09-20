@@ -73,3 +73,13 @@
 .qe-imp-answer-err { grid-column: 2; color: #a3261c; font-size: 12px; }
 .qe-imp-footer { position: sticky; bottom: 0; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-top: 26px; padding: 14px 0; background: var(--paper); border-top: 1px solid var(--line); z-index: 2; }
 .qe-imp-q .rf-answer-num { white-space: nowrap; min-width: 26px; }
+
+/* ---------- Importer: file drop (livraison 10) ---------- */
+.qe-imp-drop { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 22px 16px; border: 2px dashed var(--line); border-radius: 10px; background: #fff; color: var(--ink); font-size: 14px; font-weight: 600; text-align: center; cursor: pointer; transition: border-color .15s, background .15s; }
+.qe-imp-drop:hover, .qe-imp-drop.is-over { border-color: var(--teal); background: var(--teal-soft); }
+.qe-imp-drop.is-busy { cursor: progress; opacity: 0.8; }
+.qe-imp-drop-compact { flex-direction: row; flex-wrap: wrap; padding: 12px 14px; margin-bottom: 8px; }
+.qe-imp-drop-hint { width: 100%; font-size: 12px; font-weight: 400; color: var(--ink-soft); }
+.qe-imp-drop-ok { color: #1d6b3f; font-size: 13px; }
+.qe-imp-spin { animation: qe-imp-spin 0.9s linear infinite; }
+@keyframes qe-imp-spin { to { transform: rotate(360deg); } }
