@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from "react";
-import { ArrowLeft, CheckCircle2, AlertTriangle, XCircle, FileText, Pencil, ImagePlus } from "lucide-react";
+import { ArrowLeft, CheckCircle2, AlertTriangle, XCircle, FileText, Pencil, ImagePlus, Upload, Loader2 } from "lucide-react";
 import { supabase } from "../../supabaseClient";
 import { parseTest, analyseGroup, parseAnswerKey, resolveAnswers, buildGroupRows, defaultImportInstruction, IMPORT_TYPES, analysisSlots } from "./importParse";
 import { QuestionRenderer } from "./QuestionRenderer";
@@ -21,6 +21,56 @@ import { AudioFilePicker } from "./AudioFilePicker";
 //    their answer keys (question_answer_key, never visible to students),
 //    the parts and the groups are created with the teacher's own rights
 //    — the same inserts the manual builders already do.
+
+// Drop (or choose) a PDF / Word / text file: its text is read in the
+// browser and put into the text box below, where the teacher can check it.
+function FileDrop({ label, onText, compact = false }) {
+  const [busy, setBusy] = useState(false);
+  const [over, setOver] = useState(false);
+  const [message, setMessage] = useState(null); // { kind: "ok" | "error", text }
+  const [inputKey, setInputKey] = useState(0);
+
+  async function handle(file) {
+    if (!file || busy) return;
+    setBusy(true);
+    setMessage(null);
+    try {
+      const { extractTextFromFile } = await import("./fileExtract");
+      const text = await extractTextFromFile(file);
+      onText(text);
+      setMessage({ kind: "ok", text: `Text read from "${file.name}" — check it below, then continue.` });
+    } catch (e) {
+      setMessage({ kind: "error", text: e?.name === "ExtractError" || e?.constructor?.name === "ExtractError" ? e.message : e?.message || "This file could not be read." });
+    } finally {
+      setBusy(false);
+      setInputKey((k) => k + 1);
+    }
+  }
+
+  return (
+    <div>
+      <label
+        className={`qe-imp-drop ${compact ? "qe-imp-drop-compact" : ""} ${over ? "is-over" : ""} ${busy ? "is-busy" : ""}`}
+        onDragOver={(e) => {
+          e.preventDefault();
+          setOver(true);
+        }}
+        onDragLeave={() => setOver(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setOver(false);
+          handle(e.dataTransfer.files?.[0]);
+        }}
+      >
+        {busy ? <Loader2 size={18} className="qe-imp-spin" /> : <Upload size={18} />}
+        <span>{busy ? "Reading the file…" : label}</span>
+        <span className="qe-imp-drop-hint">PDF, Word (.docx) or .txt — read on your computer, never uploaded</span>
+        <input key={inputKey} type="file" accept=".pdf,.docx,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain" style={{ display: "none" }} disabled={busy} onChange={(e) => handle(e.target.files?.[0])} />
+      </label>
+      {message && <div className={message.kind === "ok" ? "qe-imp-drop-ok" : "field-error"} style={{ marginTop: 8 }}>{message.text}</div>}
+    </div>
+  );
+}
 
 const LAST_LETTERS = "BCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
 const noop = () => {};
@@ -263,12 +313,14 @@ export function TestImporter({ classId, teacherId, skill: initialSkill = "readin
           <button type="button" className={`type-chip ${skill === "listening" ? "active" : ""}`} onClick={() => setSkill("listening")}>Listening</button>
         </div>
 
-        <label className="field-label" style={{ marginTop: 18 }}>The test (paste everything)</label>
+        <label className="field-label" style={{ marginTop: 18 }}>The test</label>
         <p className="field-hint" style={{ marginTop: 0, marginBottom: 8 }}>
           {skill === "reading"
-            ? 'Copy the whole test from your Word or PDF file: "READING PASSAGE 1", the passage, then each "Questions 1-6" block with its instructions.'
+            ? 'Drop your Word or PDF file, or copy the whole test: "READING PASSAGE 1", the passage, then each "Questions 1-6" block with its instructions.'
             : 'Copy the whole test: "SECTION 1" (or "PART 1"), then each "Questions 1-5" block with its instructions. You add the audio files in the next step.'}
         </p>
+        <FileDrop label="Drop the test file here, or click to choose it" onText={setTestText} />
+        <p className="field-hint" style={{ marginTop: 8, marginBottom: 6 }}>…or paste the text:</p>
         <textarea
           className="field-input textarea qe-imp-textarea"
           placeholder={skill === "reading" ? "READING PASSAGE 1\nThe History of Glass\n…\nQuestions 1-6\nDo the following statements agree with…" : "SECTION 1\nQuestions 1-5\nComplete the form below.\n…"}
@@ -280,6 +332,7 @@ export function TestImporter({ classId, teacherId, skill: initialSkill = "readin
         <p className="field-hint" style={{ marginTop: 0, marginBottom: 8 }}>
           One line, or one answer per line. Example: 1 TRUE 2 FALSE 3 NOT GIVEN 4 B 5 river/the river 6 (the) museum. The answers are never shown to students before correction.
         </p>
+        <FileDrop compact label="Drop the answer-key file here, or click to choose it" onText={setKeyText} />
         <textarea
           className="field-input textarea"
           style={{ minHeight: 110 }}
