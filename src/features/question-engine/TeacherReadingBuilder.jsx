@@ -9,6 +9,7 @@ import { TableCompletion } from "./TableCompletion";
 import { MatchingBuilder } from "./MatchingBuilder";
 import { LabellingBuilder } from "./LabellingBuilder";
 import { GroupImagePicker } from "./GroupImage";
+import { PassageImageTools, stripImageMarkers } from "./PassageImages";
 import { FormCompletionBuilder, FlowchartCompletionBuilder, WordBankCompletionBuilder, ShortAnswerBuilder } from "./CompletionExtraBuilders";
 
 function newGroup() {
@@ -268,7 +269,7 @@ export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast
         .from("assignments")
         .update({
           title: finalTitle,
-          description: parts[0].passageText.trim(),
+          description: stripImageMarkers(parts[0].passageText),
           due_date: dueDate || null,
           time_limit_minutes: timeLimit ? parseInt(timeLimit, 10) : null,
           auto_release_score: autoReleaseScore,
@@ -292,7 +293,7 @@ export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast
           class_id: classId,
           title: finalTitle,
           type: "Reading",
-          description: parts[0].passageText.trim(), // kept for lists/dashboards that show a short preview
+          description: stripImageMarkers(parts[0].passageText), // kept for lists/dashboards that show a short preview
           due_date: dueDate || null,
           time_limit_minutes: timeLimit ? parseInt(timeLimit, 10) : null,
           auto_release_score: autoReleaseScore,
@@ -433,11 +434,18 @@ export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast
           <label className="field-label" style={{ marginTop: 14 }}>Passage text</label>
           {pi === 0 && <p className="field-hint" style={{ marginTop: 0, marginBottom: 8 }}>If the first line looks like a title, it'll fill in both the title above and the assignment name automatically.</p>}
           <textarea
+            id={`passage-${part.localId}`}
             className="field-input textarea"
             style={{ minHeight: 160 }}
             placeholder="Paste this passage's text here…"
             value={part.passageText}
             onChange={(e) => handlePassageChange(part.localId, e.target.value)}
+          />
+          <PassageImageTools
+            teacherId={teacherId}
+            text={part.passageText}
+            textareaId={`passage-${part.localId}`}
+            onChange={(text) => handlePassageChange(part.localId, text)}
           />
 
           <h4 className="section-title" style={{ marginTop: 20, fontSize: 14 }}>Question groups</h4>
