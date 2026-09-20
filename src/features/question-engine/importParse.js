@@ -183,6 +183,8 @@ export function parseTest(text, skill = "reading") {
     if (pm) {
       openPart(line);
       const rest = pm.rest;
+      // "PASSAGE 1: The Evolution of Urban Green Spaces" → passage title
+      if (rest && !/^questions?\b/i.test(rest)) part.headingTitle = rest;
       // "SECTION 1 Questions 1-10" — the range is only a heading here;
       // the real groups follow. It becomes a group only if none do.
       const gm = GROUP_RE.exec(rest);
@@ -229,6 +231,16 @@ export function parseTest(text, skill = "reading") {
     else part.preamble.push(line);
   }
 
+  // Lines above the first part heading with no questions of their own
+  // ("IELTS Reading Mock Test", "Time Allowed: 60 Minutes") are the
+  // document's cover, not a part: only its first line is kept, as a
+  // suggested title for the assignment.
+  let docTitle = "";
+  if (parts.length > 1 && parts[0].groups.length === 0 && !parts[0].title) {
+    docTitle = (parts[0].preamble.find(Boolean) || "").slice(0, 120);
+    parts.shift();
+  }
+
   // Finalise: passage text for Reading, clean line lists for groups.
   return parts
     .filter((p) => p.groups.length > 0 || p.preamble.some(Boolean))
@@ -254,10 +266,12 @@ export function parseTest(text, skill = "reading") {
           }
         }
       }
-      const { title, body } = takeTitle(trimBlankLines(passage));
+      const taken = p.headingTitle ? { title: p.headingTitle, body: trimBlankLines(passage) } : takeTitle(trimBlankLines(passage));
+      const { title, body } = taken;
       return {
         id: `part-${pi + 1}`,
         heading: p.title,
+        docTitle: pi === 0 ? docTitle : "",
         passageTitle: title,
         passageText: paragraphs(body),
         audioUrl: "",
@@ -625,6 +639,32 @@ function unpipe(lines) {
   return out;
 }
 
+// Questions printed in columns come row by row ("1 … 3 … 5", "2 … 4 … 6"):
+// a run of consecutive numbered lines is put back in number order.
+function sortNumberedRuns(lines) {
+  const num = (l) => {
+    const m = /^\(?(\d{1,2})\)?[.)]?\s+\S/.exec(l);
+    return m ? +m[1] : null;
+  };
+  const out = [...lines];
+  let i = 0;
+  while (i < out.length) {
+    if (num(out[i]) === null) {
+      i++;
+      continue;
+    }
+    let j = i;
+    while (j + 1 < out.length && num(out[j + 1]) !== null) j++;
+    if (j > i) {
+      const run = out.slice(i, j + 1).map((l, k) => ({ l, n: num(l), k }));
+      run.sort((a, b) => a.n - b.n || a.k - b.k);
+      run.forEach((r, k) => (out[i + k] = r.l));
+    }
+    i = j + 1;
+  }
+  return out;
+}
+
 // context.passageText: the part's passage, used to find paragraph letters.
 export function analyseGroup(group, skill = "reading", context = {}) {
   const rawLines = String(group.source || "").split("\n").map((l) => l.trim());
@@ -632,7 +672,7 @@ export function analyseGroup(group, skill = "reading", context = {}) {
   const expectedCount = end - start + 1;
   // The type is detected on the text read line by line; only a table
   // keeps its "|" cells (see unpipe).
-  let lines = unpipe(rawLines);
+  let lines = sortNumberedRuns(unpipe(rawLines));
   let { instruction, body } = splitInstruction(lines, start);
   // Type keywords are searched in every line above the first question,
   // not only in the lines recognised as instructions.
@@ -747,7 +787,7 @@ export function analyseGroup(group, skill = "reading", context = {}) {
     result.questions = items.map((it) => ({ number: it.number, prompt: it.prompt, dbType: "true_false_not_given", options: { label_set: type === "ynng" ? "yes_no" : "true_false" } }));
   } else if (type === "headings") {
     const { items, options } = parseItems(body, start, end, { roman: true });
-    const choices = options;
+    const choices = dedupeLetters(options);
     result.letters = choices.map((c) => c.letter);
     result.questions = items.map((it) => ({ number: it.number, prompt: it.prompt, dbType: "matching_headings", options: { choices } }));
     if (choices.length < 2) issues.push({ level: "error", msg: "The list of headings (i, ii, iii…) was not found." });
