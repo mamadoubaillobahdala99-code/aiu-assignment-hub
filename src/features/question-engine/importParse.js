@@ -1,4 +1,3 @@
-
 // =====================================================================
 // Test importer — rule-based reading of a pasted IELTS Reading or
 // Listening test (no AI, runs entirely in the teacher's browser).
@@ -75,7 +74,8 @@ export function normalizeText(raw) {
     if (/^\d{1,3}\s*(of|\/)\s*\d{1,3}$/i.test(l)) return false;
     if (/^-\s*\d{1,3}\s*-$/.test(l)) return false;
     if (/^simulation\b/i.test(l)) return false;
-    if (counts[l] >= 3 && l.length <= 80 && !PROTECTED_LINE.test(l)) return false;
+    // (a line of symbols only, such as a flow-chart arrow "↓", is never a footer)
+    if (counts[l] >= 3 && l.length <= 80 && /[A-Za-z0-9]/.test(l) && !PROTECTED_LINE.test(l)) return false;
     return true;
   });
 
@@ -120,7 +120,22 @@ export function normalizeText(raw) {
 // ---------------------------------------------------------------------
 // 2) Parts and question groups
 // ---------------------------------------------------------------------
-const PART_RE = /^(?:reading\s+passage|passage|section|part)\s*(\d{1,2})\b[\s:.\-–—]*(.*)$/i;
+// A new part starts only on a heading line: "READING PASSAGE 2",
+// "PASSAGE 2 – Title", "SECTION 1 Questions 1-10". A sentence such as
+// "Reading Passage 2 has 7 paragraphs A-G" is an instruction, not a part.
+// Reading uses PASSAGE (or PART); SECTION is only used in Listening.
+const PART_RE_READING = /^(?:reading\s+passage|passage|part)\s*(\d{1,2})\b\s*(.*)$/i;
+const PART_RE_LISTENING = /^(?:section|part)\s*(\d{1,2})\b\s*(.*)$/i;
+function partHeading(line, skill) {
+  const m = (skill === "listening" ? PART_RE_LISTENING : PART_RE_READING).exec(line);
+  if (!m) return null;
+  const rest = m[2].trim();
+  if (rest === "" || /^questions?\s+\d/i.test(rest)) return { rest };
+  // "PASSAGE 1 – The History of Glass" / "PASSAGE 1: …"
+  const sep = /^[:.\-–—]\s*(.*)$/.exec(rest);
+  if (sep) return { rest: sep[1] };
+  return null;
+}
 const GROUP_RE = /^questions?\s+(\d{1,2})(?:\s*(?:[-–—]|to|and|&)\s*(\d{1,2}))?(?![\d])[\s:.,]*(.*)$/i;
 const DROP_LINE = /^(you should spend about|(academic|general training)?\s*(reading|listening)(\s+test)?(\s*\d+)?$|test\s*\d+$)/i;
 
@@ -155,10 +170,10 @@ export function parseTest(text, skill = "reading") {
   for (const line of lines) {
     if (DROP_LINE.test(line)) continue;
 
-    const pm = PART_RE.exec(line);
-    if (pm && (pm[2] === "" || /^questions?\b/i.test(pm[2]) || (pm[2].length < 70 && !/[.?!]$/.test(pm[2])))) {
+    const pm = partHeading(line, skill);
+    if (pm) {
       openPart(line);
-      const rest = pm[2];
+      const rest = pm.rest;
       // "SECTION 1 Questions 1-10" — the range is only a heading here;
       // the real groups follow. It becomes a group only if none do.
       const gm = GROUP_RE.exec(rest);
@@ -299,7 +314,7 @@ function splitPassageSpill(lines, start, end) {
 // ---------------------------------------------------------------------
 // 3) One group: instructions, type, questions
 // ---------------------------------------------------------------------
-const INSTR_RE = /^(complete|choose|write|answer|do the following|in boxes|on your answer sheet|true\b|false\b|not given|yes\b|no\b|label|match|which|classify|look at|reading passage|the (reading )?(text|passage) has|you may use|nb\b|using no more|circle|select|what does|what do|what did|according to|one word|no more than|for each answer|identify)/i;
+const INSTR_RE = /^(complete|choose|write|answer|do the following|in boxes|on your answer sheet|true\b|false\b|not given|yes\b|no\b|label|match|which|classify|look at|reading passage|the (reading )?(text|passage) has|you may use|nb\b|using no more|circle|select|what does|what do|what did|according to|one word|no more than|for each answer|identify|use the information|the (flow.?chart|table|diagram|map|plan|notes?|summary|form|sentences?|list|text|passage|boxes?)\b.*\b(below|above)\b)/i;
 
 function splitInstruction(lines, start) {
   const instr = [];
@@ -313,6 +328,21 @@ function splitInstruction(lines, start) {
     instr.push(l);
   }
   return { instruction: instr, body: lines.slice(i).filter((l) => l !== undefined) };
+}
+
+// Paragraph labels of a passage, in order: "A", "A Chapter 1",
+// "Paragraph B", "C." … Only a run A, B, C… counts, so a sentence that
+// starts with the article "A" alone never makes a list.
+export function paragraphLetters(passageText) {
+  const found = [];
+  for (const raw of String(passageText || "").split("\n")) {
+    const l = raw.trim();
+    const m = /^(?:[Pp]aragraph\s+)?([A-Z])(?:[.):]?\s*$|[.):]\s+|\s+(?=[Cc]hapter\b|[Ss]ection\b|[Pp]aragraph\b|[A-Z]))/.exec(l);
+    if (!m) continue;
+    const letter = m[1].toUpperCase();
+    if (letter === LETTERS[found.length]) found.push(letter);
+  }
+  return found.length >= 2 ? found : null;
 }
 
 function letterRange(text) {
@@ -545,13 +575,21 @@ function dedupeLetters(options) {
   return options.filter((o) => (seen.has(o.letter) ? false : (seen.add(o.letter), true)));
 }
 
-export function analyseGroup(group, skill = "reading") {
+// context.passageText: the part's passage, used to find paragraph letters.
+export function analyseGroup(group, skill = "reading", context = {}) {
   const lines = String(group.source || "").split("\n").map((l) => l.trim());
   const { start, end } = group;
   const expectedCount = end - start + 1;
   const { instruction, body } = splitInstruction(lines, start);
   const instructionText = instruction.join("\n");
-  const detected = detectType(instructionText, body, start, end);
+  // Type keywords are searched in every line above the first question,
+  // not only in the lines recognised as instructions.
+  const firstItem = body.findIndex((l) => {
+    const m = /^\(?(\d{1,2})\)?[.)]?\s+\S/.exec(l);
+    return (m && +m[1] === start) || GAP_RE.test(l);
+  });
+  const head = firstItem < 0 ? [] : body.slice(0, firstItem);
+  const detected = detectType([instructionText, ...head].join("\n"), body, start, end);
   const type = group.type || detected.type;
   const issues = [];
   if (!group.type && detected.weak) issues.push({ level: "warn", msg: "Type guessed from the layout — please check it." });
@@ -569,6 +607,10 @@ export function analyseGroup(group, skill = "reading") {
     needsImage: type === "map" || type === "diagram",
   };
 
+  if (!lines.some(Boolean)) {
+    issues.push({ level: "error", msg: "The text of this group is empty — a line above may have been read as a new part. Paste the questions in \"Edit the text of this group\"." });
+    return result;
+  }
   if (type === "unknown") {
     issues.push({ level: "error", msg: "Type not recognised — choose it in the list." });
     return result;
@@ -588,8 +630,14 @@ export function analyseGroup(group, skill = "reading") {
     } else if (type === "flowchart") {
       const steps = conv.filter(Boolean).map((l) => l.replace(/^[↓→▼⬇>]+\s*/, "")).filter((l) => l && !/^[↓→▼⬇|]+$/.test(l));
       result.payload = { style: "flowchart", title: "", steps };
-      if (steps[0] && !steps[0].includes("___") && steps[0].length <= 60 && steps.length > 2) {
-        result.payload.title = steps[0];
+      // The first line is a title (not a box) when it is written like one,
+      // or when arrows link the boxes but none follows that first line.
+      const raw = conv.filter(Boolean);
+      const isArrow = (l) => /^[↓→▼⬇]/.test(l);
+      const arrowAfterFirst = raw[1] ? isArrow(raw[1]) : false;
+      const looksLikeTitle = (l) => /:$/.test(l) || (l === l.toUpperCase() && /[A-Z]/.test(l)) || (raw.some(isArrow) && !arrowAfterFirst);
+      if (steps[0] && !steps[0].includes("___") && steps[0].length <= 60 && steps.length > 2 && looksLikeTitle(steps[0])) {
+        result.payload.title = steps[0].replace(/:$/, "");
         result.payload.steps = steps.slice(1);
       }
     } else if (type === "sentences") {
@@ -651,12 +699,19 @@ export function analyseGroup(group, skill = "reading") {
     let choices = dedupeLetters(options);
     if (type === "info" || type === "map" || choices.length === 0) {
       const override = group.lastLetter && LETTERS.includes(group.lastLetter) ? LETTERS.slice(0, LETTERS.indexOf(group.lastLetter) + 1) : null;
-      const range = override || letterRange(instructionText) || (choices.length ? null : null);
+      const range =
+        override ||
+        letterRange([instructionText, ...head].join(" ")) ||
+        (type === "info" ? paragraphLetters(context.passageText) : null);
       if (range) choices = range.map((l) => ({ letter: l, text: "" }));
       else if (choices.length === 0) {
         choices = LETTERS.slice(0, 8).map((l) => ({ letter: l, text: "" }));
         issues.push({ level: "warn", msg: "Letter range not found — using A–H. Change the last letter if needed." });
       }
+    }
+    const announced = letterRange([instructionText, ...head].join(" "));
+    if (type !== "info" && type !== "map" && options.length > 0 && announced && announced.length !== choices.length) {
+      issues.push({ level: "warn", msg: `The instructions say A–${announced[announced.length - 1]} but the list has A–${choices[choices.length - 1].letter}. Check the list of options.` });
     }
     result.letters = choices.map((c) => c.letter);
     const dbType = { info: "matching_information", features: "matching_features", endings: "matching_sentence_endings", map: "matching_map_labelling" }[type];
