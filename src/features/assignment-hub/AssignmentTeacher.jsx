@@ -215,7 +215,7 @@ export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen,
       for (const group of sourceGroups || []) {
         const { data: newGroup, error: gError } = await supabase
           .from("question_groups")
-          .insert({ section_id: newSection.id, instruction: group.instruction, passage_text: group.passage_text, order_index: group.order_index })
+          .insert({ section_id: newSection.id, instruction: group.instruction, passage_text: group.passage_text, image_url: group.image_url || null, order_index: group.order_index })
           .select()
           .single();
         if (gError || !newGroup) continue;
