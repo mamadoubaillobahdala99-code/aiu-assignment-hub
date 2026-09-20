@@ -9,6 +9,8 @@
 // =====================================================================
 
 export const MAX_FILE_MB = 20;
+const MAX_IMAGE_MB = 10;
+const IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"];
 
 export class ExtractError extends Error {}
 
@@ -17,13 +19,16 @@ function extOf(name) {
   return m ? m[1].toLowerCase() : "";
 }
 
+// Returns { text, images, skippedImages }. images (Word only) are kept in
+// memory: [{ id, blob }], shown in the preview as "[[image:local:<id>]]"
+// and uploaded only when the teacher creates the assignment.
 export async function extractTextFromFile(file) {
   if (!file) throw new ExtractError("No file selected.");
   if (file.size > MAX_FILE_MB * 1024 * 1024) throw new ExtractError(`This file is larger than ${MAX_FILE_MB} MB.`);
   const ext = extOf(file.name);
-  if (ext === "pdf" || file.type === "application/pdf") return extractPdf(file);
+  if (ext === "pdf" || file.type === "application/pdf") return { text: await extractPdf(file), images: [], skippedImages: 0 };
   if (ext === "docx") return extractDocx(file);
-  if (ext === "txt") return (await file.text()).replace(/\r\n?/g, "\n");
+  if (ext === "txt") return { text: (await file.text()).replace(/\r\n?/g, "\n"), images: [], skippedImages: 0 };
   if (ext === "doc") throw new ExtractError('Old Word files (.doc) can\'t be read. Open the file in Word and use "Save as" → Word Document (.docx).');
   throw new ExtractError("Please choose a PDF, a Word file (.docx) or a text file (.txt).");
 }
@@ -185,12 +190,29 @@ async function extractDocx(file) {
   const mod = await import("mammoth/mammoth.browser.min.js");
   const mammoth = mod.default || mod;
   let html;
+  // Pictures of the file (a plant in the passage, a map for Questions
+  // 11-15…) are kept in memory at their place. Only web picture formats
+  // are kept; Word drawings (EMF/WMF) are counted so the teacher knows.
+  const images = [];
+  let skippedImages = 0;
+  const convertImage = mammoth.images.imgElement(async (image) => {
+    const type = (image.contentType || "").toLowerCase();
+    if (!IMAGE_TYPES.includes(type)) {
+      skippedImages += 1;
+      return { src: "" };
+    }
+    const b64 = await image.read("base64");
+    const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+    if (bytes.length > MAX_IMAGE_MB * 1024 * 1024) {
+      skippedImages += 1;
+      return { src: "" };
+    }
+    const id = images.length + 1;
+    images.push({ id, blob: new Blob([bytes], { type }) });
+    return { src: `local:${id}` };
+  });
   try {
-    const result = await mammoth.convertToHtml(
-      { arrayBuffer: await file.arrayBuffer() },
-      // Pictures are ignored: they are added in the preview instead.
-      { convertImage: mammoth.images.imgElement(() => ({ src: "" })), ignoreEmptyParagraphs: false }
-    );
+    const result = await mammoth.convertToHtml({ arrayBuffer: await file.arrayBuffer() }, { convertImage, ignoreEmptyParagraphs: false });
     html = result.value;
   } catch {
     throw new ExtractError("This Word file could not be read. Check that it is a real .docx file, or copy the text instead.");
@@ -199,6 +221,11 @@ async function extractDocx(file) {
   // DOMParser builds an inert document: nothing in it is ever displayed
   // or executed — only its text is taken.
   const body = new DOMParser().parseFromString(`<body>${html}</body>`, "text/html").body;
+  // Each kept picture becomes its own line: [[image:local:<id>]]
+  body.querySelectorAll("img").forEach((img) => {
+    const src = img.getAttribute("src") || "";
+    img.replaceWith(/^local:\d+$/.test(src) ? `\n[[image:${src}]]\n` : "");
+  });
   const out = [];
   const text = (el) => (el.textContent || "").replace(/\s+/g, " ").trim();
 
@@ -240,5 +267,5 @@ async function extractDocx(file) {
 
   const joined = out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
   if (!joined) throw new ExtractError("No text was found in this Word file.");
-  return joined;
+  return { text: joined, images, skippedImages };
 }
