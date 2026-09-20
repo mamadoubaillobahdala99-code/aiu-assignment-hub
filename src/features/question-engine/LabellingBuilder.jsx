@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo } from "react";
 import { supabase } from "../../supabaseClient";
-import { parseMatchingItems } from "./bulkParse";
+import { parseMatchingItems, splitAlternatives } from "./bulkParse";
 import { MatchingGrid } from "./MatchingGrid";
 
 // Plan / Map / Diagram labelling — teacher builder (IELTS computer-delivered style).
@@ -24,13 +24,9 @@ export function defaultLabellingInstruction(kind, lastLetter) {
   return "Label the diagram below.\nWrite NO MORE THAN TWO WORDS for each answer.";
 }
 
-// "river / the river" → ["river", "the river"]
-function splitAccepted(text) {
-  return text
-    .split("/")
-    .map((s) => s.trim())
-    .filter(Boolean);
-}
+// "river / the river" or "river, the river" → ["river", "the river"]
+// (a slash without spaces, as in "15/06", stays part of the answer).
+const splitAccepted = splitAlternatives;
 
 export function LabellingBuilder({ group, teacherId, skill = "listening", kind, onQuestionsCreated }) {
   const [lastLetter, setLastLetter] = useState("H");
