@@ -1,4 +1,3 @@
-
 // =====================================================================
 // Reads the text of a PDF or Word (.docx) file in the teacher's browser.
 // The file is never uploaded or stored: it is read into memory, turned
@@ -110,7 +109,10 @@ function pageLines(items, pageHeight) {
       if (end !== null) {
         const gap = pc.x - end;
         // A wide gap separates columns (lists printed in 2–3 columns, tables).
-        if (gap > pc.size * 2.5) text += "\t";
+        // …except after a paragraph label ("A", "B.", "Paragraph C"),
+        // which starts the paragraph's text.
+        if (gap > pc.size * 2.5 && !/^(?:[Pp]aragraph\s+)?[A-Z][.)]?$/.test(text.trim())) text += "\t";
+        else if (gap > pc.size * 2.5) text += " ";
         else if (gap > pc.size * 0.15 && !/\s$/.test(text) && !/^\s/.test(pc.str)) text += " ";
       }
       text += pc.str;
