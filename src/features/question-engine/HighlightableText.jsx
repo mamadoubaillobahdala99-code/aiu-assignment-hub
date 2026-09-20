@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Eraser } from "lucide-react";
 import { supabase } from "../../supabaseClient";
+import { IMAGE_MARKER_RE, PassageFigure, defaultResolve } from "./PassageImages";
 
 const COLORS = [
   { key: "yellow", label: "Yellow" },
@@ -14,7 +15,10 @@ const COLORS = [
 // and from every other option, so none of them ever mix.
 // inline: renders a plain <span> instead of a full paragraph block —
 // use this for text that sits inside an answer row (options, labels).
-export function HighlightableText({ assignmentId, userId, scopeType, scopeId, optionKey, text, className, inline }) {
+// images: the text may contain "[[image:…]]" lines (Reading passages):
+// they are shown as pictures in place. Word positions (and so saved
+// highlights) are unchanged, because the image line stays one token.
+export function HighlightableText({ assignmentId, userId, scopeType, scopeId, optionKey, text, className, inline, images = false, resolveImage = defaultResolve }) {
   const [colors, setColors] = useState({});
   const [loaded, setLoaded] = useState(false);
   const [toolbar, setToolbar] = useState(null); // { lo, hi, top, left } | null
@@ -131,7 +135,24 @@ export function HighlightableText({ assignmentId, userId, scopeType, scopeId, op
     setToolbar(null);
   }
 
-  const body = loaded ? (
+  const hasImages = images && !inline && text.includes("[[image:");
+  const isImage = (t) => hasImages && IMAGE_MARKER_RE.test(t || "");
+
+  const body = hasImages ? (
+    tokens.map((tok, i) => {
+      if (isImage(tok)) {
+        const src = resolveImage(IMAGE_MARKER_RE.exec(tok)[1]);
+        return <span key={i} data-idx={i} className="qe-hl-figure">{src ? <PassageFigure url={src} /> : null}</span>;
+      }
+      // The line breaks around a picture are drawn by the picture itself.
+      if (/^\s+$/.test(tok) && (isImage(tokens[i - 1]) || isImage(tokens[i + 1]))) return <span key={i} data-idx={i} />;
+      return (
+        <span key={i} data-idx={i} className={loaded && colors[i] ? `qe-hl-word qe-hl-${colors[i]}` : "qe-hl-word"}>
+          {tok}
+        </span>
+      );
+    })
+  ) : loaded ? (
     tokens.map((tok, i) => (
       <span key={i} data-idx={i} className={colors[i] ? `qe-hl-word qe-hl-${colors[i]}` : "qe-hl-word"}>
         {tok}
@@ -141,7 +162,7 @@ export function HighlightableText({ assignmentId, userId, scopeType, scopeId, op
     <span>{text}</span>
   );
 
-  const Wrapper = inline ? "span" : "p";
+  const Wrapper = inline ? "span" : hasImages ? "div" : "p";
   const wrapperClass = inline ? "qe-hl-inline" : "asg-desc reading-text";
 
   return (
