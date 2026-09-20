@@ -12,6 +12,7 @@ import { AudioPlayer } from "./AudioPlayer";
 import { parseCompletionPayload, numberQuestions, questionSlotCount } from "./bulkParse";
 import { HighlightableText } from "./HighlightableText";
 import { useExamTimer, ExamTimerDisplay } from "./ExamTimer";
+import { useListeningAudio, ListeningAudioBar } from "./ListeningAudio";
 import { GroupImage } from "./GroupImage";
 
 // The countdown comes from useExamTimer: the start time is written once
@@ -59,6 +60,12 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
   const [starting, setStarting] = useState(false);
   const autoSubmittedRef = useRef(false);
   const timer = useExamTimer(assignmentId, true);
+  // One audio for the whole Listening test (listening_audio_url on the
+  // assignment). Parts with their own audio file keep working as before.
+  const singleAudioUrl = assignment?.type === "Listening" ? assignment?.listening_audio_url || "" : "";
+  const listeningAudio = useListeningAudio(assignmentId, Boolean(singleAudioUrl));
+  const audioTimeUpRef = useRef(false);
+  const submitRef = useRef(null);
   const [submitting, setSubmitting] = useState(false);
   const [leftWidthPct, setLeftWidthPct] = useState(56);
   const bodyRef = useRef(null);
@@ -168,6 +175,15 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
     submitAll(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loaded, timer.status, results, timeOver]);
+
+  // The recording finished and the checking time is over: send the answers.
+  // submitRef always points at the current submitAll, so the answers typed
+  // after this callback was created are the ones sent.
+  const onAudioTimeUp = useCallback(() => {
+    if (audioTimeUpRef.current) return;
+    audioTimeUpRef.current = true;
+    submitRef.current?.(true);
+  }, []);
 
   async function startExam() {
     setStartError("");
@@ -329,6 +345,8 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
     );
   }
 
+  submitRef.current = submitAll;
+
   if (!assignment || sections.length === 0) {
     return (
       <div className="page">
@@ -481,7 +499,7 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
               {teacherName && <div className="qe-exam-teacher-band">{teacherName}</div>}
               <div className="qe-exam-sidebar-title">Assignment</div>
 
-              {isListening && activeSection.audioUrl && (
+              {isListening && !singleAudioUrl && activeSection.audioUrl && (
                 <button
                   className={`qe-exam-sidebar-item ${audioOpen ? "active" : ""}`}
                   onClick={() => setAudioOpen((v) => !v)}
@@ -522,7 +540,18 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
             {partRangeStart !== null && (
               <p className="qe-part-quicksummary">Listen and answer questions {partRangeStart}-{partRangeEnd}</p>
             )}
-            {activeSection.audioUrl && audioOpen && (
+            {singleAudioUrl && (
+              <div className="qe-lsa-wrap">
+                <ListeningAudioBar
+                  url={singleAudioUrl}
+                  filename={assignment.title}
+                  audio={listeningAudio}
+                  onTimeUp={onAudioTimeUp}
+                  disabled={results !== null || timeOver}
+                />
+              </div>
+            )}
+            {!singleAudioUrl && activeSection.audioUrl && audioOpen && (
               <AudioPlayer
                 key={activeSection.id}
                 url={activeSection.audioUrl}
