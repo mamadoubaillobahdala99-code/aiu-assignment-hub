@@ -2,3 +2,37 @@
 .qe-completion-blank-wrap { display: inline-flex; align-items: center; gap: 2px; margin: 0 2px; max-width: 100%; flex-wrap: wrap; }
 .qe-completion-blank { display: inline-block; width: 110px; max-width: 100%; box-sizing: border-box; padding: 4px 8px; border: 1px solid var(--line); border-radius: 5px; font-family: inherit; font-size: 13.5px; background: #fff; }
 .qe-completion-blank:focus { border-color: var(--teal); outline: none; }
+
+/* ---------- Form completion (livraison 8) ---------- */
+.qe-form-card { max-width: 640px; border: 1.5px solid var(--ink-soft); border-radius: 6px; background: #fff; padding: 16px 18px 10px; margin-top: 8px; box-sizing: border-box; }
+.qe-form-title { text-align: center; font-weight: 700; font-size: 15px; letter-spacing: 0.02em; text-transform: uppercase; margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+.qe-form-table { width: 100%; border-collapse: collapse; font-size: 14.5px; color: var(--ink); }
+.qe-form-table th { width: 38%; text-align: left; font-weight: 600; vertical-align: top; padding: 9px 12px 9px 0; overflow-wrap: break-word; }
+.qe-form-table td { vertical-align: top; padding: 7px 0; line-height: 1.9; overflow-wrap: break-word; word-break: break-word; }
+.qe-form-table tr + tr th, .qe-form-table tr + tr td { border-top: 1px dotted var(--line); }
+.qe-form-fullrow { padding-left: 0; }
+.qe-form-example th, .qe-form-example td { color: var(--ink-soft); font-style: italic; }
+.qe-form-example-tag { display: inline-block; margin-left: 8px; padding: 1px 6px; border-radius: 3px; background: var(--paper); font-size: 11px; font-style: normal; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+
+/* ---------- Flow-chart completion ---------- */
+.qe-flow { display: flex; flex-direction: column; align-items: center; max-width: 560px; margin: 8px auto 0; }
+.qe-flow-title { font-weight: 700; font-size: 15px; text-align: center; margin-bottom: 10px; }
+.qe-flow-box { width: 100%; box-sizing: border-box; border: 1.5px solid var(--ink-soft); border-radius: 6px; background: #fff; padding: 10px 14px; font-size: 14.5px; line-height: 1.9; color: var(--ink); text-align: center; overflow-wrap: break-word; }
+.qe-flow-arrow { display: flex; justify-content: center; color: var(--ink-soft); padding: 4px 0; }
+
+/* ---------- Summary with a word list ---------- */
+.qe-wordbank-list { list-style: none; margin: 8px 0 14px; padding: 12px 14px; display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 6px 16px; border: 1.5px solid var(--ink-soft); border-radius: 6px; background: #fff; font-size: 14px; }
+.qe-wordbank-list strong { display: inline-block; min-width: 18px; }
+.qe-wordbank-select { max-width: 220px; height: 30px; padding: 0 6px; border: 1px solid var(--line); border-radius: 5px; background: #fff; font-family: inherit; font-size: 13.5px; color: var(--ink); }
+.qe-wordbank-select:focus { border-color: var(--teal); outline: none; }
+.qe-wordbank-select:disabled { background: var(--paper); color: var(--ink); opacity: 1; }
+
+/* ---------- Teacher-side live preview ---------- */
+.qe-builder-preview { margin-top: 14px; padding: 12px; border: 1px dashed var(--line); border-radius: 8px; background: var(--paper); }
+.qe-builder-preview-tag { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-soft); margin-bottom: 6px; }
+
+@media (max-width: 560px) {
+  .qe-form-table th { width: auto; display: block; padding-bottom: 0; }
+  .qe-form-table td { display: block; }
+  .qe-form-table tr + tr td { border-top: none; }
+}
