@@ -550,7 +550,7 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
                 </p>
               )}
               {activeTitle && <h2 className="qe-passage-title">{activeTitle}</h2>}
-              <HighlightableText assignmentId={assignmentId} userId={userId} scopeType="passage" scopeId={activeSection.id} text={activePassageText} />
+              <HighlightableText assignmentId={assignmentId} userId={userId} scopeType="passage" scopeId={activeSection.id} text={activePassageText} images />
             </div>
           </div>
 
