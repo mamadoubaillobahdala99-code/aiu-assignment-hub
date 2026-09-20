@@ -2,12 +2,13 @@ import React, { useState, useMemo, useEffect } from "react";
 import { Plus, X, Check } from "lucide-react";
 import { supabase } from "../../supabaseClient";
 import { TeacherQuestionForm } from "./TeacherQuestionForm";
-import { defaultInstructionFor, numberQuestions } from "./bulkParse";
+import { defaultInstructionFor, numberQuestions, FORM_INSTRUCTION, FLOWCHART_INSTRUCTION, WORDBANK_INSTRUCTION, SHORT_ANSWER_INSTRUCTION } from "./bulkParse";
 import { AudioFilePicker } from "./AudioFilePicker";
 import { SummaryCompletionBuilder, NotesCompletionBuilder, TableCompletionBuilder, SentenceCompletionBuilder } from "./TeacherReadingBuilder";
 import { MatchingBuilder } from "./MatchingBuilder";
 import { LabellingBuilder } from "./LabellingBuilder";
 import { GroupImagePicker } from "./GroupImage";
+import { FormCompletionBuilder, FlowchartCompletionBuilder, WordBankCompletionBuilder, ShortAnswerBuilder } from "./CompletionExtraBuilders";
 
 const MAX_LISTENING_PARTS = 4;
 
@@ -435,6 +436,7 @@ export function TeacherListeningBuilder({ classId, teacherId, setScreen, showToa
                     <button type="button" className={`type-chip ${group.mode === "completion" ? "active" : ""}`} onClick={() => setGroupMode(part.localId, group.localId, "completion")}>Summary Completion</button>
                     <button type="button" className={`type-chip ${group.mode === "matching" ? "active" : ""}`} onClick={() => setGroupMode(part.localId, group.localId, "matching")}>Matching</button>
                     <button type="button" className={`type-chip ${group.mode === "labelling" ? "active" : ""}`} onClick={() => setGroupMode(part.localId, group.localId, "labelling")}>Labelling (map / plan / diagram)</button>
+                    <button type="button" className={`type-chip ${group.mode === "shortanswer" ? "active" : ""}`} onClick={() => setGroupMode(part.localId, group.localId, "shortanswer")}>Short answer</button>
                   </div>
 
                   {group.mode === "matching" && (
@@ -465,6 +467,9 @@ export function TeacherListeningBuilder({ classId, teacherId, setScreen, showToa
                         <button type="button" className={`type-chip ${group.completionStyle === "notes" ? "active" : ""}`} onClick={() => setCompletionStyle(part.localId, group.localId, "notes")}>Notes</button>
                         <button type="button" className={`type-chip ${group.completionStyle === "table" ? "active" : ""}`} onClick={() => setCompletionStyle(part.localId, group.localId, "table")}>Table</button>
                         <button type="button" className={`type-chip ${group.completionStyle === "sentences" ? "active" : ""}`} onClick={() => setCompletionStyle(part.localId, group.localId, "sentences")}>Sentences</button>
+                        <button type="button" className={`type-chip ${group.completionStyle === "form" ? "active" : ""}`} onClick={() => setCompletionStyle(part.localId, group.localId, "form")}>Form</button>
+                        <button type="button" className={`type-chip ${group.completionStyle === "flowchart" ? "active" : ""}`} onClick={() => setCompletionStyle(part.localId, group.localId, "flowchart")}>Flow-chart</button>
+                        <button type="button" className={`type-chip ${group.completionStyle === "wordbank" ? "active" : ""}`} onClick={() => setCompletionStyle(part.localId, group.localId, "wordbank")}>Summary + word list</button>
                       </div>
                     </>
                   )}
@@ -494,6 +499,13 @@ export function TeacherListeningBuilder({ classId, teacherId, setScreen, showToa
                   kind={group.labellingKind}
                   onQuestionsCreated={(questions, instr) => onLabellingCreated(part.localId, group.localId, questions, instr)}
                 />
+              ) : group.mode === "shortanswer" ? (
+                <ShortAnswerBuilder
+                  group={group}
+                  teacherId={teacherId}
+                  skill="listening"
+                  onQuestionsCreated={(questions) => onLabellingCreated(part.localId, group.localId, questions, SHORT_ANSWER_INSTRUCTION)}
+                />
               ) : group.mode === "matching" ? (
                 <MatchingBuilder
                   group={group}
@@ -518,6 +530,30 @@ export function TeacherListeningBuilder({ classId, teacherId, setScreen, showToa
                     skill="listening"
                     onSummaryTextChange={(text) => updateSummaryText(part.localId, group.localId, text)}
                     onBlanksCreated={(questions) => onBlanksCreated(part.localId, group.localId, questions)}
+                  />
+                ) : group.completionStyle === "form" ? (
+                  <FormCompletionBuilder
+                    group={group}
+                    teacherId={teacherId}
+                    skill="listening"
+                    onSummaryTextChange={(text) => updateSummaryText(part.localId, group.localId, text)}
+                    onBlanksCreated={(questions) => onLabellingCreated(part.localId, group.localId, questions, FORM_INSTRUCTION)}
+                  />
+                ) : group.completionStyle === "flowchart" ? (
+                  <FlowchartCompletionBuilder
+                    group={group}
+                    teacherId={teacherId}
+                    skill="listening"
+                    onSummaryTextChange={(text) => updateSummaryText(part.localId, group.localId, text)}
+                    onBlanksCreated={(questions) => onLabellingCreated(part.localId, group.localId, questions, FLOWCHART_INSTRUCTION)}
+                  />
+                ) : group.completionStyle === "wordbank" ? (
+                  <WordBankCompletionBuilder
+                    group={group}
+                    teacherId={teacherId}
+                    skill="listening"
+                    onSummaryTextChange={(text) => updateSummaryText(part.localId, group.localId, text)}
+                    onBlanksCreated={(questions) => onLabellingCreated(part.localId, group.localId, questions, WORDBANK_INSTRUCTION)}
                   />
                 ) : group.completionStyle === "sentences" ? (
                   <SentenceCompletionBuilder
