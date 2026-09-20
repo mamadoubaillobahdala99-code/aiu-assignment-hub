@@ -46,6 +46,27 @@ export function QuestionRenderer({ question, value, onChange, disabled, assignme
           <MultipleSelection {...commonProps} choices={question.options?.choices || []} requiredCount={question.options?.required_count || 2} value={value || []} />
         </>
       );
+    case "gap_fill":
+      // A single written answer (diagram labelling now, short-answer
+      // questions later): the prompt, then one answer box.
+      return (
+        <div className="qe-short-answer">
+          {question.prompt ? <div className="qe-short-answer-prompt">{prompt}</div> : null}
+          <input
+            type="text"
+            className="qe-short-answer-input"
+            value={typeof value === "string" ? value : ""}
+            onChange={(e) => onChange(e.target.value)}
+            disabled={disabled}
+            spellCheck={false}
+            autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="off"
+            maxLength={120}
+            aria-label={question.prompt || "Answer"}
+          />
+        </div>
+      );
     default:
       return <p className="qe-prompt">Unsupported question type: {question.type}</p>;
   }
