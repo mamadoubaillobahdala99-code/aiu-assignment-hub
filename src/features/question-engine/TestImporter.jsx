@@ -143,6 +143,11 @@ export function TestImporter({ classId, teacherId, skill: initialSkill = "readin
   // Pictures read from a Word file: kept in memory (object URLs) until
   // "Create assignment" uploads the ones still used.
   const [localImages, setLocalImages] = useState({}); // id -> { blob, url }
+  // Listening audio: one file for the whole test, or one per part.
+  const [audioMode, setAudioMode] = useState("single");
+  const [singleAudio, setSingleAudio] = useState(null); // { url, filename }
+  const [examMode, setExamMode] = useState(false);
+  const [checkMinutes, setCheckMinutes] = useState("2");
   const localRef = useRef({});
   useEffect(() => {
     localRef.current = localImages;
@@ -202,7 +207,7 @@ export function TestImporter({ classId, teacherId, skill: initialSkill = "readin
     return parts.map((part) => {
       const partIssues = [];
       if (skill === "reading" && !part.passageText.trim()) partIssues.push({ level: "error", msg: "The reading passage is empty — paste it here." });
-      if (skill === "listening" && !part.audioUrl) partIssues.push({ level: "error", msg: "Add the audio file for this part." });
+      if (skill === "listening" && audioMode === "parts" && !part.audioUrl) partIssues.push({ level: "error", msg: "Add the audio file for this part." });
       const groups = part.groups.map((g) => {
         const analysis = analyseGroup(g, skill, { passageText: part.passageText });
         const resolved = resolveAnswers(analysis, answers);
@@ -218,7 +223,7 @@ export function TestImporter({ classId, teacherId, skill: initialSkill = "readin
       });
       return { part, partIssues, groups };
     });
-  }, [parts, answers, skill, resolveImage]);
+  }, [parts, answers, skill, resolveImage, audioMode]);
 
   const allGroups = view.flatMap((p) => p.groups);
   const counts = {
@@ -227,7 +232,8 @@ export function TestImporter({ classId, teacherId, skill: initialSkill = "readin
     error: allGroups.filter((g) => g.status === "error").length + view.filter((p) => p.partIssues.length).length,
   };
   const totalQuestions = allGroups.reduce((a, g) => a + analysisSlots(g.analysis), 0);
-  const canCreate = allGroups.length > 0 && counts.error === 0 && !creating;
+  const audioMissing = skill === "listening" && audioMode === "single" && !singleAudio?.url;
+  const canCreate = allGroups.length > 0 && counts.error === 0 && !audioMissing && !creating;
 
   async function create() {
     if (!canCreate) return;
@@ -321,7 +327,15 @@ export function TestImporter({ classId, teacherId, skill: initialSkill = "readin
         time_limit_minutes: timeLimit ? parseInt(timeLimit, 10) : null,
         auto_release_score: autoReleaseScore,
         show_answer_review: showAnswerReview,
-        ...(skill === "reading" ? { reading_test_type: "academic" } : {}),
+        ...(skill === "reading"
+          ? { reading_test_type: "academic" }
+          : audioMode === "single"
+          ? {
+              listening_audio_url: singleAudio?.url || null,
+              listening_exam_mode: examMode,
+              listening_check_minutes: checkMinutes === "" ? 0 : Math.min(30, Math.max(0, parseInt(checkMinutes, 10) || 0)),
+            }
+          : { listening_audio_url: null, listening_exam_mode: false, listening_check_minutes: 2 }),
       })
       .select()
       .single();
@@ -335,7 +349,13 @@ export function TestImporter({ classId, teacherId, skill: initialSkill = "readin
       const sectionRow =
         skill === "reading"
           ? { assignment_id: assignmentId, title: `Part ${pi + 1}`, passage_title: part.passageTitle.trim() || null, passage_text: part.passageText.trim(), order_index: pi }
-          : { assignment_id: assignmentId, title: `Part ${pi + 1}`, audio_url: part.audioUrl, max_plays: part.maxPlays ? parseInt(part.maxPlays, 10) : null, order_index: pi };
+          : {
+              assignment_id: assignmentId,
+              title: `Part ${pi + 1}`,
+              audio_url: audioMode === "single" ? null : part.audioUrl,
+              max_plays: audioMode === "single" ? null : part.maxPlays ? parseInt(part.maxPlays, 10) : null,
+              order_index: pi,
+            };
       const { data: section, error: sError } = await supabase.from("exam_sections").insert(sectionRow).select().single();
       if (sError || !section) return fail(`Could not save Part ${pi + 1}: ` + (sError?.message || "unknown error"));
 
@@ -452,6 +472,32 @@ export function TestImporter({ classId, teacherId, skill: initialSkill = "readin
         Let students see which answers were correct/incorrect, with the correct answer
       </label>
 
+      {skill === "listening" && (
+        <>
+          <label className="field-label" style={{ marginTop: 18 }}>Audio</label>
+          <div className="type-row">
+            <button type="button" className={`type-chip ${audioMode === "single" ? "active" : ""}`} onClick={() => setAudioMode("single")}>One audio for the whole test</button>
+            <button type="button" className={`type-chip ${audioMode === "parts" ? "active" : ""}`} onClick={() => setAudioMode("parts")}>One audio per section</button>
+          </div>
+          {audioMode === "single" ? (
+            <div className="feedback-panel" style={{ marginTop: 10 }}>
+              <label className="field-label" style={{ marginTop: 0 }}>Recording for the whole test</label>
+              <AudioFilePicker teacherId={teacherId} value={singleAudio} onChange={(f) => setSingleAudio(f || null)} />
+              {audioMissing && <div className="qe-imp-issue qe-imp-issue-error"><XCircle size={13} /> Add the recording for this test.</div>}
+              <label className="checkbox-row" style={{ marginTop: 14 }}>
+                <input type="checkbox" checked={examMode} onChange={(e) => setExamMode(e.target.checked)} />
+                Exam mode: one listening only, no pause and no rewind
+              </label>
+              <label className="field-label" style={{ marginTop: 14 }}>Checking time after the recording (minutes)</label>
+              <input type="number" min="0" max="30" className="field-input" style={{ maxWidth: 160 }} value={checkMinutes} onChange={(e) => setCheckMinutes(e.target.value)} />
+              <p className="field-hint" style={{ marginTop: 2 }}>0 = students submit when they want.</p>
+            </div>
+          ) : (
+            <p className="field-hint" style={{ marginTop: 2 }}>Each section has its own file, added below.</p>
+          )}
+        </>
+      )}
+
       {view.map(({ part, partIssues, groups }, pi) => (
         <div key={part.id} className="qe-imp-part">
           <div className="qe-imp-part-head">
@@ -481,6 +527,7 @@ export function TestImporter({ classId, teacherId, skill: initialSkill = "readin
               )}
             </>
           ) : (
+            audioMode === "parts" && (
             <>
               <label className="field-label" style={{ marginTop: 12 }}>Audio file</label>
               <AudioFilePicker
@@ -491,6 +538,7 @@ export function TestImporter({ classId, teacherId, skill: initialSkill = "readin
               <label className="field-label" style={{ marginTop: 12 }}>Plays allowed (leave blank for unlimited)</label>
               <input type="number" min="1" className="field-input" style={{ maxWidth: 160 }} placeholder="Unlimited" value={part.maxPlays} onChange={(e) => patchPart(part.id, { maxPlays: e.target.value })} />
             </>
+            )
           )}
 
           {groups.map(({ group, analysis, resolved, issues, status }) => {
