@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { ArrowLeft, CheckCircle2, AlertTriangle, XCircle, FileText, Pencil, ImagePlus, Upload, Loader2 } from "lucide-react";
 import { supabase } from "../../supabaseClient";
 import { parseTest, analyseGroup, parseAnswerKey, resolveAnswers, buildGroupRows, defaultImportInstruction, IMPORT_TYPES, analysisSlots } from "./importParse";
@@ -12,6 +12,7 @@ import { SentenceCompletion } from "./SentenceCompletion";
 import { FormCompletion, FlowchartCompletion, WordBankCompletion } from "./CompletionExtras";
 import { GroupImagePicker, GroupImage } from "./GroupImage";
 import { AudioFilePicker } from "./AudioFilePicker";
+import { PassageImageTools, PassageView, defaultResolve, imageUrlsIn, imageMarker, stripImageMarkers, uploadPassageImage } from "./PassageImages";
 
 // Test importer (Reading / Listening).
 // 1. The teacher pastes the test (and, optionally, the answer key).
@@ -36,9 +37,14 @@ function FileDrop({ label, onText, compact = false }) {
     setMessage(null);
     try {
       const { extractTextFromFile } = await import("./fileExtract");
-      const text = await extractTextFromFile(file);
-      onText(text);
-      setMessage({ kind: "ok", text: `Text read from "${file.name}" — check it below, then continue.` });
+      const result = await extractTextFromFile(file);
+      onText(result.text, result);
+      const pics = result.images?.length || 0;
+      const extra = [
+        pics ? `${pics} picture${pics > 1 ? "s" : ""} found — placed in the passage or its question group` : "",
+        result.skippedImages ? `${result.skippedImages} picture${result.skippedImages > 1 ? "s" : ""} in a format that can't be shown (e.g. Word drawings) — add ${result.skippedImages > 1 ? "them" : "it"} with a screenshot` : "",
+      ].filter(Boolean);
+      setMessage({ kind: "ok", text: `Text read from "${file.name}"${extra.length ? ` (${extra.join("; ")})` : ""} — check it below, then continue.` });
     } catch (e) {
       setMessage({ kind: "error", text: e?.name === "ExtractError" || e?.constructor?.name === "ExtractError" ? e.message : e?.message || "This file could not be read." });
     } finally {
@@ -134,6 +140,31 @@ export function TestImporter({ classId, teacherId, skill: initialSkill = "readin
   const [progress, setProgress] = useState("");
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
+  // Pictures read from a Word file: kept in memory (object URLs) until
+  // "Create assignment" uploads the ones still used.
+  const [localImages, setLocalImages] = useState({}); // id -> { blob, url }
+  const localRef = useRef({});
+  useEffect(() => {
+    localRef.current = localImages;
+  }, [localImages]);
+  useEffect(() => () => Object.values(localRef.current).forEach((im) => URL.revokeObjectURL(im.url)), []);
+
+  function onTestFile(text, result) {
+    Object.values(localImages).forEach((im) => URL.revokeObjectURL(im.url));
+    const next = {};
+    for (const im of result?.images || []) next[im.id] = { blob: im.blob, url: URL.createObjectURL(im.blob) };
+    setLocalImages(next);
+    setTestText(text);
+  }
+
+  const resolveImage = useCallback(
+    (url) => {
+      const m = /^local:(\d+)$/.exec(url || "");
+      if (m) return localImages[m[1]]?.url || "";
+      return defaultResolve(url);
+    },
+    [localImages]
+  );
 
   function analyse() {
     setError("");
@@ -177,6 +208,8 @@ export function TestImporter({ classId, teacherId, skill: initialSkill = "readin
         const resolved = resolveAnswers(analysis, answers);
         const issues = [...analysis.issues];
         if (analysis.needsImage && !g.imageUrl) issues.push({ level: "error", msg: "Add the image (map, plan or diagram) — students need it to answer." });
+        if (g.imageUrl && !resolveImage(g.imageUrl)) issues.push({ level: "error", msg: "This group's picture is no longer available — upload it again." });
+        if (g.extraImages > 0) issues.push({ level: "warn", msg: `The file had ${g.extraImages} more picture${g.extraImages > 1 ? "s" : ""} in this group; only the first one is used.` });
         const missing = resolved.filter((r) => r.error);
         if (missing.length) issues.push({ level: "error", msg: `${missing.length} answer${missing.length > 1 ? "s" : ""} missing or invalid.` });
         if (g.start !== prevEnd + 1) issues.push({ level: "warn", msg: prevEnd === 0 ? `Numbering starts at ${g.start} — students will see it start at 1.` : `Numbering jumps from ${prevEnd} to ${g.start} — students will see continuous numbers.` });
@@ -185,7 +218,7 @@ export function TestImporter({ classId, teacherId, skill: initialSkill = "readin
       });
       return { part, partIssues, groups };
     });
-  }, [parts, answers, skill]);
+  }, [parts, answers, skill, resolveImage]);
 
   const allGroups = view.flatMap((p) => p.groups);
   const counts = {
@@ -215,9 +248,38 @@ export function TestImporter({ classId, teacherId, skill: initialSkill = "readin
       setError(msg);
     };
 
+    // 0) Pictures read from the Word file: uploaded now (only the ones
+    //    still used), then every "local:" reference is replaced.
+    const used = new Set();
+    for (const pv of view) {
+      imageUrlsIn(pv.part.passageText).forEach((u) => u.startsWith("local:") && used.add(u));
+      pv.groups.forEach((gv) => String(gv.group.imageUrl || "").startsWith("local:") && used.add(gv.group.imageUrl));
+    }
+    const uploaded = {};
+    let n = 0;
+    for (const ref of used) {
+      n += 1;
+      setProgress(`Uploading picture ${n} of ${used.size}…`);
+      const im = localImages[ref.slice(6)];
+      if (!im) return fail("A picture from the Word file is missing. Remove it from the passage or add it again.");
+      try {
+        uploaded[ref] = await uploadPassageImage(teacherId, im.blob);
+      } catch (e) {
+        return fail(e.message);
+      }
+    }
+    const withUploads = (text) =>
+      String(text || "")
+        .split("\n")
+        .map((l) => {
+          const m = /^\[\[image:(local:\d+)\]\]$/.exec(l.trim());
+          return m ? (uploaded[m[1]] ? imageMarker(uploaded[m[1]]) : "") : l;
+        })
+        .join("\n");
+
     // 1) Questions + answer keys, in order.
     const plan = view.map((pv) => ({
-      part: pv.part,
+      part: { ...pv.part, passageText: withUploads(pv.part.passageText) },
       groups: pv.groups.map((gv) => {
         const rows = buildGroupRows(gv.analysis, gv.resolved, skill);
         const edited = instructions[gv.group.id];
@@ -254,7 +316,7 @@ export function TestImporter({ classId, teacherId, skill: initialSkill = "readin
         class_id: classId,
         title: finalTitle,
         type: skill === "reading" ? "Reading" : "Listening",
-        description: skill === "reading" ? plan[0].part.passageText.trim() : null,
+        description: skill === "reading" ? stripImageMarkers(plan[0].part.passageText) : null,
         due_date: dueDate || null,
         time_limit_minutes: timeLimit ? parseInt(timeLimit, 10) : null,
         auto_release_score: autoReleaseScore,
@@ -281,7 +343,7 @@ export function TestImporter({ classId, teacherId, skill: initialSkill = "readin
         const g = groups[gi];
         const { data: groupRow, error: gError } = await supabase
           .from("question_groups")
-          .insert({ section_id: section.id, instruction: g.instruction || null, passage_text: g.rows.passageText, image_url: g.gv.group.imageUrl || null, order_index: gi })
+          .insert({ section_id: section.id, instruction: g.instruction || null, passage_text: g.rows.passageText, image_url: (uploaded[g.gv.group.imageUrl] || g.gv.group.imageUrl) || null, order_index: gi })
           .select()
           .single();
         if (gError || !groupRow) return fail(`Could not save a question group in Part ${pi + 1}: ` + (gError?.message || "unknown error"));
@@ -319,7 +381,7 @@ export function TestImporter({ classId, teacherId, skill: initialSkill = "readin
             ? 'Drop your Word or PDF file, or copy the whole test: "READING PASSAGE 1", the passage, then each "Questions 1-6" block with its instructions.'
             : 'Copy the whole test: "SECTION 1" (or "PART 1"), then each "Questions 1-5" block with its instructions. You add the audio files in the next step.'}
         </p>
-        <FileDrop label="Drop the test file here, or click to choose it" onText={setTestText} />
+        <FileDrop label="Drop the test file here, or click to choose it" onText={onTestFile} />
         <p className="field-hint" style={{ marginTop: 8, marginBottom: 6 }}>…or paste the text:</p>
         <textarea
           className="field-input textarea qe-imp-textarea"
@@ -332,7 +394,7 @@ export function TestImporter({ classId, teacherId, skill: initialSkill = "readin
         <p className="field-hint" style={{ marginTop: 0, marginBottom: 8 }}>
           One line, or one answer per line. Example: 1 TRUE 2 FALSE 3 NOT GIVEN 4 B 5 river/the river 6 (the) museum. The answers are never shown to students before correction.
         </p>
-        <FileDrop compact label="Drop the answer-key file here, or click to choose it" onText={setKeyText} />
+        <FileDrop compact label="Drop the answer-key file here, or click to choose it" onText={(text) => setKeyText(text)} />
         <textarea
           className="field-input textarea"
           style={{ minHeight: 110 }}
@@ -403,7 +465,20 @@ export function TestImporter({ classId, teacherId, skill: initialSkill = "readin
               <label className="field-label" style={{ marginTop: 12 }}>Passage title</label>
               <input className="field-input" value={part.passageTitle} onChange={(e) => patchPart(part.id, { passageTitle: e.target.value })} />
               <label className="field-label" style={{ marginTop: 12 }}>Passage</label>
-              <textarea className="field-input textarea qe-imp-passage" value={part.passageText} onChange={(e) => patchPart(part.id, { passageText: e.target.value })} />
+              <textarea id={`imp-passage-${part.id}`} className="field-input textarea qe-imp-passage" value={part.passageText} onChange={(e) => patchPart(part.id, { passageText: e.target.value })} />
+              <PassageImageTools
+                teacherId={teacherId}
+                text={part.passageText}
+                textareaId={`imp-passage-${part.id}`}
+                onChange={(text) => patchPart(part.id, { passageText: text })}
+                resolveImage={resolveImage}
+              />
+              {imageUrlsIn(part.passageText).length > 0 && (
+                <div className="qe-builder-preview">
+                  <div className="qe-builder-preview-tag">Passage preview</div>
+                  <PassageView text={part.passageText} resolveImage={resolveImage} />
+                </div>
+              )}
             </>
           ) : (
             <>
@@ -466,7 +541,8 @@ export function TestImporter({ classId, teacherId, skill: initialSkill = "readin
                   <GroupImagePicker
                     teacherId={teacherId}
                     value={group.imageUrl}
-                    onChange={(url) => patchGroup(part.id, group.id, { imageUrl: url })}
+                    previewUrl={resolveImage(group.imageUrl)}
+                    onChange={(url) => patchGroup(part.id, group.id, { imageUrl: url, extraImages: 0 })}
                     label={analysis.needsImage ? "Map / plan / diagram image" : "Image for this group (optional)"}
                     required={analysis.needsImage}
                     hint="Take a screenshot of the image in your file and upload it here."
@@ -479,7 +555,7 @@ export function TestImporter({ classId, teacherId, skill: initialSkill = "readin
 
                 <div className="qe-builder-preview">
                   <div className="qe-builder-preview-tag">Student preview</div>
-                  {group.imageUrl && <GroupImage url={group.imageUrl} />}
+                  {group.imageUrl && resolveImage(group.imageUrl) && <GroupImage url={resolveImage(group.imageUrl)} allowBlob />}
                   <GroupPreview analysis={analysis} groupId={group.id} />
                 </div>
 
