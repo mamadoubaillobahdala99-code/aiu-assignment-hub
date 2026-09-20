@@ -6,6 +6,7 @@ import { SummaryCompletion } from "./SummaryCompletion";
 import { NotesCompletion } from "./NotesCompletion";
 import { TableCompletion } from "./TableCompletion";
 import { SentenceCompletion } from "./SentenceCompletion";
+import { FormCompletion, FlowchartCompletion, WordBankCompletion } from "./CompletionExtras";
 import { MatchingGrid } from "./MatchingGrid";
 import { AudioPlayer } from "./AudioPlayer";
 import { parseCompletionPayload, numberQuestions, questionSlotCount } from "./bulkParse";
@@ -418,6 +419,9 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
               if (payload.style === "notes") return <NotesCompletion blocks={payload.blocks || []} {...commonProps} />;
               if (payload.style === "table") return <TableCompletion headers={payload.headers || []} rows={payload.rows || []} {...commonProps} />;
               if (payload.style === "sentences") return <SentenceCompletion sentences={payload.sentences || []} {...commonProps} />;
+              if (payload.style === "form") return <FormCompletion title={payload.title} rows={payload.rows || []} {...commonProps} />;
+              if (payload.style === "flowchart") return <FlowchartCompletion title={payload.title} steps={payload.steps || []} {...commonProps} />;
+              if (payload.style === "wordbank") return <WordBankCompletion text={payload.text} options={payload.options || []} {...commonProps} />;
               return <SummaryCompletion text={payload.text} {...commonProps} />;
             })()
           ) : group.questions[0]?.type?.startsWith("matching_") ? (
