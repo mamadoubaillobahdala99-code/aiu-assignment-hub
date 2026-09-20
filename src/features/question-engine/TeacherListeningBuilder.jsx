@@ -31,6 +31,12 @@ export function TeacherListeningBuilder({ classId, teacherId, setScreen, showToa
   const [error, setError] = useState("");
   const [loadingExisting, setLoadingExisting] = useState(Boolean(editAssignmentId));
   const [existingAnswerCount, setExistingAnswerCount] = useState(0);
+  // "single" = one audio for the whole test (like the real IELTS),
+  // "parts" = one audio per part (useful for practice).
+  const [audioMode, setAudioMode] = useState("single");
+  const [singleAudio, setSingleAudio] = useState(null); // { url, filename }
+  const [examMode, setExamMode] = useState(false);
+  const [checkMinutes, setCheckMinutes] = useState("2");
 
   // Same approach as the Reading builder: only the assignment's own
   // metadata is prefilled — Parts/questions always start fresh and
@@ -38,13 +44,17 @@ export function TeacherListeningBuilder({ classId, teacherId, setScreen, showToa
   useEffect(() => {
     if (!editAssignmentId) return;
     (async () => {
-      const { data: a } = await supabase.from("assignments").select("title, due_date, time_limit_minutes, auto_release_score, show_answer_review").eq("id", editAssignmentId).single();
+      const { data: a } = await supabase.from("assignments").select("title, due_date, time_limit_minutes, auto_release_score, show_answer_review, listening_audio_url, listening_exam_mode, listening_check_minutes").eq("id", editAssignmentId).single();
       if (a) {
         setTitle(a.title || "");
         setDueDate(a.due_date || "");
         setTimeLimit(a.time_limit_minutes ? String(a.time_limit_minutes) : "");
         setAutoReleaseScore(a.auto_release_score ?? true);
         setShowAnswerReview(a.show_answer_review ?? true);
+        setAudioMode(a.listening_audio_url ? "single" : "parts");
+        setSingleAudio(a.listening_audio_url ? { url: a.listening_audio_url, filename: "Listening recording" } : null);
+        setExamMode(Boolean(a.listening_exam_mode));
+        setCheckMinutes(String(a.listening_check_minutes ?? 2));
       }
       const { count } = await supabase.from("student_answers").select("id", { count: "exact", head: true }).eq("assignment_id", editAssignmentId);
       setExistingAnswerCount(count || 0);
@@ -161,9 +171,10 @@ export function TeacherListeningBuilder({ classId, teacherId, setScreen, showToa
   }, [parts]);
 
   const canPublish =
+    (audioMode === "single" ? Boolean(singleAudio?.url) : true) &&
     parts.every(
       (p) =>
-        p.audioUrl &&
+        (audioMode === "single" || p.audioUrl) &&
         p.groups.length > 0 &&
         p.groups.every((g) =>
           g.mode === "completion"
@@ -173,6 +184,17 @@ export function TeacherListeningBuilder({ classId, teacherId, setScreen, showToa
             : g.questions.length > 0
         )
     );
+
+  // The three assignment columns that describe the single audio.
+  function listeningAudioFields() {
+    return audioMode === "single"
+      ? {
+          listening_audio_url: singleAudio?.url || null,
+          listening_exam_mode: examMode,
+          listening_check_minutes: checkMinutes === "" ? 0 : Math.min(30, Math.max(0, parseInt(checkMinutes, 10) || 0)),
+        }
+      : { listening_audio_url: null, listening_exam_mode: false, listening_check_minutes: 2 };
+  }
 
   async function publish() {
     setError("");
@@ -233,6 +255,7 @@ export function TeacherListeningBuilder({ classId, teacherId, setScreen, showToa
           time_limit_minutes: timeLimit ? parseInt(timeLimit, 10) : null,
           auto_release_score: autoReleaseScore,
           show_answer_review: showAnswerReview,
+          ...listeningAudioFields(),
         })
         .eq("id", editAssignmentId)
         .select()
@@ -256,6 +279,7 @@ export function TeacherListeningBuilder({ classId, teacherId, setScreen, showToa
           time_limit_minutes: timeLimit ? parseInt(timeLimit, 10) : null,
           auto_release_score: autoReleaseScore,
           show_answer_review: showAnswerReview,
+          ...listeningAudioFields(),
         })
         .select()
         .single();
@@ -275,8 +299,8 @@ export function TeacherListeningBuilder({ classId, teacherId, setScreen, showToa
         .insert({
           assignment_id: assignment.id,
           title: `Part ${pi + 1}`,
-          audio_url: part.audioUrl,
-          max_plays: part.maxPlays ? parseInt(part.maxPlays, 10) : null,
+          audio_url: audioMode === "single" ? null : part.audioUrl,
+          max_plays: audioMode === "single" ? null : part.maxPlays ? parseInt(part.maxPlays, 10) : null,
           order_index: pi,
         })
         .select()
@@ -377,6 +401,50 @@ export function TeacherListeningBuilder({ classId, teacherId, setScreen, showToa
         {showAnswerReview ? "Students can review each question after their score is visible." : "Students only see their overall score, never the answer key — useful if you plan to reuse this test."}
       </p>
 
+      <label className="field-label" style={{ marginTop: 20 }}>Audio</label>
+      <div className="type-row">
+        <button type="button" className={`type-chip ${audioMode === "single" ? "active" : ""}`} onClick={() => setAudioMode("single")}>One audio for the whole test</button>
+        <button type="button" className={`type-chip ${audioMode === "parts" ? "active" : ""}`} onClick={() => setAudioMode("parts")}>One audio per part</button>
+      </div>
+      <p className="field-hint" style={{ marginTop: 2 }}>
+        {audioMode === "single"
+          ? "Like the real test: the recording plays through all the parts. Students switch part without stopping it."
+          : "Each part has its own file, with its own number of plays — handy for practice section by section."}
+      </p>
+
+      {audioMode === "single" && (
+        <div className="feedback-panel" style={{ marginTop: 10 }}>
+          <label className="field-label" style={{ marginTop: 0 }}>Recording for the whole test</label>
+          <AudioFilePicker teacherId={teacherId} value={singleAudio} onChange={(f) => setSingleAudio(f || null)} />
+
+          <label className="checkbox-row" style={{ marginTop: 14 }}>
+            <input type="checkbox" checked={examMode} onChange={(e) => setExamMode(e.target.checked)} />
+            Exam mode: one listening only, no pause and no rewind
+          </label>
+          <p className="field-hint" style={{ marginTop: 2 }}>
+            {examMode
+              ? "The recording starts when the student presses \"I'm ready\" and plays straight through. Refreshing the page carries on where the server says it is — never back at the beginning."
+              : "Practice: students can pause and replay the recording as they like."}
+          </p>
+
+          <label className="field-label" style={{ marginTop: 14 }}>Checking time after the recording (minutes)</label>
+          <input
+            type="number"
+            min="0"
+            max="30"
+            className="field-input"
+            style={{ maxWidth: 160 }}
+            value={checkMinutes}
+            onChange={(e) => setCheckMinutes(e.target.value)}
+          />
+          <p className="field-hint" style={{ marginTop: 2 }}>
+            {checkMinutes === "0" || checkMinutes === ""
+              ? "No automatic sending: students submit when they want."
+              : `When the recording ends, students get ${checkMinutes} minute${checkMinutes === "1" ? "" : "s"} to check their answers, then everything is sent automatically.`}
+          </p>
+        </div>
+      )}
+
       {parts.map((part, pi) => (
         <div key={part.localId} className="qe-part-block">
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 28 }}>
@@ -386,6 +454,8 @@ export function TeacherListeningBuilder({ classId, teacherId, setScreen, showToa
             )}
           </div>
 
+          {audioMode === "parts" && (
+          <>
           <label className="field-label" style={{ marginTop: 14 }}>Audio file</label>
           <AudioFilePicker
             teacherId={teacherId}
@@ -403,6 +473,8 @@ export function TeacherListeningBuilder({ classId, teacherId, setScreen, showToa
             value={part.maxPlays}
             onChange={(e) => handleMaxPlaysChange(part.localId, e.target.value)}
           />
+          </>
+          )}
 
           <h4 className="section-title" style={{ marginTop: 20, fontSize: 14 }}>Question groups</h4>
 
