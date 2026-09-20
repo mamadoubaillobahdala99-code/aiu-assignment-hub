@@ -37,7 +37,7 @@ export function StudentQuestionEngineFeedback({ assignmentId, userId, setScreen 
     for (const s of sectionRows || []) {
       const { data: groupRows } = await supabase
         .from("question_groups")
-        .select("id, instruction, passage_text, order_index")
+        .select("id, instruction, passage_text, image_url, order_index")
         .eq("section_id", s.id)
         .order("order_index");
 
@@ -51,7 +51,7 @@ export function StudentQuestionEngineFeedback({ assignmentId, userId, setScreen 
         const questions = (links || []).map((l) => l.questions);
         const { start: startNumber, end: endNumber, numbers: questionNumbers, nextStart } = numberQuestions(questions, globalCounter + 1);
         globalCounter = nextStart - 1;
-        groups.push({ id: g.id, instruction: g.instruction, passageText: g.passage_text, questions, startNumber, endNumber, questionNumbers });
+        groups.push({ id: g.id, instruction: g.instruction, passageText: g.passage_text, imageUrl: g.image_url, questions, startNumber, endNumber, questionNumbers });
       }
       built.push({ id: s.id, title: s.title, passageTitle: s.passage_title, passageText: s.passage_text, audioUrl: s.audio_url, maxPlays: s.max_plays, groups });
     }
