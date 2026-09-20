@@ -108,7 +108,10 @@ export function ClassDetail({ classId, setScreen, showToast }) {
 
       {tab === "assignments" && (
         <>
-          <div className="row-right">
+          <div className="row-right" style={{ flexWrap: "wrap", gap: 8 }}>
+            <button className="btn-primary" style={{ whiteSpace: "nowrap" }} onClick={() => setScreen({ name: "test-importer", classId, skill: "reading" })}>
+              <FileText size={13} /> Import a test
+            </button>
             <button className="btn-ghost" onClick={() => setScreen({ name: "reading-builder", classId })}>
               <Plus size={13} /> Structured Reading
             </button>
