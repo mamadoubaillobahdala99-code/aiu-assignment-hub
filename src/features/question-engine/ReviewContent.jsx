@@ -8,6 +8,7 @@ import { SentenceCompletion } from "./SentenceCompletion";
 import { MatchingGrid } from "./MatchingGrid";
 import { AudioPlayer } from "./AudioPlayer";
 import { parseCompletionPayload, numberQuestions } from "./bulkParse";
+import { GroupImage } from "./GroupImage";
 
 // Shown above a Part's questions on the review/feedback screens — lets
 // the student (or teacher) look back at the original passage or replay
@@ -60,6 +61,7 @@ export function ReviewContent({ sections, answersByQ, resultsByQ, correctAnswers
           {section.groups.map((group) => (
             <div key={group.id} className="qe-group-block">
               {group.instruction && <p className="qe-section-instruction">{group.instruction}</p>}
+              {group.imageUrl && <GroupImage url={group.imageUrl} />}
               {group.passageText ? (
                 (() => {
                   const payload = parseCompletionPayload(group.passageText);
