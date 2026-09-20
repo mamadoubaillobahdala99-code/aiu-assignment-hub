@@ -95,6 +95,15 @@ export function normalizeText(raw) {
     merged.push(l);
   }
 
+  // "… into a 7" / "……… Later…": a question number at the end of a line
+  // belongs to the gap that starts the next line.
+  for (let i = 0; i < merged.length - 1; i++) {
+    if (/\b\d{1,2}$/.test(merged[i]) && new RegExp(`^${GAP_SRC}`).test(merged[i + 1])) {
+      merged[i] = `${merged[i]} ${merged[i + 1]}`;
+      merged.splice(i + 1, 1);
+    }
+  }
+
   // Re-join lines that were wrapped in the middle of a sentence
   // (next line starts with a small letter and isn't a roman numeral).
   const out = [];
@@ -228,7 +237,7 @@ export function parseTest(text, skill = "reading") {
         id: g.id,
         start: g.start,
         end: g.end,
-        source: trimBlankLines(g.lines).join("\n"),
+        source: trimBlankLines(fillListNumbers(g.lines, g.start, g.end)).join("\n"),
         type: null, // null = automatic detection
         imageUrl: "",
         lastLetter: "",
@@ -256,6 +265,17 @@ export function parseTest(text, skill = "reading") {
         groups,
       };
     });
+}
+
+// Word's automatic list numbers are lost in the file ("# " lines, see
+// fileExtract.js): they are filled in from the group's range, but only
+// when the count matches, so nothing is ever guessed wrongly.
+function fillListNumbers(lines, start, end) {
+  const count = lines.filter((l) => /^# /.test(l)).length;
+  if (count === 0) return lines;
+  let n = start;
+  const fits = count === end - start + 1;
+  return lines.map((l) => (/^# /.test(l) ? (fits ? `${n++} ${l.slice(2)}` : `• ${l.slice(2)}`) : l));
 }
 
 function trimBlankLines(lines) {
@@ -502,7 +522,16 @@ function notesBlocks(lines) {
 
 // "Type | Role | Life span" lines (cells separated by | or tabs) → table.
 function tablePayload(lines) {
-  const rowsRaw = lines.filter(Boolean).filter((l) => l.includes("|")).map((l) => l.replace(/^\||\|$/g, "").split("|").map((c) => c.trim()));
+  // A line without cells right after a row is the rest of that row's last
+  // cell (text that wrapped onto a second line in a PDF).
+  const rowsRaw = [];
+  for (const l of lines.filter(Boolean)) {
+    if (l.includes("|")) rowsRaw.push(l.replace(/^\||\|$/g, "").split("|").map((c) => c.trim()));
+    else if (rowsRaw.length) {
+      const last = rowsRaw[rowsRaw.length - 1];
+      last[last.length - 1] = `${last[last.length - 1]} ${l}`.trim();
+    }
+  }
   if (rowsRaw.length < 2) return null;
   const width = Math.max(...rowsRaw.map((r) => r.length));
   const pad = (r) => [...r, ...Array(width - r.length).fill("")];
@@ -570,18 +599,41 @@ function wordBankSplit(lines) {
   return { text: text.join(" ").replace(/\s{2,}/g, " ").trim(), options: dedupeLetters(options) };
 }
 
+// Removes repeated letters and puts the list back in order (lists printed
+// in 2–3 columns are read row by row: A, D, B, E…).
 function dedupeLetters(options) {
   const seen = new Set();
-  return options.filter((o) => (seen.has(o.letter) ? false : (seen.add(o.letter), true)));
+  const rank = (l) => (ROMAN.includes(l) ? ROMAN.indexOf(l) : LETTERS.indexOf(l));
+  return options.filter((o) => (seen.has(o.letter) ? false : (seen.add(o.letter), true))).sort((a, b) => rank(a.letter) - rank(b.letter));
+}
+
+// Cells separated by " | " (tabs from Word/PDF columns). Outside a table,
+// a line whose cells each start with a label ("A …", "iv …", "12 …") is
+// split into one line per cell; any other line is simply re-joined.
+const CELL_LABEL = /^(\(?\d{1,2}\)?[.)]?\s|[A-Z](?:[.)]\s*|\s+)\S|[ivx]{1,5}[.)]?\s|[•●▪◦○·*\-–])/;
+function unpipe(lines) {
+  const out = [];
+  for (const l of lines) {
+    if (!l.includes("|")) {
+      out.push(l);
+      continue;
+    }
+    const cells = l.split("|").map((c) => c.trim()).filter(Boolean);
+    if (cells.length > 1 && cells.every((c) => CELL_LABEL.test(c))) out.push(...cells);
+    else out.push(cells.join(" "));
+  }
+  return out;
 }
 
 // context.passageText: the part's passage, used to find paragraph letters.
 export function analyseGroup(group, skill = "reading", context = {}) {
-  const lines = String(group.source || "").split("\n").map((l) => l.trim());
+  const rawLines = String(group.source || "").split("\n").map((l) => l.trim());
   const { start, end } = group;
   const expectedCount = end - start + 1;
-  const { instruction, body } = splitInstruction(lines, start);
-  const instructionText = instruction.join("\n");
+  // The type is detected on the text read line by line; only a table
+  // keeps its "|" cells (see unpipe).
+  let lines = unpipe(rawLines);
+  let { instruction, body } = splitInstruction(lines, start);
   // Type keywords are searched in every line above the first question,
   // not only in the lines recognised as instructions.
   const firstItem = body.findIndex((l) => {
@@ -589,8 +641,13 @@ export function analyseGroup(group, skill = "reading", context = {}) {
     return (m && +m[1] === start) || GAP_RE.test(l);
   });
   const head = firstItem < 0 ? [] : body.slice(0, firstItem);
-  const detected = detectType([instructionText, ...head].join("\n"), body, start, end);
+  const detected = detectType([instruction.join("\n"), ...head].join("\n"), body, start, end);
   const type = group.type || detected.type;
+  if (type === "table") {
+    lines = rawLines;
+    ({ instruction, body } = splitInstruction(lines, start));
+  }
+  const instructionText = instruction.join("\n");
   const issues = [];
   if (!group.type && detected.weak) issues.push({ level: "warn", msg: "Type guessed from the layout — please check it." });
 
@@ -793,8 +850,8 @@ export function parseAnswerKey(text) {
   const map = {};
   const lines = String(text || "")
     .replace(/\r\n?/g, "\n")
-    .replace(/\t/g, " ")
-    .split("\n")
+    // Keys printed in columns (PDF/Word tables) come as cells: one per line.
+    .split(/\n|\t+|\s\|\s/)
     .map((l) => l.trim())
     .filter(Boolean);
   const put = (a, b, ans) => {
