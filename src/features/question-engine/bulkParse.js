@@ -223,7 +223,7 @@ export function parseCompletionPayload(raw) {
   if (!raw) return { style: "paragraph", text: "" };
   try {
     const parsed = JSON.parse(raw);
-    if (parsed && typeof parsed === "object" && (parsed.style === "notes" || parsed.style === "table" || parsed.style === "sentences")) {
+    if (parsed && typeof parsed === "object" && ["notes", "table", "sentences", "form", "flowchart", "wordbank"].includes(parsed.style)) {
       return parsed;
     }
   } catch {
@@ -284,3 +284,85 @@ export function parseSentenceCompletion(text) {
   const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
   return lines;
 }
+
+// ---------- Accepted answers ----------
+// "river, the river" or "river / the river" → ["river", "the river"].
+// A slash only separates when it has spaces around it, so answers such
+// as "15/06" or "24/7" stay whole.
+export function splitAlternatives(text) {
+  return String(text || "")
+    .split(/\s*,\s*|\s+\/\s+/)
+    .map((a) => a.trim())
+    .filter(Boolean);
+}
+
+// ---------- Form completion ----------
+// One field per line: "Label: value" (value may contain ___ blanks).
+// A line starting with "Example" is shown greyed and never has a blank.
+// A line without ":" becomes a full-width line of the form.
+export function parseFormCompletion(text) {
+  const rows = [];
+  for (const raw of String(text || "").split("\n")) {
+    let line = raw.trim();
+    if (!line) continue;
+    let example = false;
+    const ex = /^example\s*[:\-–—]?\s*/i.exec(line);
+    if (ex) {
+      example = true;
+      line = line.slice(ex[0].length);
+    }
+    const colon = line.indexOf(":");
+    if (colon > 0) rows.push({ label: line.slice(0, colon).trim(), value: line.slice(colon + 1).trim(), example });
+    else rows.push({ label: "", value: line, example });
+  }
+  return rows;
+}
+
+export function formBlankTexts(rows) {
+  return (rows || []).filter((r) => !r.example).map((r) => r.value);
+}
+
+// ---------- Flow-chart completion ----------
+// One step (box) per non-empty line.
+export function parseFlowchart(text) {
+  return String(text || "").split("\n").map((l) => l.trim()).filter(Boolean);
+}
+
+// ---------- Summary with a word list ----------
+// One option per line. "A biological" / "A. biological" keeps its letter;
+// a line with no letter gets the next letter automatically.
+export function parseWordBank(text) {
+  const lines = String(text || "").split("\n").map((l) => l.trim()).filter(Boolean);
+  const out = [];
+  for (const line of lines) {
+    if (out.length >= 26) break;
+    const m = /^([A-Z])(?:[.)]\s*|\s+)(.+)$/.exec(line);
+    let letter = m ? m[1] : String.fromCharCode(65 + out.length);
+    const text = m ? m[2].trim() : line;
+    // Never lose a word: if the letter is already used, take the next free one.
+    while (out.some((o) => o.letter === letter) && letter < "Z") letter = String.fromCharCode(letter.charCodeAt(0) + 1);
+    if (out.some((o) => o.letter === letter)) letter = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").find((l) => !out.some((o) => o.letter === l));
+    out.push({ letter, text });
+  }
+  return out;
+}
+
+// ---------- Short-answer questions ----------
+// "Question? — answer / alternative", one per line. Separators accepted
+// between question and answer: " — ", " – ", " | ", " - " (last one wins).
+export function parseShortAnswers(text) {
+  return String(text || "")
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const m = /^(.*\S)\s+(?:—|–|\||-)\s+(.+)$/.exec(line);
+      const cleaned = (m ? m[1] : line).replace(/^\d+[.)]\s*/, "");
+      return { prompt: cleaned.trim(), answer: m ? m[2].trim() : "" };
+    });
+}
+
+export const SHORT_ANSWER_INSTRUCTION = "Answer the questions below.\nWrite NO MORE THAN THREE WORDS AND/OR A NUMBER for each answer.";
+export const WORDBANK_INSTRUCTION = "Complete the summary using the list of words below.\nChoose the correct letter for each answer.";
+export const FORM_INSTRUCTION = "Complete the form below.\nWrite NO MORE THAN TWO WORDS AND/OR A NUMBER for each answer.";
+export const FLOWCHART_INSTRUCTION = "Complete the flow-chart below.\nWrite NO MORE THAN TWO WORDS for each answer.";
