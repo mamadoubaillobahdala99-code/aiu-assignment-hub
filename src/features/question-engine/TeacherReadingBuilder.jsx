@@ -7,9 +7,11 @@ import { SentenceCompletion } from "./SentenceCompletion";
 import { NotesCompletion } from "./NotesCompletion";
 import { TableCompletion } from "./TableCompletion";
 import { MatchingBuilder } from "./MatchingBuilder";
+import { LabellingBuilder } from "./LabellingBuilder";
+import { GroupImagePicker } from "./GroupImage";
 
 function newGroup() {
-  return { localId: crypto.randomUUID(), instruction: "", mode: "questions", completionStyle: "paragraph", matchingType: "matching_information", questions: [], summaryText: "" };
+  return { localId: crypto.randomUUID(), instruction: "", mode: "questions", completionStyle: "paragraph", matchingType: "matching_information", labellingKind: "map", imageUrl: "", questions: [], summaryText: "" };
 }
 function newPart() {
   return { localId: crypto.randomUUID(), passageText: "", passageTitle: "", titleTouched: false, groups: [newGroup()] };
@@ -125,6 +127,22 @@ export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast
       )
     );
   }
+  function patchGroup(partLocalId, groupLocalId, patch) {
+    setParts((prev) =>
+      prev.map((p) =>
+        p.localId !== partLocalId ? p : { ...p, groups: p.groups.map((g) => (g.localId === groupLocalId ? { ...g, ...patch } : g)) }
+      )
+    );
+  }
+  function onLabellingCreated(partLocalId, groupLocalId, questions, defaultInstruction) {
+    setParts((prev) =>
+      prev.map((p) =>
+        p.localId !== partLocalId
+          ? p
+          : { ...p, groups: p.groups.map((g) => (g.localId === groupLocalId ? { ...g, questions, instruction: g.instruction || defaultInstruction } : g)) }
+      )
+    );
+  }
   function updateSummaryText(partLocalId, groupLocalId, text) {
     setParts((prev) =>
       prev.map((p) =>
@@ -178,7 +196,13 @@ export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast
       (p) =>
         p.passageText.trim() &&
         p.groups.length > 0 &&
-        p.groups.every((g) => (g.mode === "completion" ? g.summaryText.trim() && g.questions.length > 0 : g.questions.length > 0))
+        p.groups.every((g) =>
+          g.mode === "completion"
+            ? g.summaryText.trim() && g.questions.length > 0
+            : g.mode === "labelling"
+            ? g.imageUrl && g.questions.length > 0
+            : g.questions.length > 0
+        )
     );
 
   async function publish() {
@@ -307,6 +331,7 @@ export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast
             section_id: sectionRow.id,
             instruction: group.instruction || null,
             passage_text: group.mode === "completion" ? group.summaryText.trim() : null,
+            image_url: group.imageUrl || null,
             order_index: gi,
           })
           .select()
@@ -445,7 +470,18 @@ export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast
                     <button type="button" className={`type-chip ${group.mode === "questions" ? "active" : ""}`} onClick={() => setGroupMode(part.localId, group.localId, "questions")}>Question list</button>
                     <button type="button" className={`type-chip ${group.mode === "completion" ? "active" : ""}`} onClick={() => setGroupMode(part.localId, group.localId, "completion")}>Summary Completion</button>
                     <button type="button" className={`type-chip ${group.mode === "matching" ? "active" : ""}`} onClick={() => setGroupMode(part.localId, group.localId, "matching")}>Matching</button>
+                    <button type="button" className={`type-chip ${group.mode === "labelling" ? "active" : ""}`} onClick={() => setGroupMode(part.localId, group.localId, "labelling")}>Labelling (map / plan / diagram)</button>
                   </div>
+
+                  {group.mode === "labelling" && (
+                    <>
+                      <label className="field-label" style={{ marginTop: 14 }}>Labelling type</label>
+                      <div className="type-row">
+                        <button type="button" className={`type-chip ${group.labellingKind === "map" ? "active" : ""}`} onClick={() => patchGroup(part.localId, group.localId, { labellingKind: "map" })}>Map / plan — letters on the image</button>
+                        <button type="button" className={`type-chip ${group.labellingKind === "diagram" ? "active" : ""}`} onClick={() => patchGroup(part.localId, group.localId, { labellingKind: "diagram" })}>Diagram — words to write</button>
+                      </div>
+                    </>
+                  )}
 
                   {group.mode === "completion" && (
                     <>
@@ -473,7 +509,30 @@ export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast
                 </>
               )}
 
-              {group.mode === "matching" ? (
+              <GroupImagePicker
+                teacherId={teacherId}
+                value={group.imageUrl}
+                onChange={(url) => patchGroup(part.localId, group.localId, { imageUrl: url })}
+                label={group.mode === "labelling" ? "Map / plan / diagram image" : "Image for this group (optional)"}
+                required={group.mode === "labelling"}
+                hint={
+                  group.mode === "labelling"
+                    ? group.labellingKind === "map"
+                      ? "Use an image that already shows the letters (A, B, C…). Students see it above the questions and can zoom in."
+                      : "Use an image that already shows the numbered labels. Students see it above the answer boxes and can zoom in."
+                    : "Shown to students above this group's questions (e.g. a flow-chart or table figure)."
+                }
+              />
+
+              {group.mode === "labelling" ? (
+                <LabellingBuilder
+                  group={group}
+                  teacherId={teacherId}
+                  skill="reading"
+                  kind={group.labellingKind}
+                  onQuestionsCreated={(questions, instr) => onLabellingCreated(part.localId, group.localId, questions, instr)}
+                />
+              ) : group.mode === "matching" ? (
                 <MatchingBuilder
                   group={group}
                   teacherId={teacherId}
