@@ -5,6 +5,7 @@ import { SummaryCompletion } from "./SummaryCompletion";
 import { NotesCompletion } from "./NotesCompletion";
 import { TableCompletion } from "./TableCompletion";
 import { SentenceCompletion } from "./SentenceCompletion";
+import { PassageView } from "./PassageImages";
 import { FormCompletion, FlowchartCompletion, WordBankCompletion } from "./CompletionExtras";
 import { MatchingGrid } from "./MatchingGrid";
 import { AudioPlayer } from "./AudioPlayer";
@@ -31,7 +32,7 @@ function SectionPassage({ section }) {
           {expanded && (
             <div className="qe-review-passage-text">
               {section.passageTitle && <h4>{section.passageTitle}</h4>}
-              <p style={{ whiteSpace: "pre-wrap" }}>{section.passageText}</p>
+              <PassageView text={section.passageText} />
             </div>
           )}
         </>
