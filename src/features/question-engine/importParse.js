@@ -50,6 +50,10 @@ const GAP_SRC = "(?:_{3,}|[.…](?:\\s?[.…]){3,}|…{2,})";
 const GAP_RE = new RegExp(GAP_SRC);
 const GAP_RE_G = new RegExp(GAP_SRC, "g");
 
+// A picture read from a Word file (or inserted by the teacher) is a line
+// of its own: "[[image:local:3]]" / "[[image:https://…]]".
+const IMAGE_LINE = /^\[\[image:[^\s\]]+\]\]$/;
+
 // ---------------------------------------------------------------------
 // 1) Clean-up of pasted text
 // ---------------------------------------------------------------------
@@ -112,6 +116,7 @@ export function normalizeText(raw) {
     if (
       prev &&
       l &&
+      !IMAGE_LINE.test(prev) &&
       prev.length >= 40 &&
       /^[a-z]/.test(l) &&
       !/^(i{1,3}|iv|vi{0,3}|ix|xi{0,3}|x)[.)]?\s/.test(l) &&
@@ -266,6 +271,22 @@ export function parseTest(text, skill = "reading") {
           }
         }
       }
+      // A picture inside a question group (a map, a diagram…) becomes that
+      // group's image. In Listening, a picture above the first group goes
+      // to that group.
+      for (const g of groups) {
+        const lines = g.source.split("\n");
+        const pics = lines.filter((l) => IMAGE_LINE.test(l.trim()));
+        if (pics.length) {
+          g.source = trimBlankLines(lines.filter((l) => !IMAGE_LINE.test(l.trim()))).join("\n");
+          g.imageUrl = IMAGE_LINE.test(pics[0].trim()) ? pics[0].trim().slice(8, -2) : "";
+          g.extraImages = pics.length - 1;
+        }
+      }
+      if (skill !== "reading" && groups[0] && !groups[0].imageUrl) {
+        const pic = p.preamble.find((l) => IMAGE_LINE.test(l.trim()));
+        if (pic) groups[0].imageUrl = pic.trim().slice(8, -2);
+      }
       const taken = p.headingTitle ? { title: p.headingTitle, body: trimBlankLines(passage) } : takeTitle(trimBlankLines(passage));
       const { title, body } = taken;
       return {
@@ -317,7 +338,7 @@ function paragraphs(lines) {
 
 function takeTitle(lines) {
   const first = lines[0] || "";
-  if (first && first.length <= 90 && !/[.:]$/.test(first) && lines.length > 1 && first.split(/\s+/).length <= 12) {
+  if (first && !IMAGE_LINE.test(first) && first.length <= 90 && !/[.:]$/.test(first) && lines.length > 1 && first.split(/\s+/).length <= 12) {
     return { title: first, body: lines.slice(1) };
   }
   return { title: "", body: lines };
@@ -667,7 +688,10 @@ function sortNumberedRuns(lines) {
 
 // context.passageText: the part's passage, used to find paragraph letters.
 export function analyseGroup(group, skill = "reading", context = {}) {
-  const rawLines = String(group.source || "").split("\n").map((l) => l.trim());
+  const rawLines = String(group.source || "")
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => !IMAGE_LINE.test(l)); // pictures belong to the group image, never to a question
   const { start, end } = group;
   const expectedCount = end - start + 1;
   // The type is detected on the text read line by line; only a table
