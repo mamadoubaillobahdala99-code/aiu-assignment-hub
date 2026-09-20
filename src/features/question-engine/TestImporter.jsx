@@ -123,7 +123,7 @@ export function TestImporter({ classId, teacherId, skill: initialSkill = "readin
       if (skill === "reading" && !part.passageText.trim()) partIssues.push({ level: "error", msg: "The reading passage is empty — paste it here." });
       if (skill === "listening" && !part.audioUrl) partIssues.push({ level: "error", msg: "Add the audio file for this part." });
       const groups = part.groups.map((g) => {
-        const analysis = analyseGroup(g, skill);
+        const analysis = analyseGroup(g, skill, { passageText: part.passageText });
         const resolved = resolveAnswers(analysis, answers);
         const issues = [...analysis.issues];
         if (analysis.needsImage && !g.imageUrl) issues.push({ level: "error", msg: "Add the image (map, plan or diagram) — students need it to answer." });
