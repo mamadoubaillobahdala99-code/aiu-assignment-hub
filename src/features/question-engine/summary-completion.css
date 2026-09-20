@@ -36,3 +36,40 @@
   .qe-form-table td { display: block; }
   .qe-form-table tr + tr td { border-top: none; }
 }
+
+/* ---------- Test importer (livraison 9) ---------- */
+.qe-imp-textarea { min-height: 320px; font-size: 13.5px; line-height: 1.55; }
+.qe-imp-passage { min-height: 280px; font-size: 13.5px; line-height: 1.6; }
+.qe-imp-source { min-height: 180px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; line-height: 1.55; }
+.qe-imp-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin: 14px 0 6px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 8px; background: #fff; font-size: 13.5px; }
+.qe-imp-chip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.qe-imp-chip-ok { background: #e3f4ea; color: #1d6b3f; }
+.qe-imp-chip-warn { background: #fdf0d9; color: #8a5a00; }
+.qe-imp-chip-error { background: #fbe4e2; color: #a3261c; }
+.qe-imp-muted { color: var(--ink-soft); font-size: 13px; }
+.qe-imp-part { margin-top: 30px; padding-top: 18px; border-top: 2px solid var(--line); }
+.qe-imp-part-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.qe-imp-group { margin-top: 18px; padding: 14px 16px; border: 1px solid var(--line); border-left-width: 5px; border-radius: 8px; background: #fff; }
+.qe-imp-group-ok { border-left-color: #2e9e5b; }
+.qe-imp-group-warn { border-left-color: #d99a1e; }
+.qe-imp-group-error { border-left-color: #cf3b2e; }
+.qe-imp-group-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.qe-imp-type { flex: 1 1 240px; max-width: 360px; width: auto; height: auto; min-height: 36px; padding: 6px 8px; margin: 0; line-height: 1.3; }
+.qe-imp-remove { margin-left: auto; }
+.qe-imp-issues { margin-top: 10px; display: flex; flex-direction: column; gap: 4px; }
+.qe-imp-issue { display: flex; align-items: flex-start; gap: 6px; font-size: 13px; line-height: 1.4; }
+.qe-imp-issue svg { flex-shrink: 0; margin-top: 2px; }
+.qe-imp-issue-error { color: #a3261c; }
+.qe-imp-issue-warn { color: #8a5a00; }
+.qe-imp-qlist { display: flex; flex-direction: column; gap: 14px; }
+.qe-imp-q { display: flex; gap: 10px; align-items: flex-start; }
+.qe-imp-q-body { flex: 1; min-width: 0; }
+.qe-imp-answers { margin-top: 14px; padding: 12px; border-radius: 8px; background: var(--paper); }
+.qe-imp-answer-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px 12px; margin-top: 8px; }
+.qe-imp-answer { display: grid; grid-template-columns: 30px 1fr; align-items: center; gap: 2px 8px; margin: 0; }
+.qe-imp-answer .field-input { height: 32px; margin: 0; padding: 0 8px; }
+.qe-imp-answer-num { font-weight: 700; font-size: 13px; text-align: right; }
+.qe-imp-answer.has-error .field-input { border-color: #cf3b2e; }
+.qe-imp-answer-err { grid-column: 2; color: #a3261c; font-size: 12px; }
+.qe-imp-footer { position: sticky; bottom: 0; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-top: 26px; padding: 14px 0; background: var(--paper); border-top: 1px solid var(--line); z-index: 2; }
+.qe-imp-q .rf-answer-num { white-space: nowrap; min-width: 26px; }
