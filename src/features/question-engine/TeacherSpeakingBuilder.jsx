@@ -25,6 +25,7 @@ const KIND_ICON = { pdf: FileText, image: ImageIcon, audio: Music, docx: File };
 export function TeacherSpeakingBuilder({ classId, teacherId, setScreen, showToast, editAssignmentId }) {
   const [title, setTitle] = useState("");
   const [dueDate, setDueDate] = useState("");
+  const [dueTime, setDueTime] = useState("");
   const [parts, setParts] = useState({ 1: emptyPart(true), 2: emptyPart(true), 3: emptyPart(true) });
   const [removedDocs, setRemovedDocs] = useState([]); // saved docs the teacher removed
   const [fileInputKey, setFileInputKey] = useState(0);
@@ -36,10 +37,11 @@ export function TeacherSpeakingBuilder({ classId, teacherId, setScreen, showToas
   useEffect(() => {
     if (!editAssignmentId) return;
     (async () => {
-      const { data: a } = await supabase.from("assignments").select("title, due_date").eq("id", editAssignmentId).single();
+      const { data: a } = await supabase.from("assignments").select("title, due_date, due_time").eq("id", editAssignmentId).single();
       if (a) {
         setTitle(a.title || "");
         setDueDate(a.due_date || "");
+        setDueTime(a.due_time || "");
       }
       const { data: sections } = await supabase
         .from("exam_sections")
@@ -135,7 +137,7 @@ export function TeacherSpeakingBuilder({ classId, teacherId, setScreen, showToas
 
     const finalTitle = title.trim() || `Speaking Practice — ${new Date().toLocaleDateString()}`;
     let assignmentId = editAssignmentId;
-    const meta = { title: finalTitle, due_date: dueDate || null };
+    const meta = { title: finalTitle, due_date: dueDate || null, due_time: dueTime || null };
 
     if (editAssignmentId) {
       const { error: uError } = await supabase.from("assignments").update(meta).eq("id", editAssignmentId);
@@ -234,6 +236,10 @@ export function TeacherSpeakingBuilder({ classId, teacherId, setScreen, showToas
       <div style={{ maxWidth: 320, marginTop: 14 }}>
         <label className="field-label">Due date (optional)</label>
         <input type="date" className="field-input" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+      </div>
+      <div style={{ maxWidth: 320, marginTop: 14 }}>
+        <label className="field-label">Due time (optional)</label>
+        <input type="time" className="field-input" value={dueTime} onChange={(e) => setDueTime(e.target.value)} />
       </div>
 
       <label className="field-label" style={{ marginTop: 18 }}>Parts in this assignment</label>
