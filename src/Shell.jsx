@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { BookOpen, Users, Plus, Check, Clock, AlertTriangle, LogOut, GraduationCap, FileText, ChevronRight, X, Copy, CheckCircle2, Headphones, PenLine, Mic, ListChecks, ArrowLeft, Loader2, Timer, Highlighter, Maximize, Minimize, User } from "lucide-react";
+import { BookOpen, Users, Plus, Check, Clock, AlertTriangle, LogOut, GraduationCap, FileText, ChevronRight, X, Copy, CheckCircle2, Headphones, PenLine, Mic, ListChecks, ArrowLeft, Loader2, Timer, Highlighter, Maximize, Minimize, User, Menu } from "lucide-react";
 import { TeacherHome } from "./features/assignment-hub/TeacherHome";
 import { TeacherDashboard } from "./features/assignment-hub/TeacherDashboard";
 import { ClassDetail } from "./features/assignment-hub/ClassDetail";
@@ -13,6 +13,7 @@ import { AssignmentOpenBridge } from "./features/question-engine/AssignmentOpenB
 import { TeacherReadingBuilder } from "./features/question-engine/TeacherReadingBuilder";
 import { TeacherListeningBuilder } from "./features/question-engine/TeacherListeningBuilder";
 import { TestImporter } from "./features/question-engine/TestImporter";
+import { useIsCompact } from "./features/question-engine/useViewport";
 import { TeacherWritingBuilder } from "./features/question-engine/TeacherWritingBuilder";
 import { TeacherSpeakingBuilder } from "./features/question-engine/TeacherSpeakingBuilder";
 import "./features/question-engine/reading-builder.css";
@@ -23,6 +24,19 @@ import "./features/question-engine/speaking.css";
 export function Shell({ profile, setProfile, userId, onSignOut, screen, setScreen, showToast }) {
   const isTeacher = profile.role === "teacher";
   const [isFullscreen, setIsFullscreen] = useState(false);
+
+  // On a phone the blue menu no longer fits across the top: it needed
+  // 558px on a 390px screen, so "Join a class", "Full screen" and
+  // "Sign out" fell off the right edge with no way to reach them.
+  // Below 760px it becomes a drawer opened from the menu button, the
+  // same gesture as inside an exam. 760px is the width the old
+  // horizontal band already switched at, so nothing changes above it.
+  const compactMenu = useIsCompact(760);
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  // Leaving a screen (or growing back to a computer-sized window)
+  // always closes the drawer, so it can never stay over the page.
+  useEffect(() => { setMenuOpen(false); }, [screen.name, compactMenu]);
 
   useEffect(() => {
     function onFsChange() { setIsFullscreen(!!document.fullscreenElement); }
@@ -41,11 +55,19 @@ export function Shell({ profile, setProfile, userId, onSignOut, screen, setScree
   }
 
   return (
-    <div className="shell">
-      <aside className="sidebar">
+    <div className={`shell ${compactMenu && menuOpen ? "menu-open" : ""}`}>
+      {compactMenu && menuOpen && <div className="app-menu-backdrop" onClick={() => setMenuOpen(false)} />}
+      {/* Any button in the menu closes the drawer, so the page is never
+          left hidden behind it after a choice. */}
+      <aside className="sidebar" onClick={(e) => { if (compactMenu && e.target.closest("button")) setMenuOpen(false); }}>
         <div className="brand">
           <div className="brand-mark">AIU</div>
           <div className="brand-text">Assignment Hub</div>
+          {compactMenu && (
+            <button className="app-menu-close" onClick={() => setMenuOpen(false)} title="Close the menu" aria-label="Close the menu">
+              <X size={17} />
+            </button>
+          )}
         </div>
 
         <button className="profile-card" onClick={() => setScreen({ name: "profile" })} style={{ border: "none", width: "100%", textAlign: "left", cursor: "pointer" }}>
@@ -92,7 +114,14 @@ export function Shell({ profile, setProfile, userId, onSignOut, screen, setScree
       </aside>
 
       <main className="main">
-        <div className="app-topbar">Assignment Hub</div>
+        <div className="app-topbar">
+          {compactMenu && (
+            <button className="app-menu-btn" onClick={() => setMenuOpen(true)} title="Menu" aria-label="Open the menu">
+              <Menu size={18} />
+            </button>
+          )}
+          Assignment Hub
+        </div>
         {screen.name === "dashboard" && isTeacher && <TeacherDashboard userId={userId} setScreen={setScreen} />}
         {screen.name === "reading-builder" && isTeacher && (
           <TeacherReadingBuilder classId={screen.classId} teacherId={userId} setScreen={setScreen} showToast={showToast} editAssignmentId={screen.editAssignmentId} />
