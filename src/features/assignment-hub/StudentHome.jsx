@@ -29,17 +29,18 @@ export function StudentHome({ userId, setScreen, showToast }) {
         : { data: [] };
     const qeAssignmentIds = new Set((qeSections || []).map((s) => s.assignment_id));
 
+    // "Started" and "submitted" both come from the attempt row, which is
+    // the authoritative record (submit_student_answers stamps
+    // submitted_at). We no longer ask student_answers: a student can only
+    // read those once the teacher has published the results, so using
+    // them here would show a submitted exam as still to be done. It is
+    // also one network call less.
     const { data: myAttempts } =
       qeAssignmentIds.size > 0
-        ? await supabase.from("exam_attempts").select("assignment_id").eq("student_id", userId).in("assignment_id", [...qeAssignmentIds])
+        ? await supabase.from("exam_attempts").select("assignment_id, submitted_at").eq("student_id", userId).in("assignment_id", [...qeAssignmentIds])
         : { data: [] };
     const attemptedIds = new Set((myAttempts || []).map((r) => r.assignment_id));
-
-    const { data: myAnswers } =
-      qeAssignmentIds.size > 0
-        ? await supabase.from("student_answers").select("assignment_id").eq("student_id", userId).in("assignment_id", [...qeAssignmentIds])
-        : { data: [] };
-    const submittedIds = new Set((myAnswers || []).map((r) => r.assignment_id));
+    const submittedIds = new Set((myAttempts || []).filter((r) => r.submitted_at).map((r) => r.assignment_id));
 
     // Structured Writing keeps its answers in writing_responses: a saved
     // draft means "in progress", a submitted text means "submitted".
