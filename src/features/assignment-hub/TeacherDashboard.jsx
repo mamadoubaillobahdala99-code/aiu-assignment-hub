@@ -40,22 +40,17 @@ export function TeacherDashboard({ userId, setScreen }) {
       .in("class_id", classIds);
     const assignmentIds = (assignments || []).map((a) => a.id);
 
-    const { data: submissions } = assignmentIds.length
-      ? await supabase.from("submissions").select("*, profiles(name)").in("assignment_id", assignmentIds)
-      : { data: [] };
-
     const { data: roster } = await supabase
       .from("roster")
       .select("class_id, student_id, profiles(name)")
       .in("class_id", classIds);
 
-    // Question Engine assignments (Reading/Listening built with the
-    // structured builder) never write to `submissions` — same root
-    // cause as the student dashboard bug, fixed the same way: detect
-    // them via exam_sections, then synthesize submission-shaped rows
-    // from student_answers/exam_attempts/assignment_feedback so every
-    // stat and list below (already written against the `submissions`
-    // shape) works correctly without being rewritten.
+    // Every assignment is a structured one. Their work is spread over
+    // student_answers / exam_attempts / writing_responses /
+    // assignment_feedback, so we build one row per student and
+    // assignment from those, in the shape the stats and lists below
+    // already expect. The name "submission" here is just that shape —
+    // nothing is read from the old `submissions` table any more.
     const { data: qeSections } = assignmentIds.length
       ? await supabase.from("exam_sections").select("assignment_id").in("assignment_id", assignmentIds)
       : { data: [] };
@@ -112,9 +107,7 @@ export function TeacherDashboard({ userId, setScreen }) {
       });
     }
 
-    const allSubmissions = [...(submissions || []), ...qeSubmissions];
-
-    setData({ classes: classes || [], assignments: assignments || [], submissions: allSubmissions, roster: roster || [], qeAssignmentIds: [...qeAssignmentIds] });
+    setData({ classes: classes || [], assignments: assignments || [], submissions: qeSubmissions, roster: roster || [], qeAssignmentIds: [...qeAssignmentIds] });
     setLoading(false);
   }, [userId]);
 
