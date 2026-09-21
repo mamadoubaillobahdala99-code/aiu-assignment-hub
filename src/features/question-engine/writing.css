@@ -149,3 +149,13 @@
   .qe-wrf-side { max-width: none; width: 100%; position: static; }
 }
 .qe-wrf-note .qe-wrv-link { font-size: 12.5px; }
+
+/* Tablet and phone: the Task panel and the answer panel take turns
+   (the "Task / Your answer" tabs), so each one gets the full width. */
+@media (max-width: 900px) {
+  .qe-wr-prompt-panel,
+  .qe-wr-answer-panel { flex: 1 1 auto; width: 100%; padding: 16px 14px; border-right: none; -webkit-overflow-scrolling: touch; }
+  .qe-wr-answer-panel { padding-bottom: 10px; }
+  /* A phone zooms into any field smaller than 16px and stays zoomed. */
+  .qe-wr-editor { font-size: 16px; }
+}
