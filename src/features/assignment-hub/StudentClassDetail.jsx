@@ -15,7 +15,6 @@ export function StudentClassDetail({ classId, userId, setScreen, showToast }) {
     setCls(c || null);
 
     const { data: assignments } = await supabase.from("assignments").select("*").eq("class_id", classId);
-    const { data: mySubs } = await supabase.from("submissions").select("*").eq("student_id", userId);
 
     const assignmentIds = (assignments || []).map((a) => a.id);
     const { data: qeSections } =
@@ -74,11 +73,11 @@ export function StudentClassDetail({ classId, userId, setScreen, showToast }) {
         } else if (attemptedIds.has(a.id)) status = "in-progress";
         else status = "pending";
       } else {
-        const mine = (mySubs || []).find((s) => s.assignment_id === a.id);
+        // An assignment with no Part yet — a builder that was interrupted
+        // before it could write its content. Nothing has been handed in,
+        // so it is simply "to do"; the student sees an explanatory screen
+        // if they open it.
         status = "pending";
-        if (mine?.grade) status = "graded";
-        else if (mine?.submitted_at) status = "submitted";
-        else if (mine?.started_at) status = "in-progress";
       }
       return { ...a, dueDate: a.due_date, status };
     });
