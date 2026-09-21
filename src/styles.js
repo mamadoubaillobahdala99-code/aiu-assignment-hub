@@ -424,6 +424,14 @@ body { margin: 0; }
 .delete-assignment-btn { color: var(--rose); }
 .delete-assignment-btn:hover { background: var(--rose-soft); }
 
+/* Two-step class deletion — the dialog spells out what disappears. */
+.cd-del-list { margin: 14px 0; padding-left: 20px; font-size: 14px; line-height: 1.9; color: var(--ink); }
+.cd-del-warning { display: flex; align-items: flex-start; gap: 9px; margin: 14px 0 16px; padding: 11px 13px; border-radius: 9px; background: var(--rose-soft); border: 1px solid var(--rose); color: var(--ink); font-size: 13px; line-height: 1.55; }
+.cd-del-warning svg { flex-shrink: 0; margin-top: 1px; color: var(--rose); }
+.cd-del-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+.cd-del-confirm { background: var(--rose); }
+.cd-del-confirm:disabled { background: var(--rose); opacity: 0.35; }
+
 /* Listening Focus Mode — narrow audio panel */
 .rf-audio-panel { min-width: 200px; background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 20px 16px; display: flex; flex-direction: column; align-items: center; text-align: center; }
 .rf-audio-icon { color: var(--teal); margin-bottom: 10px; }
