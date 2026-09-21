@@ -22,6 +22,7 @@ function newPart() {
 export function TeacherListeningBuilder({ classId, teacherId, setScreen, showToast, editAssignmentId }) {
   const [title, setTitle] = useState("");
   const [dueDate, setDueDate] = useState("");
+  const [dueTime, setDueTime] = useState("");
   const [timeLimit, setTimeLimit] = useState(""); // empty = no timer (the teacher adds one only if wanted)
   const [autoReleaseScore, setAutoReleaseScore] = useState(true);
   const [showAnswerReview, setShowAnswerReview] = useState(true);
@@ -44,10 +45,11 @@ export function TeacherListeningBuilder({ classId, teacherId, setScreen, showToa
   useEffect(() => {
     if (!editAssignmentId) return;
     (async () => {
-      const { data: a } = await supabase.from("assignments").select("title, due_date, time_limit_minutes, auto_release_score, show_answer_review, listening_audio_url, listening_exam_mode, listening_check_minutes").eq("id", editAssignmentId).single();
+      const { data: a } = await supabase.from("assignments").select("title, due_date, due_time, time_limit_minutes, auto_release_score, show_answer_review, listening_audio_url, listening_exam_mode, listening_check_minutes").eq("id", editAssignmentId).single();
       if (a) {
         setTitle(a.title || "");
         setDueDate(a.due_date || "");
+        setDueTime(a.due_time || "");
         setTimeLimit(a.time_limit_minutes ? String(a.time_limit_minutes) : "");
         setAutoReleaseScore(a.auto_release_score ?? true);
         setShowAnswerReview(a.show_answer_review ?? true);
@@ -252,6 +254,7 @@ export function TeacherListeningBuilder({ classId, teacherId, setScreen, showToa
         .update({
           title: finalTitle,
           due_date: dueDate || null,
+          due_time: dueTime || null,
           time_limit_minutes: timeLimit ? parseInt(timeLimit, 10) : null,
           auto_release_score: autoReleaseScore,
           show_answer_review: showAnswerReview,
@@ -378,6 +381,10 @@ export function TeacherListeningBuilder({ classId, teacherId, setScreen, showToa
         <div style={{ flex: 1 }}>
           <label className="field-label">Due date (optional)</label>
           <input type="date" className="field-input" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+        </div>
+        <div style={{ flex: 1 }}>
+          <label className="field-label">Due time (optional)</label>
+          <input type="time" className="field-input" value={dueTime} onChange={(e) => setDueTime(e.target.value)} />
         </div>
         <div style={{ flex: 1 }}>
           <label className="field-label">Time limit, minutes (optional)</label>
