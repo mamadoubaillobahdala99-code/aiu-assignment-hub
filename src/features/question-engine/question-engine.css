@@ -44,7 +44,11 @@
 
 /* ---------- Full-screen exam layout (IELTS Computer-Delivered style) ---------- */
 
-.qe-exam-shell { display: flex; flex-direction: column; }
+/* --qe-app-height is published by useViewport() on phones and small
+   tablets: it is the part of the page the on-screen keyboard leaves
+   visible. On a computer the variable is never set, so the fallback
+   (100%, i.e. the full overlay) keeps the layout exactly as before. */
+.qe-exam-shell { display: flex; flex-direction: column; height: var(--qe-app-height, 100%); max-height: var(--qe-app-height, 100%); overflow: hidden; }
 
 .qe-exam-body { flex: 1; min-height: 0; display: flex; overflow: hidden; width: 100%; }
 
@@ -87,11 +91,16 @@ body.qe-resizing { user-select: none; cursor: col-resize; }
 .qe-incorrect .feedback-band { color: var(--rose) !important; }
 
 /* ---------- Exam start screen ---------- */
-.qe-start-screen { display: flex; align-items: center; justify-content: center; height: 100%; padding: 24px; box-sizing: border-box; background: var(--paper); }
-.qe-start-card { max-width: 460px; width: 100%; text-align: center; background: var(--paper-raised); border: 1px solid var(--line); border-radius: 16px; padding: 40px 36px; }
+/* align-items: flex-start + margin:auto on the card keeps the card
+   centred but lets it scroll when it is taller than the screen
+   (a phone in landscape); plain "center" would cut off its top. */
+.qe-start-screen { display: flex; align-items: flex-start; justify-content: center; height: 100%; padding: 24px; box-sizing: border-box; background: var(--paper); overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.qe-start-card { max-width: 460px; width: 100%; margin: auto; text-align: center; background: var(--paper-raised); border: 1px solid var(--line); border-radius: 16px; padding: 40px 36px; }
 .qe-start-meta { font-size: 13.5px; color: var(--ink-soft); margin: 10px 0 0; }
 .qe-start-note { font-size: 13px; color: var(--ink); margin: 16px 0 0; line-height: 1.6; }
 .qe-start-btn { margin-top: 24px; width: 100%; justify-content: center; }
+.qe-start-device-note { display: flex; align-items: flex-start; gap: 9px; text-align: left; margin-top: 18px; padding: 12px 14px; border-radius: 10px; background: var(--amber-soft, #FFF4DB); border: 1px solid var(--amber, #E9A93B); color: var(--ink); font-size: 12.5px; line-height: 1.55; }
+.qe-start-device-note svg { flex-shrink: 0; margin-top: 1px; }
 
 /* ---------- Exam sidebar ---------- */
 .qe-exam-layout { display: flex; height: 100%; width: 100%; }
@@ -151,3 +160,79 @@ body.qe-resizing { user-select: none; cursor: col-resize; }
 .qe-timer-danger { background: #D93025; color: #fff; }
 .qe-timer-danger .qe-timer-toggle { background: rgba(255, 255, 255, 0.2); }
 .qe-timer-hidden.qe-timer-warn, .qe-timer-hidden.qe-timer-danger { background: #fff; color: #0B3B2E; }
+
+/* ======================================================================
+   Tablet and phone
+   ----------------------------------------------------------------------
+   Everything above this line is the computer layout and is unchanged.
+   The rules below apply only when the screen is 900px wide or less, or
+   to classes the exam screen adds only on a small screen
+   (qe-compact, qe-exam-drawer, qe-tabbar, qe-tab-hidden…).
+   ====================================================================== */
+
+/* The black panel becomes a drawer sliding over the page: on a 390px
+   phone a fixed 240px column left 66px for the questions. */
+.qe-exam-layout { position: relative; }
+.qe-exam-drawer-backdrop { position: absolute; inset: 0; z-index: 40; background: rgba(18, 20, 15, 0.45); }
+.qe-exam-sidebar.qe-exam-drawer { position: absolute; top: 0; left: 0; bottom: 0; z-index: 50; width: 272px; max-width: 86vw; box-shadow: 0 0 30px rgba(0, 0, 0, 0.35); }
+.qe-exam-sidebar.qe-exam-drawer.collapsed { width: 0; overflow: hidden; box-shadow: none; }
+.qe-exam-drawer-close { display: inline-flex; align-items: center; gap: 6px; align-self: flex-start; background: none; border: none; color: #E8E8E3; opacity: 0.7; font-family: inherit; font-size: 12.5px; cursor: pointer; padding: 0 0 14px; }
+.qe-exam-drawer-close:hover { opacity: 1; }
+
+/* ☰ in the green bar — the only way to reach Class / Submit / Exit
+   once the panel is a drawer. */
+.qe-exam-menu-btn { position: absolute; left: 8px; top: 50%; transform: translateY(-50%); width: 36px; height: 36px; border-radius: 8px; border: none; background: rgba(255, 255, 255, 0.18); color: #fff; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; }
+.qe-exam-menu-btn:hover { background: rgba(255, 255, 255, 0.3); }
+
+/* Reading on a small screen: "Text" and "Questions" take turns. */
+.qe-tabbar { flex-shrink: 0; display: flex; background: var(--paper-raised); border-bottom: 1px solid var(--line); }
+.qe-tab { flex: 1; min-height: 44px; padding: 11px 8px; background: none; border: none; border-bottom: 2px solid transparent; font-family: inherit; font-size: 13.5px; font-weight: 600; color: var(--ink-soft); cursor: pointer; }
+.qe-tab.active { color: var(--teal); border-bottom-color: var(--teal); background: var(--paper); }
+.qe-tab-hidden { display: none !important; }
+
+/* While the on-screen keyboard is open, the bottom number bar gives up
+   its room so the answer being typed stays visible. */
+.qe-keyboard-open .qe-compact .qe-nav-bar { display: none; }
+
+@media (max-width: 900px) {
+  /* Momentum scrolling — without this the panels feel stuck on iOS. */
+  .qe-passage-panel,
+  .qe-questions-panel,
+  .qe-exam-body.qe-listening-body,
+  .qe-exam-sidebar-inner { -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+
+  /* One full-width column instead of a 56% / 44% split. */
+  .qe-passage-panel,
+  .qe-questions-panel { flex: 1 1 auto; width: 100%; padding: 16px 14px; border-right: none; }
+  .qe-listening-panel { padding: 16px 14px 48px; }
+
+  /* Comfortable tap targets. */
+  .qe-option { padding: 10px 2px; font-size: 15px; }
+  .qe-option input { width: 20px; height: 20px; }
+  .qe-exam-topbar { min-height: 44px; }
+
+  /* A phone zooms into any field whose text is smaller than 16px, and
+     the page then stays zoomed — that is a large part of what felt
+     like "the page no longer scrolls". 16px keeps the view still. */
+  .qe-exam-shell input[type="text"],
+  .qe-exam-shell input:not([type]),
+  .qe-exam-shell textarea,
+  .qe-exam-shell select,
+  .qe-completion-blank,
+  .qe-short-answer-input { font-size: 16px; }
+  .qe-completion-blank { width: 132px; padding: 7px 9px; }
+  .qe-short-answer-input { height: 40px; }
+
+  /* The bottom bar becomes one horizontal scroller: the numbers keep
+     their real size and the Parts stay reachable. */
+  .qe-nav-bar { overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; }
+  .qe-nav-part-segment { flex: 0 0 auto; padding: 8px 12px; }
+  .qe-nav-numbers { flex: 0 0 auto; justify-content: flex-start; gap: 6px; }
+  .qe-nav-part-label { margin-right: 10px; }
+  .qe-question-nav-item { width: 36px; height: 36px; font-size: 13px; }
+
+  .qe-start-card { padding: 28px 20px; }
+  .qe-confirm-card { padding: 20px 18px; }
+  .qe-confirm-chip { min-width: 40px; height: 36px; }
+  .qe-passage-title { font-size: 18px; }
+}
