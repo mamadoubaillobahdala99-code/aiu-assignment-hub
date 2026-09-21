@@ -244,14 +244,43 @@ body { margin: 0; }
 
 .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: var(--ink); color: #fff; padding: 11px 20px; border-radius: 30px; font-size: 13.5px; font-weight: 500; z-index: 60; box-shadow: 0 8px 24px rgba(0,0,0,0.2); }
 
+/* The blue menu as a phone drawer — the button lives in the green bar. */
+.app-menu-btn { position: absolute; left: 8px; top: 50%; transform: translateY(-50%); width: 36px; height: 36px; border-radius: 8px; border: none; background: rgba(255,255,255,0.18); color: #fff; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; }
+.app-menu-btn:hover { background: rgba(255,255,255,0.3); }
+.app-menu-close { margin-left: auto; width: 32px; height: 32px; border-radius: 8px; border: none; background: rgba(255,255,255,0.1); color: var(--sidebar-text); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; }
+.app-menu-close:hover { background: rgba(255,255,255,0.2); color: #fff; }
+.app-menu-backdrop { position: absolute; inset: 0; z-index: 110; background: rgba(18, 20, 15, 0.45); }
+
 @media (max-width: 760px) {
-  .shell { flex-direction: column; }
-  .sidebar { width: 100%; flex-direction: row; align-items: center; padding: 12px 16px; gap: 14px; }
-  .brand { margin-bottom: 0; }
-  .profile-card { display: none; }
-  .nav { flex-direction: row; }
-  .nav-item.logout { margin-top: 0; margin-left: auto; }
-  .main { padding: 24px 18px; }
+  /* Laid out across the top, the seven menu entries needed 558px on a
+     390px phone: "Join a class", "Full screen" and "Sign out" fell off
+     the right edge and the page does not scroll sideways, so they were
+     simply unreachable. The menu now slides over the page instead,
+     keeping its full-size vertical entries. */
+  .shell { position: relative; }
+  .sidebar {
+    position: absolute; top: 0; left: 0; bottom: 0; z-index: 120;
+    width: 272px; max-width: 86vw; padding: 18px 16px;
+    transform: translateX(-100%); transition: transform .18s ease;
+    overflow-y: auto; -webkit-overflow-scrolling: touch;
+  }
+  /* The shadow belongs to the open drawer only: left on permanently it
+     showed as a grey band down the left edge of the closed page. */
+  .shell.menu-open .sidebar { transform: translateX(0); box-shadow: 0 0 30px rgba(0, 0, 0, 0.35); }
+  /* The brand row holds the close button on a phone. */
+  .brand { margin-bottom: 20px; }
+  /* Comfortable tap targets, and the whole width for the content: the
+     old layout added the sidebar's padding on top of the page's own. */
+  .nav-item { padding: 12px 11px; font-size: 14.5px; }
+  .main { padding: 0; }
+  .main > *:not(.app-topbar):not(.wf-overlay) { padding: 22px 16px; }
+  .app-topbar { position: relative; min-height: 44px; display: flex; align-items: center; justify-content: center; box-sizing: border-box; }
+}
+
+/* A phone in landscape is short: the menu keeps its own scrollbar so
+   "Sign out" at the bottom stays reachable. */
+@media (max-width: 760px) and (max-height: 480px) {
+  .nav-item { padding: 9px 11px; }
 }
 
 .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 30px; }
