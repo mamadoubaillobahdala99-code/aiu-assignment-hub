@@ -6,12 +6,11 @@ import { StudentWritingRunner } from "./StudentWritingRunner";
 import { StudentWritingFeedback } from "./StudentWritingFeedback";
 import { StudentSpeakingViewer } from "./StudentSpeakingViewer";
 import { StudentQuestionEngineFeedback } from "./StudentQuestionEngineFeedback";
-import { AssignmentStudent } from "../assignment-hub/AssignmentStudent";
 import { CenterSpinner } from "../../components/shared";
 
 // Decides, invisibly, which experience the student sees:
-// - No exam_sections (old-style assignment, or anything created before
-//   the Question Engine)?                          → AssignmentStudent (old, untouched)
+// - No exam_sections (an assignment whose builder was interrupted
+//   before it could write its content)?           → a short explanation
 // - Has exam_sections, not yet submitted?           → StudentExamRunner (take the exam)
 // - Has exam_sections, submitted, score released?   → StudentQuestionEngineFeedback (results)
 // - Has exam_sections, submitted, not yet released? → a simple waiting message
@@ -119,8 +118,19 @@ export function AssignmentOpenBridge({ userId, classId, assignmentId, setScreen,
 
   if (checking) return <CenterSpinner />;
 
+  // No Part at all. Every assignment is now built with a structured
+  // builder or the importer, so this only happens when a builder was
+  // interrupted before writing its content — never in normal use.
+  // The student is told plainly instead of landing on a blank screen.
   if (!isStructured) {
-    return <AssignmentStudent userId={userId} classId={classId} assignmentId={assignmentId} setScreen={setScreen} showToast={showToast} />;
+    return (
+      <div className="page">
+        <button className="back-link" onClick={() => setScreen({ name: "home" })}>
+          <ArrowLeft size={14} /> All assignments
+        </button>
+        <p className="empty-inline">This assignment has no content yet. Please tell your teacher.</p>
+      </div>
+    );
   }
 
   // Structured Speaking: consult only — no submission, no results.
