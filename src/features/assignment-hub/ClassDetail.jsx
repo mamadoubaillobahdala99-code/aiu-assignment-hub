@@ -56,12 +56,12 @@ export function ClassDetail({ classId, setScreen, showToast }) {
       setDeleteStats({ copies: 0, answers: 0, writings: 0 });
       return;
     }
-    const [subs, answers, writings] = await Promise.all([
-      supabase.from("submissions").select("id", { count: "exact", head: true }).in("assignment_id", assignmentIds),
+    const [handed, answers, writings] = await Promise.all([
+      supabase.from("exam_attempts").select("assignment_id", { count: "exact", head: true }).in("assignment_id", assignmentIds).not("submitted_at", "is", null),
       supabase.from("student_answers").select("id", { count: "exact", head: true }).in("assignment_id", assignmentIds),
-      supabase.from("writing_responses").select("id", { count: "exact", head: true }).in("assignment_id", assignmentIds),
+      supabase.from("writing_responses").select("id", { count: "exact", head: true }).in("assignment_id", assignmentIds).not("submitted_at", "is", null),
     ]);
-    setDeleteStats({ copies: subs.count || 0, answers: answers.count || 0, writings: writings.count || 0 });
+    setDeleteStats({ copies: handed.count || 0, answers: answers.count || 0, writings: writings.count || 0 });
   }
 
   async function handleDeleteClass() {
@@ -132,8 +132,8 @@ export function ClassDetail({ classId, setScreen, showToast }) {
                   <li><strong>{assignments.length}</strong> assignment{assignments.length === 1 ? "" : "s"}</li>
                   <li><strong>{roster.length}</strong> student{roster.length === 1 ? "" : "s"} removed from the class</li>
                   {hasWork && <li><strong>{deleteStats.answers}</strong> answer{deleteStats.answers === 1 ? "" : "s"} given in Reading / Listening exams</li>}
-                  {hasWork && <li><strong>{deleteStats.copies}</strong> submitted piece{deleteStats.copies === 1 ? "" : "s"} of work, with their marks and feedback</li>}
-                  {hasWork && <li><strong>{deleteStats.writings}</strong> Writing text{deleteStats.writings === 1 ? "" : "s"}</li>}
+                  {hasWork && <li><strong>{deleteStats.copies}</strong> exam{deleteStats.copies === 1 ? "" : "s"} handed in, with their marks and feedback</li>}
+                  {hasWork && <li><strong>{deleteStats.writings}</strong> Writing text{deleteStats.writings === 1 ? "" : "s"} handed in</li>}
                 </ul>
 
                 {hasWork ? (
@@ -197,7 +197,7 @@ export function ClassDetail({ classId, setScreen, showToast }) {
               <Plus size={13} /> Structured Speaking
             </button>
           </div>
-          <AssignmentsTab classId={classId} assignments={assignments} onCreated={load} onOpen={(a) => setScreen({ name: "assignment-teacher", classId, assignmentId: a.id })} />
+          <AssignmentsTab assignments={assignments} onOpen={(a) => setScreen({ name: "assignment-teacher", classId, assignmentId: a.id })} />
         </>
       )}
 
@@ -241,8 +241,6 @@ function StudentInClassDetail({ student, classId, assignments, onBack, setScreen
       const { data: qeSections } = await supabase.from("exam_sections").select("assignment_id").in("assignment_id", assignmentIds);
       const qeIds = new Set((qeSections || []).map((s) => s.assignment_id));
 
-      const { data: subs } = await supabase.from("submissions").select("*").eq("student_id", student.studentId).in("assignment_id", assignmentIds);
-
       let submittedQe = new Set();
       let attemptedQe = new Set();
       let releasedQe = new Set();
@@ -283,11 +281,9 @@ function StudentInClassDetail({ student, classId, assignments, onBack, setScreen
           } else if (attemptedQe.has(a.id)) map[a.id] = "in-progress";
           else map[a.id] = "pending";
         } else {
-          const sub = (subs || []).find((s) => s.assignment_id === a.id);
-          if (sub?.grade) map[a.id] = "graded";
-          else if (sub?.submitted_at) map[a.id] = "submitted";
-          else if (sub?.started_at) map[a.id] = "in-progress";
-          else map[a.id] = "pending";
+          // No Part yet (a builder interrupted before writing its
+          // content): nothing can have been handed in.
+          map[a.id] = "pending";
         }
       }
       if (!cancelled) setStatuses(map);
