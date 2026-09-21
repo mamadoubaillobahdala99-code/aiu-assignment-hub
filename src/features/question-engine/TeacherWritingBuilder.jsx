@@ -24,6 +24,7 @@ function emptyTask() {
 export function TeacherWritingBuilder({ classId, teacherId, setScreen, showToast, editAssignmentId }) {
   const [title, setTitle] = useState("");
   const [dueDate, setDueDate] = useState("");
+  const [dueTime, setDueTime] = useState("");
   const [timeLimit, setTimeLimit] = useState(""); // empty = no timer (the teacher adds one only if wanted)
   const [task1, setTask1] = useState(emptyTask());
   const [task2, setTask2] = useState(emptyTask());
@@ -35,10 +36,11 @@ export function TeacherWritingBuilder({ classId, teacherId, setScreen, showToast
   useEffect(() => {
     if (!editAssignmentId) return;
     (async () => {
-      const { data: a } = await supabase.from("assignments").select("title, due_date, time_limit_minutes").eq("id", editAssignmentId).single();
+      const { data: a } = await supabase.from("assignments").select("title, due_date, due_time, time_limit_minutes").eq("id", editAssignmentId).single();
       if (a) {
         setTitle(a.title || "");
         setDueDate(a.due_date || "");
+        setDueTime(a.due_time || "");
         setTimeLimit(a.time_limit_minutes ? String(a.time_limit_minutes) : "");
       }
       const { data: sections } = await supabase
@@ -134,6 +136,7 @@ export function TeacherWritingBuilder({ classId, teacherId, setScreen, showToast
     const meta = {
       title: finalTitle,
       due_date: dueDate || null,
+      due_time: dueTime || null,
       time_limit_minutes: timeLimit ? parseInt(timeLimit, 10) : null,
     };
 
@@ -230,6 +233,10 @@ export function TeacherWritingBuilder({ classId, teacherId, setScreen, showToast
         <div style={{ flex: 1 }}>
           <label className="field-label">Due date (optional)</label>
           <input type="date" className="field-input" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+        </div>
+        <div style={{ flex: 1 }}>
+          <label className="field-label">Due time (optional)</label>
+          <input type="time" className="field-input" value={dueTime} onChange={(e) => setDueTime(e.target.value)} />
         </div>
         <div style={{ flex: 1 }}>
           <label className="field-label">Time limit, minutes (optional)</label>
