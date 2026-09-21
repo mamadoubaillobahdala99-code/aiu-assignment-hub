@@ -9,23 +9,27 @@ export function JoinClass({ userId, setScreen, showToast }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
 
+  // Joining goes through the database function join_class, which is the
+  // only way in now. The class list itself is private — a student can
+  // only see the classes they belong to — so looking the code up from
+  // the browser is no longer possible, and no longer needed: the code
+  // is checked by the server, which enrols the student in the same
+  // step. Running it twice is harmless.
   async function join() {
     setErr("");
     if (!code.trim()) return;
     setBusy(true);
-    const { data: match } = await supabase.from("classes").select("*").ilike("code", code.trim()).maybeSingle();
-    if (!match) {
-      setErr("No class found with that code. Double-check with your teacher.");
-      setBusy(false);
-      return;
-    }
-    const { error } = await supabase.from("roster").insert({ class_id: match.id, student_id: userId });
+    const { data, error } = await supabase.rpc("join_class", { p_code: code.trim() });
     setBusy(false);
-    if (error && !error.message.includes("duplicate")) {
-      setErr("Could not join this class.");
+    if (error) {
+      setErr(
+        /No class found/i.test(error.message || "")
+          ? "No class found with that code. Double-check with your teacher."
+          : "Could not join this class. Check your connection and try again."
+      );
       return;
     }
-    showToast(`Joined ${match.name}`);
+    showToast(`Joined ${data?.name || "the class"}`);
     setScreen({ name: "home" });
   }
 
