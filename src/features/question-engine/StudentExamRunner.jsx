@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { ArrowLeft, GripVertical, ChevronLeft, ChevronRight, Headphones } from "lucide-react";
+import { ArrowLeft, GripVertical, ChevronLeft, ChevronRight, Headphones, Menu, X, MonitorSmartphone } from "lucide-react";
 import { supabase } from "../../supabaseClient";
 import { QuestionRenderer } from "./QuestionRenderer";
 import { SummaryCompletion } from "./SummaryCompletion";
@@ -14,6 +14,7 @@ import { HighlightableText } from "./HighlightableText";
 import { useExamTimer, ExamTimerDisplay } from "./ExamTimer";
 import { useListeningAudio, ListeningAudioBar } from "./ListeningAudio";
 import { GroupImage } from "./GroupImage";
+import { useIsCompact, useVisualViewportHeight, useKeepFocusVisible } from "./useViewport";
 
 // The countdown comes from useExamTimer: the start time is written once
 // by the server (when the student presses Start) and the remaining time
@@ -77,6 +78,21 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
   const [audioOpen, setAudioOpen] = useState(false);
   const [teacherName, setTeacherName] = useState("");
   const [confirmOpen, setConfirmOpen] = useState(false);
+
+  // Phone / small tablet. Anything wider keeps the computer layout
+  // exactly as it is — every rule below is inside this flag or inside a
+  // (max-width: 900px) media query.
+  const compact = useIsCompact();
+  // Reading on a small screen: one column at a time, "Text" / "Questions".
+  const [mobileTab, setMobileTab] = useState("text");
+  // The on-screen keyboard shrinks the visible page; the exam screen
+  // follows it instead of staying behind the keys.
+  useVisualViewportHeight(compact);
+  useKeepFocusVisible(bodyRef, compact);
+
+  // The black panel becomes a drawer on a small screen: closed by
+  // default there, open by default on a computer.
+  useEffect(() => { setSidebarOpen(!compact); }, [compact]);
 
   const load = useCallback(async () => {
     const { data: a } = await supabase.from("assignments").select("*").eq("id", assignmentId).single();
@@ -219,7 +235,7 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
     );
     targets.forEach((el) => observer.observe(el));
     return () => observer.disconnect();
-  }, [activeIndex, sections, assignment, started]);
+  }, [activeIndex, sections, assignment, started, mobileTab, compact]);
 
   const allQuestions = sections.flatMap((s) => s.groups.flatMap((g) => g.questions));
   const allAnswered = allQuestions.length > 0 && allQuestions.every((q) => answers[q.id] !== undefined);
@@ -251,8 +267,17 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
   function jumpToQuestion(num, partIndex) {
     setConfirmOpen(false);
     setActiveIndex(partIndex);
+    // On a small screen the questions live behind their own tab.
+    if (compact) setMobileTab("questions");
     // Wait for that Part to render before scrolling to it.
     setTimeout(() => document.getElementById(`question-${num}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 60);
+  }
+
+  // A number in the bottom bar: on a small screen it also brings the
+  // questions column to the front.
+  function goToNumber(num) {
+    if (compact) setMobileTab("questions");
+    setTimeout(() => document.getElementById(`question-${num}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), compact ? 60 : 0);
   }
 
   // The time-up auto-submit calls submitAll directly (no dialog); only
@@ -314,9 +339,17 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
 
   // Draggable divider between the passage and the questions — the
   // same kind of resize handle the older Reading Focus Mode had.
+  // Pointer events, so a finger on a tablet drags it exactly like a
+  // mouse on a computer (the old mousedown/mousemove pair never fired
+  // on a touch screen).
   function startResize(e) {
     e.preventDefault();
+    const pointerId = e.pointerId;
+    const handle = e.currentTarget;
     document.body.classList.add("qe-resizing");
+    // Keeps receiving the moves even when the finger leaves the bar.
+    try { handle.setPointerCapture?.(pointerId); } catch { /* not supported */ }
+
     function onMove(ev) {
       if (!bodyRef.current) return;
       const rect = bodyRef.current.getBoundingClientRect();
@@ -326,11 +359,14 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
     }
     function onUp() {
       document.body.classList.remove("qe-resizing");
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
+      try { handle.releasePointerCapture?.(pointerId); } catch { /* ignore */ }
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
     }
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
   }
 
   if (timeOver) {
@@ -380,6 +416,15 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
               <p className="qe-start-note">
                 Your timer starts when you press Start. When the time runs out, your answers are submitted automatically.
               </p>
+            )}
+            {compact && (
+              <div className="qe-start-device-note">
+                <MonitorSmartphone size={16} />
+                <span>
+                  You are on a small screen. You can work here, but a real exam is much easier
+                  on a computer or a tablet — the text and the questions then sit side by side.
+                </span>
+              </div>
             )}
             {startError && <div className="field-error" style={{ marginTop: 14 }}>{startError}</div>}
             <button className="btn-primary qe-start-btn" disabled={starting || timer.status === "loading" || timer.status === "expired"} onClick={startExam}>
@@ -483,20 +528,30 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
   );
 
   return (
-    <div className="wf-overlay qe-exam-shell">
+    <div className={`wf-overlay qe-exam-shell ${compact ? "qe-compact" : ""}`}>
       <div className="qe-exam-layout">
-        <aside className={`qe-exam-sidebar ${sidebarOpen ? "" : "collapsed"}`}>
-          <button
-            className="qe-exam-sidebar-toggle"
-            onClick={() => setSidebarOpen((v) => !v)}
-            title={sidebarOpen ? "Hide panel" : "Show panel"}
-          >
-            {sidebarOpen ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
-          </button>
+        {/* On a small screen the panel slides over the page instead of
+            taking a fixed column; tapping the dark backdrop closes it. */}
+        {compact && sidebarOpen && <div className="qe-exam-drawer-backdrop" onClick={() => setSidebarOpen(false)} />}
+        <aside className={`qe-exam-sidebar ${sidebarOpen ? "" : "collapsed"} ${compact ? "qe-exam-drawer" : ""}`}>
+          {!compact && (
+            <button
+              className="qe-exam-sidebar-toggle"
+              onClick={() => setSidebarOpen((v) => !v)}
+              title={sidebarOpen ? "Hide panel" : "Show panel"}
+            >
+              {sidebarOpen ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
+            </button>
+          )}
 
           {sidebarOpen && (
             <div className="qe-exam-sidebar-inner">
               {teacherName && <div className="qe-exam-teacher-band">{teacherName}</div>}
+              {compact && (
+                <button className="qe-exam-drawer-close" onClick={() => setSidebarOpen(false)} title="Close">
+                  <X size={16} /> Close
+                </button>
+              )}
               <div className="qe-exam-sidebar-title">Assignment</div>
 
               {isListening && !singleAudioUrl && activeSection.audioUrl && (
@@ -530,9 +585,37 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
 
         <div className="qe-exam-main">
           <div className="app-topbar qe-exam-topbar">
+            {compact && (
+              <button className="qe-exam-menu-btn" onClick={() => setSidebarOpen(true)} title="Menu" aria-label="Open the menu">
+                <Menu size={18} />
+              </button>
+            )}
             Assignment
             {timer.status === "running" && results === null && <ExamTimerDisplay remainingSec={timer.remainingSec} />}
           </div>
+
+          {/* Reading on a small screen: the text and the questions take
+              turns instead of sharing a 390px-wide row. */}
+          {compact && !isListening && (
+            <div className="qe-tabbar" role="tablist">
+              <button
+                role="tab"
+                aria-selected={mobileTab === "text"}
+                className={`qe-tab ${mobileTab === "text" ? "active" : ""}`}
+                onClick={() => setMobileTab("text")}
+              >
+                Text
+              </button>
+              <button
+                role="tab"
+                aria-selected={mobileTab === "questions"}
+                className={`qe-tab ${mobileTab === "questions" ? "active" : ""}`}
+                onClick={() => setMobileTab("questions")}
+              >
+                Questions{partRangeStart !== null ? ` ${partRangeStart}-${partRangeEnd}` : ""}
+              </button>
+            </div>
+          )}
           {isListening ? (
         <div className="qe-exam-body qe-listening-body" ref={bodyRef}>
           <div className="qe-listening-panel" ref={questionsPanelRef}>
@@ -567,7 +650,10 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
         </div>
       ) : (
         <div className="qe-exam-body" ref={bodyRef}>
-          <div className="qe-passage-panel" style={{ flexBasis: `${leftWidthPct}%` }}>
+          <div
+            className={`qe-passage-panel ${compact && mobileTab !== "text" ? "qe-tab-hidden" : ""}`}
+            style={compact ? undefined : { flexBasis: `${leftWidthPct}%` }}
+          >
             <div className="qe-passage-panel-inner">
               <p className="qe-part-tag">{activeSection.title}</p>
               {partRangeStart !== null && (
@@ -583,11 +669,17 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
             </div>
           </div>
 
-          <div className="qe-resizer" onMouseDown={startResize}>
-            <GripVertical size={14} />
-          </div>
+          {!compact && (
+            <div className="qe-resizer" onPointerDown={startResize}>
+              <GripVertical size={14} />
+            </div>
+          )}
 
-          <div className="qe-questions-panel" ref={questionsPanelRef} style={{ flexBasis: `${100 - leftWidthPct}%` }}>
+          <div
+            className={`qe-questions-panel ${compact && mobileTab !== "questions" ? "qe-tab-hidden" : ""}`}
+            ref={questionsPanelRef}
+            style={compact ? undefined : { flexBasis: `${100 - leftWidthPct}%` }}
+          >
             {questionsContent}
           </div>
         </div>
@@ -598,7 +690,7 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
           const total = s.groups.reduce((sum, g) => sum + g.questions.length, 0);
           if (i !== activeIndex) {
             return (
-              <div key={s.id} className="qe-nav-part-segment inactive-part" onClick={() => setActiveIndex(i)}>
+              <div key={s.id} className="qe-nav-part-segment inactive-part" onClick={() => { setActiveIndex(i); if (compact) setMobileTab("text"); }}>
                 <button className="qe-nav-part-pill">{s.title}: {total} question{total !== 1 ? "s" : ""}</button>
               </div>
             );
@@ -612,7 +704,7 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
                     <button
                       key={num}
                       className={`qe-question-nav-item ${num === visibleNum ? "qe-nav-item-visible" : ""}`}
-                      onClick={() => document.getElementById(`question-${num}`)?.scrollIntoView({ behavior: "smooth", block: "center" })}
+                      onClick={() => goToNumber(num)}
                     >
                       {num}
                     </button>
