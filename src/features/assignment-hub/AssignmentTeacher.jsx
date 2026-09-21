@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { BookOpen, Users, Plus, Check, Clock, AlertTriangle, LogOut, GraduationCap, FileText, ChevronRight, X, Copy, CheckCircle2, Headphones, PenLine, Mic, ListChecks, ArrowLeft, Loader2, Timer, Highlighter, Trash2, Pencil } from "lucide-react";
 import { supabase } from "../../supabaseClient";
 import { uid, makeCode, TYPES, fmtDate, fmtDueDateTime, daysUntil, wordCount, isPdfUrl } from "../../lib/utils";
-import { AttachmentPreview, PageHeader, EmptyState, CenterSpinner, StatusBadge } from "../../components/shared";
+import { PageHeader, EmptyState, CenterSpinner, StatusBadge } from "../../components/shared";
 import { TeacherQuestionEngineReview } from "../question-engine/TeacherQuestionEngineReview";
 import { TeacherWritingReview } from "../question-engine/TeacherWritingReview";
 import { deleteUnusedSpeakingFiles } from "../question-engine/speaking";
@@ -14,17 +14,10 @@ const CRITERIA = [
   { key: "score_grammar_accuracy", label: "Grammatical Range & Accuracy" },
 ];
 
-function averageScore(vals) {
-  const nums = vals.filter((v) => v !== "" && v !== null && !isNaN(v)).map(Number);
-  if (nums.length !== 4) return null;
-  const avg = nums.reduce((a, b) => a + b, 0) / 4;
-  return Math.round(avg * 2) / 2; // rounded to nearest 0.5, IELTS-style
-}
 
 export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen, showToast }) {
   const [assignment, setAssignment] = useState(null);
   const [roster, setRoster] = useState([]);
-  const [submissions, setSubmissions] = useState([]);
   const [isStructured, setIsStructured] = useState(false);
   const [structuredStudentIds, setStructuredStudentIds] = useState(new Set());
   // Structured Writing only: who has started (draft saved) and whose
@@ -33,11 +26,7 @@ export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen,
   const [writingReleasedIds, setWritingReleasedIds] = useState(new Set());
   // Structured Speaking only (consult, nothing submitted): who opened it.
   const [speakingViewedIds, setSpeakingViewedIds] = useState(new Set());
-  const [active, setActive] = useState(null);
   const [activeStructuredStudent, setActiveStructuredStudent] = useState(null);
-  const [gradeDraft, setGradeDraft] = useState("");
-  const [criteriaDraft, setCriteriaDraft] = useState({});
-  const [feedbackDraft, setFeedbackDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [myClasses, setMyClasses] = useState([]);
@@ -66,7 +55,6 @@ export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen,
       const { data: sv } = await supabase.from("speaking_views").select("student_id").eq("assignment_id", assignmentId);
       setSpeakingViewedIds(new Set((sv || []).map((row) => row.student_id)));
       setStructuredStudentIds(new Set());
-      setSubmissions([]);
     } else if (structured && a?.type === "Writing") {
       // Structured Writing: answers live in writing_responses, not student_answers.
       const { data: wr } = await supabase.from("writing_responses").select("student_id, submitted_at").eq("assignment_id", assignmentId);
@@ -74,14 +62,9 @@ export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen,
       setWritingStartedIds(new Set((wr || []).map((row) => row.student_id)));
       const { data: fb } = await supabase.from("assignment_feedback").select("student_id, released_at").eq("assignment_id", assignmentId);
       setWritingReleasedIds(new Set((fb || []).filter((row) => row.released_at).map((row) => row.student_id)));
-      setSubmissions([]);
     } else if (structured) {
       const { data: sa } = await supabase.from("student_answers").select("student_id").eq("assignment_id", assignmentId);
       setStructuredStudentIds(new Set((sa || []).map((row) => row.student_id)));
-      setSubmissions([]);
-    } else {
-      const { data: s } = await supabase.from("submissions").select("*").eq("assignment_id", assignmentId);
-      setSubmissions(s || []);
     }
 
     if (teacherId) {
@@ -94,26 +77,9 @@ export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen,
 
   const isWritingType = assignment?.type === "Writing Task 1" || assignment?.type === "Writing Task 2";
 
-  function openGrade(student) {
-    const sub = submissions.find((s) => s.student_id === student.id);
-    setActive(student);
-    setGradeDraft(sub?.grade || "");
-    setFeedbackDraft(sub?.feedback || "");
-    setCriteriaDraft({
-      score_task_achievement: sub?.score_task_achievement ?? "",
-      score_coherence_cohesion: sub?.score_coherence_cohesion ?? "",
-      score_lexical_resource: sub?.score_lexical_resource ?? "",
-      score_grammar_accuracy: sub?.score_grammar_accuracy ?? "",
-    });
-  }
 
   async function handleDelete() {
-    let warningCount = 0;
-    if (isStructured) {
-      warningCount = structuredStudentIds.size;
-    } else {
-      warningCount = submissions.filter((s) => s.submitted_at).length;
-    }
+    const warningCount = structuredStudentIds.size;
 
     const msg =
       warningCount > 0
@@ -255,28 +221,6 @@ export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen,
     setScreen({ name: "assignment-teacher", classId: duplicateTargetClass, assignmentId: newAssignment.id });
   }
 
-  async function saveGrade() {
-    setBusy(true);
-    const sub = submissions.find((s) => s.student_id === active.id);
-    if (sub) {
-      const payload = { feedback: feedbackDraft.trim(), graded_at: new Date().toISOString() };
-      if (isWritingType) {
-        const avg = averageScore(Object.values(criteriaDraft));
-        payload.score_task_achievement = criteriaDraft.score_task_achievement === "" ? null : Number(criteriaDraft.score_task_achievement);
-        payload.score_coherence_cohesion = criteriaDraft.score_coherence_cohesion === "" ? null : Number(criteriaDraft.score_coherence_cohesion);
-        payload.score_lexical_resource = criteriaDraft.score_lexical_resource === "" ? null : Number(criteriaDraft.score_lexical_resource);
-        payload.score_grammar_accuracy = criteriaDraft.score_grammar_accuracy === "" ? null : Number(criteriaDraft.score_grammar_accuracy);
-        payload.grade = avg !== null ? String(avg) : gradeDraft.trim();
-      } else {
-        payload.grade = gradeDraft.trim();
-      }
-      await supabase.from("submissions").update(payload).eq("id", sub.id);
-    }
-    setBusy(false);
-    setActive(null);
-    showToast("Feedback saved");
-    load();
-  }
 
   if (!assignment) return <CenterSpinner />;
 
@@ -311,11 +255,7 @@ export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen,
   // after, instead of one flat list.
   const isSpeakingStructured = isStructured && assignment.type === "Speaking";
   const submittedRoster = roster.filter((s) =>
-    isSpeakingStructured
-      ? speakingViewedIds.has(s.id)
-      : isStructured
-      ? structuredStudentIds.has(s.id)
-      : Boolean(submissions.find((x) => x.student_id === s.id)?.submitted_at)
+    isSpeakingStructured ? speakingViewedIds.has(s.id) : structuredStudentIds.has(s.id)
   );
   const notSubmittedRoster = roster.filter((s) => !submittedRoster.includes(s));
 
@@ -327,12 +267,7 @@ export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen,
       if (writingStartedIds.has(student.id)) return "in-progress";
       return "pending";
     }
-    if (isStructured) return structuredStudentIds.has(student.id) ? "submitted" : "pending";
-    const sub = submissions.find((x) => x.student_id === student.id);
-    if (sub?.grade) return "graded";
-    if (sub?.submitted_at) return "submitted";
-    if (sub?.started_at) return "in-progress";
-    return "pending";
+    return structuredStudentIds.has(student.id) ? "submitted" : "pending";
   }
 
   function handleRowClick(student) {
@@ -340,11 +275,10 @@ export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen,
       if (structuredStudentIds.has(student.id)) setActiveStructuredStudent(student);
       return;
     }
-    openGrade(student);
   }
 
   function renderRow(s) {
-    const clickable = isStructured ? structuredStudentIds.has(s.id) : true;
+    const clickable = structuredStudentIds.has(s.id);
     return (
       <div key={s.id} className={`sub-row ${clickable ? "" : "sub-row-disabled"}`} onClick={clickable ? () => handleRowClick(s) : undefined}>
         <div className="avatar small">{s.name.slice(0, 1).toUpperCase()}</div>
@@ -418,8 +352,6 @@ export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen,
           <div className="asg-due"><Clock size={13} /> Due {fmtDueDateTime(assignment.due_date, assignment.due_time)}</div>
         </div>
       </div>
-      <AttachmentPreview url={assignment.image_url} />
-      {assignment.description && !isStructured && <p className="asg-desc">{assignment.description}</p>}
 
       {roster.length === 0 ? (
         <EmptyState icon={<Users size={24} />} title="No students in this class yet" />
@@ -441,74 +373,6 @@ export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen,
         </>
       )}
 
-      {active && (() => {
-        const sub = submissions.find((s) => s.student_id === active.id);
-        const canSave = !!(sub && sub.submitted_at);
-        return (
-          <div className="grade-overlay">
-            <div className="grade-topbar">
-              <button className="back-link" onClick={() => setActive(null)}><ArrowLeft size={14} /> Back to submissions</button>
-              <div className="grade-title">{active.name}</div>
-              <div />
-            </div>
-
-            <div className="grade-body">
-              <div className="grade-panel grade-panel-submission">
-                <div className="field-label">Submitted answer</div>
-                {sub?.submitted_at ? (
-                  <>
-                    <div className="spellcheck-hint"><Highlighter size={12} /> Misspelled words appear underlined in red.</div>
-                    <textarea readOnly className="submission-box" value={sub.content} lang="en" spellCheck="true" />
-                    <div className="sub-meta">
-                      Submitted {new Date(sub.submitted_at).toLocaleString()}
-                      {assignment.target_word_count ? ` · ${wordCount(sub.content)} / ${assignment.target_word_count} words` : ` · ${wordCount(sub.content)} words`}
-                    </div>
-                  </>
-                ) : sub?.started_at ? (
-                  <div className="empty-inline">This student has opened the timed task but hasn't submitted yet — check back once the clock runs out.</div>
-                ) : (
-                  <div className="empty-inline">No submission yet from this student.</div>
-                )}
-              </div>
-
-              <div className="grade-panel grade-panel-form">
-                {isWritingType ? (
-                  <>
-                    <div className="field-label">IELTS Writing criteria</div>
-                    {CRITERIA.map((c) => (
-                      <div key={c.key} className="criteria-row">
-                        <span className="criteria-label">{c.label}</span>
-                        <input
-                          type="number" min="0" max="9" step="0.5"
-                          className="field-input criteria-input"
-                          placeholder="—"
-                          value={criteriaDraft[c.key] ?? ""}
-                          onChange={(e) => setCriteriaDraft((d) => ({ ...d, [c.key]: e.target.value }))}
-                        />
-                      </div>
-                    ))}
-                    {averageScore(Object.values(criteriaDraft)) !== null && (
-                      <div className="criteria-avg">Overall band (auto): <strong>{averageScore(Object.values(criteriaDraft))}</strong></div>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    <label className="field-label">Band / grade</label>
-                    <input className="field-input" placeholder="e.g. 6.5" value={gradeDraft} onChange={(e) => setGradeDraft(e.target.value)} />
-                  </>
-                )}
-
-                <label className="field-label" style={{ marginTop: 14 }}>Feedback</label>
-                <textarea className="field-input textarea" style={{ minHeight: 260 }} placeholder="Comments for the student…" value={feedbackDraft} onChange={(e) => setFeedbackDraft(e.target.value)} />
-
-                <button className="btn-primary" style={{ marginTop: 16 }} disabled={busy || !canSave} onClick={saveGrade}>
-                  {busy ? "Saving…" : "Save feedback"}
-                </button>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
     </div>
   );
 }
