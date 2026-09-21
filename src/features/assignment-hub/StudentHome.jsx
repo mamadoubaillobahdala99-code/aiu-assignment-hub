@@ -16,7 +16,6 @@ export function StudentHome({ userId, setScreen, showToast }) {
     if (classIds.length === 0) { setItems([]); return; }
 
     const { data: assignments } = await supabase.from("assignments").select("*").in("class_id", classIds);
-    const { data: mySubs } = await supabase.from("submissions").select("*").eq("student_id", userId);
 
     // Question Engine assignments (Reading/Listening built with the new
     // structured builder) never write to `submissions` — they use
@@ -80,11 +79,11 @@ export function StudentHome({ userId, setScreen, showToast }) {
         } else if (attemptedIds.has(a.id)) status = "in-progress";
         else status = "pending";
       } else {
-        const mine = (mySubs || []).find((s) => s.assignment_id === a.id);
+        // An assignment with no Part yet — a builder that was interrupted
+        // before it could write its content. Nothing has been handed in,
+        // so it is simply "to do"; the student sees an explanatory screen
+        // if they open it.
         status = "pending";
-        if (mine?.grade) status = "graded";
-        else if (mine?.submitted_at) status = "submitted";
-        else if (mine?.started_at) status = "in-progress";
       }
       return { ...a, dueDate: a.due_date, className: cls?.name || "Class", status };
     });
