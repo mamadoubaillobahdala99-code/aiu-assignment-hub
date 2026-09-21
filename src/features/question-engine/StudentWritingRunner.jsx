@@ -1,9 +1,10 @@
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { ArrowLeft, GripVertical, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, RotateCcw } from "lucide-react";
+import { ArrowLeft, GripVertical, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, RotateCcw, Menu, X, MonitorSmartphone } from "lucide-react";
 import { supabase } from "../../supabaseClient";
 import { WritingEditor } from "./WritingEditor";
 import { useExamTimer, ExamTimerDisplay } from "./ExamTimer";
+import { useIsCompact, useVisualViewportHeight } from "./useViewport";
 
 // Structured Writing — student exam screen.
 // Same shell as Reading/Listening (start screen, black sidebar, green
@@ -42,6 +43,13 @@ export function StudentWritingRunner({ userId, assignmentId, setScreen, showToas
   const [saveState, setSaveState] = useState("idle"); // idle | saving | saved | error
   const [loadError, setLoadError] = useState("");
   const bodyRef = useRef(null);
+
+  // Phone / small tablet: one column at a time and a drawer panel.
+  // A wider screen keeps the computer layout unchanged.
+  const compact = useIsCompact();
+  const [mobileTab, setMobileTab] = useState("task");
+  useVisualViewportHeight(compact);
+  useEffect(() => { setSidebarOpen(!compact); }, [compact]);
 
   // Refs used by the async save queue so it always sees the latest text.
   const draftsRef = useRef({});
@@ -242,9 +250,14 @@ export function StudentWritingRunner({ userId, assignmentId, setScreen, showToas
 
   // ---------- Layout helpers ----------
 
+  // Pointer events, so a finger on a tablet drags the divider exactly
+  // like a mouse on a computer.
   function startResize(e) {
     e.preventDefault();
+    const pointerId = e.pointerId;
+    const handle = e.currentTarget;
     document.body.classList.add("qe-resizing");
+    try { handle.setPointerCapture?.(pointerId); } catch { /* not supported */ }
     function onMove(ev) {
       if (!bodyRef.current) return;
       const rect = bodyRef.current.getBoundingClientRect();
@@ -254,11 +267,14 @@ export function StudentWritingRunner({ userId, assignmentId, setScreen, showToas
     }
     function onUp() {
       document.body.classList.remove("qe-resizing");
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
+      try { handle.releasePointerCapture?.(pointerId); } catch { /* ignore */ }
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
     }
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
   }
 
   function setZoom(sectionId, fn) {
@@ -313,6 +329,15 @@ export function StudentWritingRunner({ userId, assignmentId, setScreen, showToas
               Your text is saved automatically as you type. Pasting text is not allowed.
               {assignment.time_limit_minutes ? " Your timer starts when you press Start. When the time runs out, your writing is submitted automatically." : ""}
             </p>
+            {compact && (
+              <div className="qe-start-device-note">
+                <MonitorSmartphone size={16} />
+                <span>
+                  You are on a small screen. You can write here, but a real exam is much easier
+                  on a computer or a tablet — the task and your answer then sit side by side.
+                </span>
+              </div>
+            )}
             {startError && <div className="field-error" style={{ marginTop: 14 }}>{startError}</div>}
             <button className="btn-primary qe-start-btn" disabled={starting || timer.status === "loading" || timer.status === "expired"} onClick={startExam}>
               {starting ? "Starting…" : "Start exam"}
@@ -335,15 +360,23 @@ export function StudentWritingRunner({ userId, assignmentId, setScreen, showToas
     saveState === "saving" ? "Saving…" : saveState === "saved" ? "Saved" : saveState === "error" ? "Not saved — retrying…" : saveState === "locked" ? "Time is over — saving is closed" : "";
 
   return (
-    <div className="wf-overlay qe-exam-shell">
+    <div className={`wf-overlay qe-exam-shell ${compact ? "qe-compact" : ""}`}>
       <div className="qe-exam-layout">
-        <aside className={`qe-exam-sidebar ${sidebarOpen ? "" : "collapsed"}`}>
-          <button className="qe-exam-sidebar-toggle" onClick={() => setSidebarOpen((v) => !v)} title={sidebarOpen ? "Hide panel" : "Show panel"}>
-            {sidebarOpen ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
-          </button>
+        {compact && sidebarOpen && <div className="qe-exam-drawer-backdrop" onClick={() => setSidebarOpen(false)} />}
+        <aside className={`qe-exam-sidebar ${sidebarOpen ? "" : "collapsed"} ${compact ? "qe-exam-drawer" : ""}`}>
+          {!compact && (
+            <button className="qe-exam-sidebar-toggle" onClick={() => setSidebarOpen((v) => !v)} title={sidebarOpen ? "Hide panel" : "Show panel"}>
+              {sidebarOpen ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
+            </button>
+          )}
           {sidebarOpen && (
             <div className="qe-exam-sidebar-inner">
               {teacherName && <div className="qe-exam-teacher-band">{teacherName}</div>}
+              {compact && (
+                <button className="qe-exam-drawer-close" onClick={() => setSidebarOpen(false)} title="Close">
+                  <X size={16} /> Close
+                </button>
+              )}
               <div className="qe-exam-sidebar-title">Assignment</div>
               {className && (
                 <div className="qe-exam-sidebar-section">
@@ -363,11 +396,33 @@ export function StudentWritingRunner({ userId, assignmentId, setScreen, showToas
 
         <div className="qe-exam-main">
           <div className="app-topbar qe-exam-topbar">
+            {compact && (
+              <button className="qe-exam-menu-btn" onClick={() => setSidebarOpen(true)} title="Menu" aria-label="Open the menu">
+                <Menu size={18} />
+              </button>
+            )}
             Assignment
             {timer.status === "running" && <ExamTimerDisplay remainingSec={timer.remainingSec} />}
           </div>
+
+          {/* On a small screen the task and the answer take turns
+              instead of sharing one narrow row. */}
+          {compact && (
+            <div className="qe-tabbar" role="tablist">
+              <button role="tab" aria-selected={mobileTab === "task"} className={`qe-tab ${mobileTab === "task" ? "active" : ""}`} onClick={() => setMobileTab("task")}>
+                Task
+              </button>
+              <button role="tab" aria-selected={mobileTab === "answer"} className={`qe-tab ${mobileTab === "answer" ? "active" : ""}`} onClick={() => setMobileTab("answer")}>
+                Your answer
+              </button>
+            </div>
+          )}
+
           <div className="qe-exam-body" ref={bodyRef}>
-            <div className="qe-passage-panel qe-wr-prompt-panel" style={{ flexBasis: `${leftWidthPct}%` }}>
+            <div
+              className={`qe-passage-panel qe-wr-prompt-panel ${compact && mobileTab !== "task" ? "qe-tab-hidden" : ""}`}
+              style={compact ? undefined : { flexBasis: `${leftWidthPct}%` }}
+            >
               <p className="qe-part-tag">{active.title}</p>
               <h2 className="qe-passage-title">Writing Task {active.taskNumber}</h2>
               {active.prompt && <div className="qe-wr-prompt">{active.prompt}</div>}
@@ -394,11 +449,16 @@ export function StudentWritingRunner({ userId, assignmentId, setScreen, showToas
               )}
             </div>
 
-            <div className="qe-resizer" onMouseDown={startResize}>
-              <GripVertical size={14} />
-            </div>
+            {!compact && (
+              <div className="qe-resizer" onPointerDown={startResize}>
+                <GripVertical size={14} />
+              </div>
+            )}
 
-            <div className="qe-wr-answer-panel" style={{ flexBasis: `${100 - leftWidthPct}%` }}>
+            <div
+              className={`qe-wr-answer-panel ${compact && mobileTab !== "answer" ? "qe-tab-hidden" : ""}`}
+              style={compact ? undefined : { flexBasis: `${100 - leftWidthPct}%` }}
+            >
               <WritingEditor
                 key={active.id}
                 initialHtml={activeDraft.html}
