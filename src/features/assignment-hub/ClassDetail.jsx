@@ -14,6 +14,13 @@ export function ClassDetail({ classId, setScreen, showToast }) {
   const [copied, setCopied] = useState(false);
   const [activeStudent, setActiveStudent] = useState(null);
   const [deletingClass, setDeletingClass] = useState(false);
+  // Two-step deletion. Deleting a class cascades through everything it
+  // contains — assignments, answers, submissions, marks — with no way
+  // back, so the dialog counts what would really be destroyed and, when
+  // student work is involved, asks for the class name to be typed.
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteStats, setDeleteStats] = useState(null);
+  const [confirmName, setConfirmName] = useState("");
 
   const load = useCallback(async () => {
     const { data: c } = await supabase.from("classes").select("*").eq("id", classId).single();
@@ -39,14 +46,26 @@ export function ClassDetail({ classId, setScreen, showToast }) {
   // or deleting a single assignment; everything else (roster,
   // assignments, exam_sections, student_answers...) is already wired
   // to cascade automatically at the database level.
-  async function handleDeleteClass() {
-    const assignmentCount = assignments.length;
-    const studentCount = roster.length;
-    const msg =
-      `Delete "${cls.name}"? This will permanently delete ${assignmentCount} assignment${assignmentCount === 1 ? "" : "s"}` +
-      ` and remove ${studentCount} student${studentCount === 1 ? "" : "s"} from this class. This cannot be undone.`;
-    if (!window.confirm(msg)) return;
+  // Opens the dialog and counts, for real, what deleting would destroy.
+  async function openDeleteDialog() {
+    setConfirmName("");
+    setDeleteStats(null);
+    setDeleteOpen(true);
+    const assignmentIds = assignments.map((a) => a.id);
+    if (assignmentIds.length === 0) {
+      setDeleteStats({ copies: 0, answers: 0, writings: 0 });
+      return;
+    }
+    const [subs, answers, writings] = await Promise.all([
+      supabase.from("submissions").select("id", { count: "exact", head: true }).in("assignment_id", assignmentIds),
+      supabase.from("student_answers").select("id", { count: "exact", head: true }).in("assignment_id", assignmentIds),
+      supabase.from("writing_responses").select("id", { count: "exact", head: true }).in("assignment_id", assignmentIds),
+    ]);
+    setDeleteStats({ copies: subs.count || 0, answers: answers.count || 0, writings: writings.count || 0 });
+  }
 
+  async function handleDeleteClass() {
+    setDeleteOpen(false);
     setDeletingClass(true);
     const assignmentIds = assignments.map((a) => a.id);
     if (assignmentIds.length > 0) {
@@ -90,10 +109,63 @@ export function ClassDetail({ classId, setScreen, showToast }) {
     <div className="page page-wide">
       <div className="row-right" style={{ justifyContent: "space-between", marginBottom: 4 }}>
         <button className="back-link" onClick={() => setScreen({ name: "home" })}><ArrowLeft size={14} /> All classes</button>
-        <button className="btn-ghost delete-assignment-btn" disabled={deletingClass} onClick={handleDeleteClass}>
+        <button className="btn-ghost delete-assignment-btn" disabled={deletingClass} onClick={openDeleteDialog}>
           <Trash2 size={13} /> {deletingClass ? "Deleting…" : "Delete class"}
         </button>
       </div>
+
+      {deleteOpen && (() => {
+        const work = deleteStats ? deleteStats.copies + deleteStats.answers + deleteStats.writings : 0;
+        const hasWork = work > 0;
+        const ready = deleteStats !== null && (!hasWork || confirmName.trim() === cls.name);
+        return (
+          <Modal title={`Delete "${cls.name}"`} onClose={() => setDeleteOpen(false)}>
+            {deleteStats === null ? (
+              <p className="muted-p">Checking what this class contains…</p>
+            ) : (
+              <>
+                <p className="muted-p" style={{ marginTop: 0 }}>
+                  This cannot be undone. There is no bin and no backup — deleting the class
+                  deletes everything inside it, for every student.
+                </p>
+                <ul className="cd-del-list">
+                  <li><strong>{assignments.length}</strong> assignment{assignments.length === 1 ? "" : "s"}</li>
+                  <li><strong>{roster.length}</strong> student{roster.length === 1 ? "" : "s"} removed from the class</li>
+                  {hasWork && <li><strong>{deleteStats.answers}</strong> answer{deleteStats.answers === 1 ? "" : "s"} given in Reading / Listening exams</li>}
+                  {hasWork && <li><strong>{deleteStats.copies}</strong> submitted piece{deleteStats.copies === 1 ? "" : "s"} of work, with their marks and feedback</li>}
+                  {hasWork && <li><strong>{deleteStats.writings}</strong> Writing text{deleteStats.writings === 1 ? "" : "s"}</li>}
+                </ul>
+
+                {hasWork ? (
+                  <>
+                    <div className="cd-del-warning">
+                      <AlertTriangle size={15} />
+                      <span>This class holds work your students have handed in. Once deleted, it is gone for them too.</span>
+                    </div>
+                    <label className="field-label">Type <strong>{cls.name}</strong> to confirm</label>
+                    <input
+                      className="field-input"
+                      value={confirmName}
+                      onChange={(e) => setConfirmName(e.target.value)}
+                      placeholder={cls.name}
+                      autoFocus
+                    />
+                  </>
+                ) : (
+                  <p className="muted-p">No student has handed in anything in this class yet.</p>
+                )}
+              </>
+            )}
+
+            <div className="cd-del-actions">
+              <button className="btn-ghost" onClick={() => setDeleteOpen(false)}>Keep this class</button>
+              <button className="btn-primary cd-del-confirm" disabled={!ready || deletingClass} onClick={handleDeleteClass}>
+                {deletingClass ? "Deleting…" : "Delete permanently"}
+              </button>
+            </div>
+          </Modal>
+        );
+      })()}
 
       <PageHeader eyebrow="Class" title={cls.name} action={
         <button className="btn-ghost" onClick={copyCode}>
