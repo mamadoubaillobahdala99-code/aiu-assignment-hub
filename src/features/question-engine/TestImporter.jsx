@@ -130,6 +130,7 @@ export function TestImporter({ classId, teacherId, skill: initialSkill = "readin
   const [keyText, setKeyText] = useState("");
   const [title, setTitle] = useState("");
   const [dueDate, setDueDate] = useState("");
+  const [dueTime, setDueTime] = useState("");
   const [timeLimit, setTimeLimit] = useState("");
   const [autoReleaseScore, setAutoReleaseScore] = useState(true);
   const [showAnswerReview, setShowAnswerReview] = useState(true);
@@ -324,6 +325,7 @@ export function TestImporter({ classId, teacherId, skill: initialSkill = "readin
         type: skill === "reading" ? "Reading" : "Listening",
         description: skill === "reading" ? stripImageMarkers(plan[0].part.passageText) : null,
         due_date: dueDate || null,
+          due_time: dueTime || null,
         time_limit_minutes: timeLimit ? parseInt(timeLimit, 10) : null,
         auto_release_score: autoReleaseScore,
         show_answer_review: showAnswerReview,
@@ -457,6 +459,10 @@ export function TestImporter({ classId, teacherId, skill: initialSkill = "readin
         <div style={{ flex: "1 1 200px" }}>
           <label className="field-label">Due date (optional)</label>
           <input type="date" className="field-input" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+        </div>
+        <div style={{ flex: "1 1 200px" }}>
+          <label className="field-label">Due time (optional)</label>
+          <input type="time" className="field-input" value={dueTime} onChange={(e) => setDueTime(e.target.value)} />
         </div>
         <div style={{ flex: "1 1 200px" }}>
           <label className="field-label">Time limit, minutes (optional)</label>
