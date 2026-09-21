@@ -1,258 +1,35 @@
-import React, { useState, useEffect, useCallback } from "react";
-import { BookOpen, Users, Plus, Check, Clock, AlertTriangle, LogOut, GraduationCap, FileText, ChevronRight, X, Copy, CheckCircle2, Headphones, PenLine, Mic, ListChecks, ArrowLeft, Loader2, Timer, Highlighter } from "lucide-react";
-import { supabase } from "../../supabaseClient";
-import { uid, makeCode, TYPES, fmtDate, daysUntil, wordCount, isPdfUrl } from "../../lib/utils";
-import { AttachmentPreview, PageHeader, EmptyState, CenterSpinner, Modal, StatusBadge } from "../../components/shared";
+import React from "react";
+import { FileText } from "lucide-react";
+import { EmptyState } from "../../components/shared";
 import { TicketCard } from "./TicketCard";
 
-const DEFAULT_TITLES = {
-  Reading: "Reading Passage",
-  Listening: "Listening Practice",
-  "Writing Task 1": "Writing Task 1",
-  "Writing Task 2": "Writing Task 2",
-  Speaking: "Speaking Practice",
-  Other: "",
-};
-
-const INSTRUCTIONS_TEXT = {
-  Reading: {
-    label: "Passage text (paste it here so students can highlight it)",
-    placeholder: "Paste the full reading passage here…",
-  },
-  Listening: {
-    label: "Instructions or transcript (optional)",
-    placeholder: "Task instructions, or paste a transcript if you have one…",
-  },
-  Speaking: {
-    label: "Speaking prompt(s)",
-    placeholder: "Write the question(s) students should respond to…",
-  },
-  default: {
-    label: "Instructions",
-    placeholder: "Task instructions, prompt text, or a link to the material…",
-  },
-};
-
-export function AssignmentsTab({ classId, assignments, onCreated, onOpen }) {
-  const [showCreate, setShowCreate] = useState(false);
-  const [title, setTitle] = useState("");
-  const [type, setType] = useState("Reading");
-  const [description, setDescription] = useState("");
-  const [dueDate, setDueDate] = useState("");
-  const [dueTime, setDueTime] = useState("");
-  const [timeLimit, setTimeLimit] = useState("");
-  const [targetWords, setTargetWords] = useState("");
-  const [readingQuestionCount, setReadingQuestionCount] = useState("");
-  const [readingQuestionsText, setReadingQuestionsText] = useState("");
-  const [allowAudioPause, setAllowAudioPause] = useState(false);
-  const [imageFile, setImageFile] = useState(null);
-  const [imagePreview, setImagePreview] = useState(null);
-  const [fileInputKey, setFileInputKey] = useState(0);
-  const [busy, setBusy] = useState(false);
-  const [uploadPct, setUploadPct] = useState(null);
-
-  function pickImage(e) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setImageFile(file);
-    setImagePreview(file.type.startsWith("image/") ? URL.createObjectURL(file) : null);
-  }
-
-  function removeImage() {
-    setImageFile(null);
-    setImagePreview(null);
-    setFileInputKey((k) => k + 1); // remounts the <input type="file"> so it forgets the old selection
-  }
-
-  function selectType(t) {
-    setType(t);
-    const preset = TYPES[t];
-    setTimeLimit(preset?.timeLimit != null ? String(preset.timeLimit) : "");
-    setTargetWords(preset?.targetWords != null ? String(preset.targetWords) : "");
-    setTitle((prev) => (prev.trim() ? prev : DEFAULT_TITLES[t] || ""));
-  }
-
-  async function create() {
-    if (!title.trim()) return;
-    setBusy(true);
-
-    let image_url = null;
-    if (imageFile) {
-      setUploadPct(0);
-      const ext = imageFile.name.split(".").pop();
-      const path = `${classId}/${uid("img")}.${ext}`;
-      const { error: uploadError } = await supabase.storage.from("assignment-files").upload(path, imageFile);
-      setUploadPct(null);
-      if (uploadError) {
-        setBusy(false);
-        alert("Image upload failed: " + uploadError.message);
-        return;
-      }
-      const { data: pub } = supabase.storage.from("assignment-files").getPublicUrl(path);
-      image_url = pub.publicUrl;
-    }
-
-    const { error } = await supabase.from("assignments").insert({
-      class_id: classId,
-      title: title.trim(),
-      type,
-      description: description.trim(),
-      due_date: dueDate || null,
-      due_time: dueTime || null,
-      time_limit_minutes: timeLimit ? parseInt(timeLimit, 10) : null,
-      target_word_count: targetWords ? parseInt(targetWords, 10) : null,
-      reading_question_count: (type === "Reading" || type === "Listening") && readingQuestionCount ? parseInt(readingQuestionCount, 10) : null,
-      reading_questions_text: (type === "Reading" || type === "Listening") && readingQuestionsText.trim() ? readingQuestionsText.trim() : null,
-      allow_audio_pause: type === "Listening" ? allowAudioPause : false,
-      image_url,
-    });
-    setBusy(false);
-    if (error) return;
-    setShowCreate(false);
-    setTitle(""); setDescription(""); setDueDate(""); setDueTime(""); setType("Reading"); setTimeLimit(""); setTargetWords(""); setReadingQuestionCount(""); setReadingQuestionsText(""); setAllowAudioPause(false);
-    setImageFile(null); setImagePreview(null); setFileInputKey((k) => k + 1);
-    onCreated();
+// The list of a class's assignments, on the teacher's class page.
+//
+// This file used to hold the old "New assignment" form as well. Every
+// assignment is now built with one of the structured builders or with
+// the test importer — the buttons just above this list on the class
+// page — so the old form, and the half-finished assignments it could
+// produce, are gone. What is left is the list itself.
+export function AssignmentsTab({ assignments, onOpen }) {
+  if (assignments.length === 0) {
+    return (
+      <EmptyState
+        icon={<FileText size={26} />}
+        title="No assignments yet"
+        body="Use Import a test, or one of the Structured buttons above, to build your first one."
+      />
+    );
   }
 
   return (
-    <div>
-      <div className="row-right">
-        <button className="btn-primary" onClick={() => setShowCreate(true)}><Plus size={16} /> New assignment</button>
-      </div>
-
-      {assignments.length === 0 ? (
-        <EmptyState icon={<FileText size={26} />} title="No assignments posted" body="Create your first task — Reading, Listening, Writing, Speaking, or anything else." />
-      ) : (
-        <div className="ticket-list">
-          {assignments.map((a) => (
-            <TicketCard key={a.id} assignment={{ ...a, dueDate: a.due_date, time_limit_minutes: a.time_limit_minutes }} onClick={() => onOpen(a)} />
-          ))}
-        </div>
-      )}
-
-      {showCreate && (
-        <Modal onClose={() => setShowCreate(false)} title="New assignment">
-          <label className="field-label">Title</label>
-          <input className="field-input" placeholder="e.g. Writing Task 2 — Opinion Essay" value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />
-
-          <label className="field-label" style={{ marginTop: 14 }}>Type</label>
-          <div className="type-row">
-            {Object.keys(TYPES).filter((t) => !TYPES[t].structuredOnly).map((t) => (
-              <button key={t} className={`type-chip ${type === t ? "active" : ""}`} onClick={() => selectType(t)}>{t}</button>
-            ))}
-          </div>
-          <p className="field-hint">Click a skill and the time limit + word target below fill in automatically — feel free to adjust them.</p>
-
-          <label className="field-label" style={{ marginTop: 14 }}>{(INSTRUCTIONS_TEXT[type] || INSTRUCTIONS_TEXT.default).label}</label>
-          <textarea
-            className="field-input textarea"
-            placeholder={(INSTRUCTIONS_TEXT[type] || INSTRUCTIONS_TEXT.default).placeholder}
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-          />
-
-          <label className="field-label" style={{ marginTop: 14 }}>Due date</label>
-          <div style={{ display: "flex", gap: 10 }}>
-            <input type="date" className="field-input" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
-            <input type="time" className="field-input" style={{ maxWidth: 140 }} value={dueTime} onChange={(e) => setDueTime(e.target.value)} disabled={!dueDate} />
-          </div>
-          <p className="field-hint">Time is optional — pick a date first to set a specific deadline time.</p>
-
-          <label className="field-label" style={{ marginTop: 14 }}>Time limit (optional)</label>
-          <input
-            type="number"
-            min="1"
-            className="field-input"
-            placeholder="e.g. 60 (minutes) — leave empty for no time limit"
-            value={timeLimit}
-            onChange={(e) => setTimeLimit(e.target.value)}
-          />
-          <p className="field-hint">If set, the countdown starts the moment the student opens this assignment — just like the real IELTS test.</p>
-
-          {(type === "Writing Task 1" || type === "Writing Task 2") && (
-            <>
-              <label className="field-label" style={{ marginTop: 14 }}>Target word count (optional)</label>
-              <input
-                type="number"
-                min="1"
-                className="field-input"
-                placeholder="e.g. 250 (Writing Task 2) — leave empty to skip"
-                value={targetWords}
-                onChange={(e) => setTargetWords(e.target.value)}
-              />
-              <p className="field-hint">Students see a live word counter that turns green once they reach this target.</p>
-            </>
-          )}
-
-          {(type === "Reading" || type === "Listening") && (
-            <>
-              <label className="field-label" style={{ marginTop: 14 }}>Number of questions (optional)</label>
-              <input
-                type="number"
-                min="1"
-                max="40"
-                className="field-input"
-                placeholder="e.g. 13 — leave empty for a simple free-text answer instead"
-                value={readingQuestionCount}
-                onChange={(e) => setReadingQuestionCount(e.target.value)}
-              />
-              <p className="field-hint">
-                {type === "Reading"
-                  ? "If set, students get a numbered answer box for each question, side-by-side with the passage, in full-screen focus mode."
-                  : "If set, students get a numbered answer box for each question, side-by-side with the audio player, in full-screen focus mode."}
-              </p>
-
-              <label className="field-label" style={{ marginTop: 14 }}>Questions text (optional)</label>
-              <textarea
-                className="field-input textarea"
-                placeholder={type === "Reading" ? "Paste or write the questions here, separately from the passage above…" : "Write the questions here, separately from the audio…"}
-                value={readingQuestionsText}
-                onChange={(e) => setReadingQuestionsText(e.target.value)}
-              />
-              <p className="field-hint">
-                {type === "Reading"
-                  ? "If set, students see three columns: passage, questions, and answer boxes — side by side, so they never have to scroll back and forth."
-                  : "If set, students see three columns: audio player, questions, and answer boxes — side by side."}
-              </p>
-
-              {type === "Listening" && (
-                <label className="checkbox-row" style={{ marginTop: 14 }}>
-                  <input type="checkbox" checked={allowAudioPause} onChange={(e) => setAllowAudioPause(e.target.checked)} />
-                  <span>Allow students to pause and rewind the audio</span>
-                </label>
-              )}
-              {type === "Listening" && (
-                <p className="field-hint">
-                  {allowAudioPause
-                    ? "Students get a normal audio player they can pause, rewind, and replay — good for practice."
-                    : "Students get a locked player: audio plays once through with no pausing or rewinding — just like the real IELTS test. They can still test their headphones with a short beep before starting."}
-                </p>
-              )}
-            </>
-          )}
-
-          <label className="field-label" style={{ marginTop: 14 }}>Attach an image, PDF, or audio file (fully optional)</label>
-          <p className="field-hint" style={{ marginTop: 0, marginBottom: 8 }}>Only if you want to — perfect for a Writing Task 1 chart, a scanned Reading passage, a Listening audio clip, or any reference material. Skip it entirely for a text-only task.</p>
-          <input key={fileInputKey} type="file" accept="image/*,application/pdf,audio/*" className="field-input" onChange={pickImage} style={{ padding: 8 }} />
-          {imageFile && imagePreview && (
-            <div className="file-preview-row">
-              <img src={imagePreview} alt="Preview" className="image-preview" />
-              <button type="button" className="btn-ghost remove-file" onClick={removeImage}><X size={13} /> Remove</button>
-            </div>
-          )}
-          {imageFile && !imagePreview && (
-            <div className="file-preview-row">
-              <div className="file-chip"><FileText size={14} /> {imageFile.name}</div>
-              <button type="button" className="btn-ghost remove-file" onClick={removeImage}><X size={13} /> Remove</button>
-            </div>
-          )}
-          {uploadPct !== null && <div className="field-hint">Uploading…</div>}
-
-          <button className="btn-primary" style={{ marginTop: 16 }} disabled={!title.trim() || busy} onClick={create}>
-            {busy ? "Posting…" : "Post assignment"}
-          </button>
-        </Modal>
-      )}
+    <div className="ticket-list">
+      {assignments.map((a) => (
+        <TicketCard
+          key={a.id}
+          assignment={{ ...a, dueDate: a.due_date, time_limit_minutes: a.time_limit_minutes }}
+          onClick={() => onOpen(a)}
+        />
+      ))}
     </div>
   );
 }
