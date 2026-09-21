@@ -1,8 +1,9 @@
 
 import React, { useState, useEffect, useCallback } from "react";
-import { ArrowLeft, ChevronLeft, ChevronRight, Download, FileText, Image as ImageIcon, Music, File } from "lucide-react";
+import { ArrowLeft, ChevronLeft, ChevronRight, Download, FileText, Image as ImageIcon, Music, File, Menu, X } from "lucide-react";
 import { supabase } from "../../supabaseClient";
 import { SPEAKING_PARTS, cleanDocuments, fmtSize } from "./speaking";
+import { useIsCompact, useVisualViewportHeight } from "./useViewport";
 
 // Structured Speaking — student screen. CONSULT ONLY: topics / cue card /
 // questions and the teacher's documents. No recording, no submit.
@@ -38,6 +39,11 @@ export function StudentSpeakingViewer({ userId, assignmentId, setScreen }) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [className, setClassName] = useState("");
   const [teacherName, setTeacherName] = useState("");
+
+  // Phone / small tablet: the black panel becomes a drawer opened from ☰.
+  const compact = useIsCompact();
+  useVisualViewportHeight(compact);
+  useEffect(() => { setSidebarOpen(!compact); }, [compact]);
 
   const load = useCallback(async () => {
     const { data: a } = await supabase.from("assignments").select("*").eq("id", assignmentId).single();
@@ -91,15 +97,23 @@ export function StudentSpeakingViewer({ userId, assignmentId, setScreen }) {
   const meta = SPEAKING_PARTS[active.part];
 
   return (
-    <div className="wf-overlay qe-exam-shell">
+    <div className={`wf-overlay qe-exam-shell ${compact ? "qe-compact" : ""}`}>
       <div className="qe-exam-layout">
-        <aside className={`qe-exam-sidebar ${sidebarOpen ? "" : "collapsed"}`}>
-          <button className="qe-exam-sidebar-toggle" onClick={() => setSidebarOpen((v) => !v)} title={sidebarOpen ? "Hide panel" : "Show panel"}>
-            {sidebarOpen ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
-          </button>
+        {compact && sidebarOpen && <div className="qe-exam-drawer-backdrop" onClick={() => setSidebarOpen(false)} />}
+        <aside className={`qe-exam-sidebar ${sidebarOpen ? "" : "collapsed"} ${compact ? "qe-exam-drawer" : ""}`}>
+          {!compact && (
+            <button className="qe-exam-sidebar-toggle" onClick={() => setSidebarOpen((v) => !v)} title={sidebarOpen ? "Hide panel" : "Show panel"}>
+              {sidebarOpen ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
+            </button>
+          )}
           {sidebarOpen && (
             <div className="qe-exam-sidebar-inner">
               {teacherName && <div className="qe-exam-teacher-band">{teacherName}</div>}
+              {compact && (
+                <button className="qe-exam-drawer-close" onClick={() => setSidebarOpen(false)} title="Close">
+                  <X size={16} /> Close
+                </button>
+              )}
               <div className="qe-exam-sidebar-title">Assignment</div>
               {className && (
                 <div className="qe-exam-sidebar-section">
@@ -119,7 +133,14 @@ export function StudentSpeakingViewer({ userId, assignmentId, setScreen }) {
         </aside>
 
         <div className="qe-exam-main">
-          <div className="app-topbar qe-exam-topbar">Assignment</div>
+          <div className="app-topbar qe-exam-topbar">
+            {compact && (
+              <button className="qe-exam-menu-btn" onClick={() => setSidebarOpen(true)} title="Menu" aria-label="Open the menu">
+                <Menu size={18} />
+              </button>
+            )}
+            Assignment
+          </div>
           <div className="qe-exam-body qe-listening-body">
             <div className="qe-listening-panel qe-sp-panel">
               <p className="qe-part-tag">{assignment.title}</p>
