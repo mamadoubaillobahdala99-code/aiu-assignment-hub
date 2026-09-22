@@ -50,7 +50,7 @@ function SectionPassage({ section }) {
 // directly in the list. correctAnswersFormatted is the human-readable
 // version, still needed by gap-fill style questions that have no option
 // list to mark.
-export function ReviewContent({ sections, answersByQ, resultsByQ, correctAnswersFormatted, correctAnswersRaw, showCorrectAnswers, assignmentId, viewerUserId }) {
+export function ReviewContent({ sections, answersByQ, resultsByQ, correctAnswersFormatted, correctAnswersRaw, showCorrectAnswers, assignmentId, viewerUserId, answerKeyMode = false }) {
   const correctMap = showCorrectAnswers ? correctAnswersFormatted : {};
   const rawMap = showCorrectAnswers ? (correctAnswersRaw || {}) : {};
 
@@ -111,11 +111,25 @@ export function ReviewContent({ sections, answersByQ, resultsByQ, correctAnswers
                       <span className="rf-answer-num qe-question-badge">{num}</span>
                       <div style={{ flex: 1 }}>
                         <QuestionRenderer question={q} value={answersByQ[q.id] ?? null} onChange={() => {}} disabled assignmentId={assignmentId} userId={viewerUserId} correctAnswer={rawMap[q.id]} />
-                        <div className={result?.isCorrect ? "qe-result-correct" : "qe-result-incorrect"}>
-                          {result ? (result.isCorrect ? <><Check size={13} /> Correct</> : <><XIcon size={13} /> Incorrect</>) : "Not answered"}
-                        </div>
-                        {!marksOptionsInline && result && !result.isCorrect && correctMap[q.id] && (
-                          <div className="qe-review-correct-answer">Correct answer: {correctMap[q.id]}</div>
+                        {/* answerKeyMode: nobody has sat this paper — the
+                            teacher is reading his own answer key. Marking
+                            it "Correct" or "Not answered" would be
+                            nonsense, so the line just says what it is.
+                            Off by default: the two screens that show a
+                            real copy are untouched. */}
+                        {answerKeyMode ? (
+                          <div className="qe-result-correct">
+                            <Check size={13} /> Answer key{!marksOptionsInline && correctMap[q.id] ? `: ${correctMap[q.id]}` : ""}
+                          </div>
+                        ) : (
+                          <>
+                            <div className={result?.isCorrect ? "qe-result-correct" : "qe-result-incorrect"}>
+                              {result ? (result.isCorrect ? <><Check size={13} /> Correct</> : <><XIcon size={13} /> Incorrect</>) : "Not answered"}
+                            </div>
+                            {!marksOptionsInline && result && !result.isCorrect && correctMap[q.id] && (
+                              <div className="qe-review-correct-answer">Correct answer: {correctMap[q.id]}</div>
+                            )}
+                          </>
                         )}
                       </div>
                     </div>
