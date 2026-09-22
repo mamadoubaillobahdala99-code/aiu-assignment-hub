@@ -19,7 +19,7 @@ function newPart() {
   return { localId: crypto.randomUUID(), passageText: "", passageTitle: "", titleTouched: false, groups: [newGroup()] };
 }
 
-export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast, editAssignmentId }) {
+export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast, editAssignmentId, returnTo}) {
   const [title, setTitle] = useState("");
   const [titleTouched, setTitleTouched] = useState(false);
   const [dueDate, setDueDate] = useState("");
@@ -365,7 +365,7 @@ export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast
 
     setPublishing(false);
     showToast?.(editAssignmentId ? "Reading assignment updated" : "Reading assignment published");
-    setScreen({ name: "class", classId });
+    setScreen(returnTo || { name: "class", classId });
   }
 
   if (loadingExisting) {
