@@ -19,7 +19,7 @@ function newPart() {
   return { localId: crypto.randomUUID(), audioUrl: "", audioFilename: "", maxPlays: "", groups: [newGroup()] };
 }
 
-export function TeacherListeningBuilder({ classId, teacherId, setScreen, showToast, editAssignmentId }) {
+export function TeacherListeningBuilder({ classId, teacherId, setScreen, showToast, editAssignmentId, returnTo}) {
   const [title, setTitle] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [dueTime, setDueTime] = useState("");
@@ -352,7 +352,7 @@ export function TeacherListeningBuilder({ classId, teacherId, setScreen, showToa
 
     setPublishing(false);
     showToast?.(editAssignmentId ? "Listening assignment updated" : "Listening assignment published");
-    setScreen({ name: "class", classId });
+    setScreen(returnTo || { name: "class", classId });
   }
 
   if (loadingExisting) {
