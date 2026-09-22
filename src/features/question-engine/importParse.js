@@ -59,6 +59,28 @@ const IMAGE_LINE = /^\[\[image:[^\s\]]+\]\]$/;
 // ---------------------------------------------------------------------
 const PROTECTED_LINE = /^(true|false|not given|yes|no|questions?\b|write|choose|complete|answer|nb\b|example|list of|[a-z]\b|[ivx]+\b|\d)/i;
 
+// A page footer keeps its shape from page to page except for the page
+// number at its end. Only lines that carry an address, a link or a
+// e-mail are considered: a real sentence ending in a number ("… at
+// least 150") must never be mistaken for one.
+function footerKey(l) {
+  if (!/(https?:\/\/|www\.|@|\.com\b|\.org\b)/i.test(l)) return "";
+  return l.replace(/\s+\d{1,3}$/, "");
+}
+
+// Crumbs of a sideways watermark: at most eight characters, made only
+// of lowercase letters and dots, in tokens of three characters at most.
+const WATERMARK_CRUMB = /^(?=.{1,8}$)[a-z.]{1,3}(?:\s+[a-z.]{1,3})*$/;
+
+// "Question 11. The most famous view…" is an ITEM, not a group heading.
+// IELTS Listening papers write their questions that way; Reading ones
+// usually write a bare number, which is why Listening imports fell
+// apart while Reading behaved. Rewritten to "11. The most famous view…"
+// so every detector downstream reads it the way it already knows.
+// A heading keeps its shape: "Questions 11-16" has no space after the
+// number, "Questions 21 and 22" is held back by the lookahead.
+const QUESTION_ITEM_RE = /^questions?\s+(\d{1,2})\s*[.):]?\s+(?!(?:[-–—]|to|and|&)\s*\d)(\S.*)$/i;
+
 export function normalizeText(raw) {
   let lines = String(raw || "")
     .replace(/\r\n?/g, "\n")
@@ -72,6 +94,8 @@ export function normalizeText(raw) {
   // Page numbers and repeated page footers/headers ("SIMULATION 1/BCDE/NHMH").
   const counts = {};
   for (const l of lines) if (l) counts[l] = (counts[l] || 0) + 1;
+  const footerCounts = {};
+  for (const l of lines) if (l) { const k = footerKey(l); if (k) footerCounts[k] = (footerCounts[k] || 0) + 1; }
   lines = lines.filter((l) => {
     if (!l) return true;
     if (/^page\s*\d+(\s*(of|\/)\s*\d+)?$/i.test(l)) return false;
@@ -80,8 +104,30 @@ export function normalizeText(raw) {
     if (/^simulation\b/i.test(l)) return false;
     // (a line of symbols only, such as a flow-chart arrow "↓", is never a footer)
     if (counts[l] >= 3 && l.length <= 80 && /[A-Za-z0-9]/.test(l) && !PROTECTED_LINE.test(l)) return false;
+    // The same footer with the page number changing each time
+    // ("help@example.com   3") never repeats identically, so it slipped
+    // through the rule above and landed inside a group.
+    if (footerCounts[footerKey(l)] >= 3 && l.length <= 80 && !PROTECTED_LINE.test(l)) return false;
+    // A watermark printed sideways down the page arrives as crumbs on
+    // their own lines — "w", "o m", ".r c", "tl s" for www.example.com.
+    // Nothing real in a test paper looks like that: option letters are
+    // capitals with text after them, list bullets carry punctuation.
+    if (WATERMARK_CRUMB.test(l)) return false;
     return true;
   });
+
+  // The same watermark, but glued to the end of a real line by the PDF
+  // reader: "…to write. ve". Only removed after a full stop — no real
+  // sentence ends with a two-letter word placed after its own period,
+  // whereas "the busk track ve" (no punctuation) is left alone rather
+  // than risk eating a real word. The teacher sees the rest in the
+  // preview and can delete it there.
+  lines = lines.map((l) => l.replace(/([.!?])\s+[a-z]{1,3}$/, "$1"));
+
+  // "Question 11. …" → "11. …" (see QUESTION_ITEM_RE above). Done here,
+  // once, so the group splitter and every type detector agree on what a
+  // numbered item looks like.
+  lines = lines.map((l) => l.replace(QUESTION_ITEM_RE, (_, n, rest) => `${n}. ${rest}`));
 
   // A number alone on its line belongs to the next line ("1" / "The fence…").
   const merged = [];
@@ -143,7 +189,11 @@ const PART_RE_LISTENING = /^(?:section|part)\s*(\d{1,2})\b\s*(.*)$/i;
 function partHeading(line, skill) {
   const m = (skill === "listening" ? PART_RE_LISTENING : PART_RE_READING).exec(line);
   if (!m) return null;
-  const rest = m[2].trim();
+  // "SECTION 4        Questions 31-40": a wide gap on the page arrives
+  // as a tab, which the clean-up turns into " | " for table cells. The
+  // heading is still a heading — without this, a whole section was read
+  // as the body of the previous one and its ten questions vanished.
+  const rest = m[2].trim().replace(/^\|\s*/, "");
   if (rest === "" || /^questions?\s+\d/i.test(rest)) return { rest };
   // "PASSAGE 1 – The History of Glass" / "PASSAGE 1: …"
   const sep = /^[:.\-–—]\s*(.*)$/.exec(rest);
@@ -198,7 +248,7 @@ export function parseTest(text, skill = "reading") {
         const e = gm[2] ? +gm[2] : s;
         if (s > lastEnd) {
           group = newGroup(s, e);
-          if (gm[3]) group.lines.push(gm[3]);
+          if (gm[3]) group.lines.push(gm[3].replace(/^\|\s*/, ""));
           part.groups.push(group);
           lastEnd = e;
         }
@@ -225,7 +275,7 @@ export function parseTest(text, skill = "reading") {
       if (s > lastEnd || inUmbrella) {
         if (!inUmbrella) umbrella = null;
         group = newGroup(s, e, inUmbrella ? umbrella.lines : []);
-        if (gm[3]) group.lines.push(gm[3]);
+        if (gm[3]) group.lines.push(gm[3].replace(/^\|\s*/, ""));
         part.groups.push(group);
         lastEnd = Math.max(lastEnd, e);
         continue;
@@ -369,7 +419,7 @@ function splitPassageSpill(lines, start, end) {
 // ---------------------------------------------------------------------
 // 3) One group: instructions, type, questions
 // ---------------------------------------------------------------------
-const INSTR_RE = /^(complete|choose|write|answer|do the following|in boxes|on your answer sheet|true\b|false\b|not given|yes\b|no\b|label|match|which|classify|look at|reading passage|the (reading )?(text|passage) has|you may use|nb\b|using no more|circle|select|what does|what do|what did|according to|one word|no more than|for each answer|identify|use the information|the (flow.?chart|table|diagram|map|plan|notes?|summary|form|sentences?|list|text|passage|boxes?)\b.*\b(below|above)\b)/i;
+const INSTR_RE = /^(complete|choose|write|answer|do the following|in boxes|on your answer sheet|true\b|false\b|not given|yes\b|no\b|lab(?:el|le)|match|which|classify|look at|reading passage|the (reading )?(text|passage) has|you may use|nb\b|using no more|circle|select|what does|what do|what did|what are|what is|according to|one word|no more than|for each answer|identify|use the information|the (flow.?chart|table|diagram|map|plan|notes?|summary|form|sentences?|list|text|passage|boxes?)\b.*\b(below|above)\b)/i;
 
 function splitInstruction(lines, start) {
   const instr = [];
@@ -418,8 +468,8 @@ export function detectType(instructionText, bodyLines, start, end) {
 
   if (/not given/.test(t) && /\byes\b/.test(t)) return { type: "ynng" };
   if (/not given/.test(t)) return { type: "tfng" };
-  if (/label the (map|plan)/.test(t)) return { type: "map" };
-  if (/label the diagram/.test(t)) return { type: letterRange(instructionText) && /letter/.test(t) ? "map" : "diagram" };
+  if (/lab(?:el|le) the (map|plan)/.test(t)) return { type: "map" };
+  if (/lab(?:el|le) the diagram/.test(t)) return { type: letterRange(instructionText) && /letter/.test(t) ? "map" : "diagram" };
   if (/heading/.test(t)) return { type: "headings" };
   if (/correct ending|sentence endings?/.test(t)) return { type: "endings" };
   if (/complete the (summary|paragraph)/.test(t)) {
