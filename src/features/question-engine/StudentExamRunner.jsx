@@ -15,6 +15,8 @@ import { useExamTimer, ExamTimerDisplay } from "./ExamTimer";
 import { useListeningAudio, ListeningAudioBar } from "./ListeningAudio";
 import { GroupImage } from "./GroupImage";
 import { useIsCompact, useVisualViewportHeight, useKeepFocusVisible } from "./useViewport";
+import { useInvigilation } from "./useInvigilation";
+import { InvigilationOverlay } from "./InvigilationOverlay";
 
 // The countdown comes from useExamTimer: the start time is written once
 // by the server (when the student presses Start) and the remaining time
@@ -73,6 +75,10 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
   const questionsPanelRef = useRef(null);
   const [visibleNum, setVisibleNum] = useState(null);
   const [started, setStarted] = useState(false);
+  // Invigilation: awake only once the paper has really started and
+  // while it is still being sat. The server decides whether this paper
+  // is watched at all — a class assignment never is.
+  const invig = useInvigilation(assignmentId, started && results === null && !timeOver);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [className, setClassName] = useState("");
   const [audioOpen, setAudioOpen] = useState(false);
@@ -206,7 +212,12 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
     setStarting(true);
     const ok = await timer.start();
     setStarting(false);
-    if (ok) setStarted(true);
+    if (ok) {
+      setStarted(true);
+      // Must happen inside the click: browsers refuse a fullscreen
+      // asked for at any other moment.
+      invig.enterFullscreen();
+    }
     else setStartError("The exam could not be started. Check your connection and try again.");
   }
 
@@ -300,6 +311,7 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
     }
 
     setSubmitting(true);
+    invig.stopWatching();   // we are leaving the paper on purpose
     const { error } = await supabase.rpc("submit_student_answers", {
       p_assignment_id: assignmentId,
       p_answers: payload,
@@ -529,6 +541,7 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
 
   return (
     <div className={`wf-overlay qe-exam-shell ${compact ? "qe-compact" : ""}`}>
+      <InvigilationOverlay invig={invig} />
       <div className="qe-exam-layout">
         {/* On a small screen the panel slides over the page instead of
             taking a fixed column; tapping the dark backdrop closes it. */}
@@ -576,7 +589,7 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
                 </button>
               )}
 
-              <button className="qe-exam-sidebar-exit" onClick={() => setScreen({ name: "home" })}>
+              <button className="qe-exam-sidebar-exit" onClick={() => { invig.stopWatching(); setScreen({ name: "home" }); }}>
                 <ArrowLeft size={14} /> Exit
               </button>
             </div>
