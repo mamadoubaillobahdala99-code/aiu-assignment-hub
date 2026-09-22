@@ -1,0 +1,90 @@
+/* ---------- Exam sessions (teacher) ---------- */
+
+.ex-list { display: flex; flex-direction: column; gap: 8px; margin-top: 18px; }
+.ex-row { display: flex; align-items: center; gap: 14px; background: var(--paper-raised); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; cursor: pointer; transition: border-color .15s; }
+.ex-row:hover { border-color: var(--teal); }
+.ex-row-main { flex: 1; min-width: 0; }
+.ex-row-title { font-weight: 600; font-size: 14.5px; }
+.ex-row-sub { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; margin-top: 4px; font-size: 12px; color: var(--ink-soft); }
+.ex-row-sub span { display: inline-flex; align-items: center; gap: 4px; }
+.ex-code { font-family: 'IBM Plex Mono', monospace; font-weight: 700; letter-spacing: 0.08em; color: var(--ink); background: var(--paper); border: 1px solid var(--line); border-radius: 5px; padding: 1px 7px; }
+
+.ex-badge { font-size: 11.5px; font-weight: 700; padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+.ex-badge-draft { background: var(--paper); color: var(--ink-soft); border: 1px solid var(--line); }
+.ex-badge-live { background: var(--teal-soft); color: var(--teal); }
+.ex-badge-closed { background: var(--amber-soft); color: var(--amber); }
+.ex-badge-done { background: var(--teal); color: #fff; }
+
+.ex-statusline { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 4px 0 18px; }
+.ex-status-note { font-size: 13px; color: var(--ink-soft); }
+.ex-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+
+.ex-items { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.ex-item { display: flex; align-items: center; gap: 12px; background: var(--paper-raised); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+.ex-item-order { width: 26px; height: 26px; flex-shrink: 0; border-radius: 50%; background: var(--ink); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 12.5px; font-weight: 700; }
+.ex-item-icon { flex-shrink: 0; color: var(--ink-soft); }
+.ex-item-main { flex: 1; min-width: 0; }
+.ex-item-title { font-weight: 600; font-size: 14px; }
+.ex-item-sub { font-size: 12px; color: var(--ink-soft); margin-top: 2px; }
+.ex-item-tools { display: flex; gap: 4px; flex-shrink: 0; }
+.ex-icon-btn { width: 28px; height: 28px; border-radius: 6px; border: 1px solid var(--line); background: var(--paper); color: var(--ink-soft); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; }
+.ex-icon-btn:hover:not(:disabled) { border-color: var(--teal); color: var(--teal); }
+.ex-icon-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+.ex-icon-danger:hover:not(:disabled) { border-color: var(--rose); color: var(--rose); }
+.ex-audio-btn { flex-shrink: 0; }
+.ex-audio-btn.is-done { color: var(--teal); border-color: var(--teal); }
+
+.ex-settings { display: flex; flex-direction: column; gap: 16px; margin-top: 12px; }
+.ex-setting { display: flex; align-items: flex-start; gap: 10px; font-size: 13.5px; }
+.ex-setting input[type="checkbox"] { margin-top: 3px; width: 16px; height: 16px; accent-color: var(--teal); flex-shrink: 0; }
+.ex-setting strong { display: block; font-weight: 600; }
+.ex-setting em { display: block; font-style: normal; font-size: 12.5px; color: var(--ink-soft); margin-top: 3px; line-height: 1.5; }
+.ex-setting-radio { flex-direction: column; gap: 7px; }
+.ex-setting-radio label { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.ex-setting-radio input { accent-color: var(--teal); }
+.ex-setting-times { flex-direction: column; gap: 8px; }
+.ex-time-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.ex-time-row .field-label { margin: 0; }
+.ex-time-row .field-input { width: auto; min-width: 210px; }
+
+.ex-people { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.ex-person { display: inline-flex; align-items: center; gap: 8px; background: var(--paper-raised); border: 1px solid var(--line); border-radius: 999px; padding: 5px 12px 5px 5px; font-size: 13px; }
+.ex-person-pick { cursor: pointer; font-family: inherit; }
+.ex-person-pick:hover { border-color: var(--teal); }
+.ex-owner { font-size: 11px; color: var(--teal); font-weight: 700; }
+.ex-joined { font-size: 11.5px; color: var(--ink-soft); }
+.ex-count { font-weight: 400; color: var(--ink-soft); }
+
+.ex-build-list { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.ex-build { display: flex; align-items: flex-start; gap: 12px; text-align: left; background: var(--paper-raised); border: 1px solid var(--line); border-radius: 10px; padding: 13px 15px; cursor: pointer; font-family: inherit; color: var(--ink); }
+.ex-build:hover { border-color: var(--teal); }
+.ex-build svg { flex-shrink: 0; margin-top: 2px; color: var(--ink-soft); }
+.ex-build:hover svg { color: var(--teal); }
+.ex-build strong { display: block; font-size: 14px; font-weight: 600; }
+.ex-build em { display: block; font-style: normal; font-size: 12.5px; color: var(--ink-soft); margin-top: 2px; line-height: 1.45; }
+
+/* ---------- Exam session (student) ---------- */
+
+.exs-banner { display: flex; align-items: flex-start; gap: 12px; background: var(--paper-raised); border: 1px solid var(--line); border-left: 3px solid var(--ink-soft); border-radius: 10px; padding: 14px 16px; margin-top: 4px; }
+.exs-banner svg { flex-shrink: 0; margin-top: 2px; color: var(--ink-soft); }
+.exs-banner strong { display: block; font-size: 14px; font-weight: 600; }
+.exs-banner em { display: block; font-style: normal; font-size: 12.5px; color: var(--ink-soft); margin-top: 4px; line-height: 1.55; }
+.exs-banner-end { border-left-color: var(--teal); background: var(--teal-soft); }
+.exs-banner-end svg { color: var(--teal); }
+.exs-banner-done { border-left-color: var(--teal); }
+.exs-banner-done svg { color: var(--teal); }
+
+.exs-item.is-next { border-color: var(--teal); box-shadow: 0 0 0 1px var(--teal); }
+.exs-item.is-done { opacity: 0.72; }
+.exs-state { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; font-size: 12.5px; font-weight: 600; color: var(--ink-soft); white-space: nowrap; }
+.exs-state-done { color: var(--teal); }
+
+@media (max-width: 760px) {
+  .ex-item-tools { flex-direction: column; }
+  .ex-time-row .field-input { min-width: 0; width: 100%; }
+  .ex-row { padding: 12px; gap: 10px; }
+  /* On a phone the paper's button drops onto its own line instead of
+     squeezing the title into two characters. */
+  .exs-item { flex-wrap: wrap; }
+  .exs-item .btn-primary, .exs-item .btn-ghost, .exs-state { width: 100%; justify-content: center; margin-top: 4px; }
+}
