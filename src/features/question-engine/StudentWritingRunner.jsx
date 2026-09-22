@@ -4,6 +4,8 @@ import { ArrowLeft, GripVertical, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Ro
 import { supabase } from "../../supabaseClient";
 import { WritingEditor } from "./WritingEditor";
 import { useExamTimer, ExamTimerDisplay } from "./ExamTimer";
+import { useInvigilation } from "./useInvigilation";
+import { InvigilationOverlay } from "./InvigilationOverlay";
 import { useIsCompact, useVisualViewportHeight } from "./useViewport";
 
 // Structured Writing — student exam screen.
@@ -27,6 +29,9 @@ export function StudentWritingRunner({ userId, assignmentId, setScreen, showToas
   const [drafts, setDrafts] = useState({}); // sectionId -> { html, words }
   const [activeIndex, setActiveIndex] = useState(0);
   const [started, setStarted] = useState(false);
+  // Invigilation — see useInvigilation.js. Silent outside an exam.
+  const [submittedNow, setSubmittedNow] = useState(false);
+  const invig = useInvigilation(assignmentId, started && !submittedNow);
   const [startError, setStartError] = useState("");
   const [starting, setStarting] = useState(false);
   const autoSubmittedRef = useRef(false);
@@ -192,8 +197,11 @@ export function StudentWritingRunner({ userId, assignmentId, setScreen, showToas
     setStarting(true);
     const ok = await timer.start();
     setStarting(false);
-    if (ok) setStarted(true);
-    else setStartError("The exam could not be started. Check your connection and try again.");
+    if (ok) {
+      setStarted(true);
+      // Inside the click, or the browser refuses.
+      invig.enterFullscreen();
+    } else setStartError("The exam could not be started. Check your connection and try again.");
   }
 
   // Already started earlier (refresh, other device): back to the exam directly.
@@ -222,6 +230,8 @@ export function StudentWritingRunner({ userId, assignmentId, setScreen, showToas
       showToast?.("Your latest text could not be saved. Check your internet connection and try again.");
       return;
     }
+    setSubmittedNow(true);
+    invig.stopWatching();   // leaving the paper on purpose
     const { error } = await supabase.rpc("submit_writing", { p_assignment_id: assignmentId });
     if (error) {
       setSubmitting(false);
@@ -238,6 +248,7 @@ export function StudentWritingRunner({ userId, assignmentId, setScreen, showToas
   submitAllRef.current = submitAll;
 
   async function exitExam() {
+    invig.stopWatching();
     await flushSaves();
     setScreen({ name: "home" });
   }
@@ -361,6 +372,7 @@ export function StudentWritingRunner({ userId, assignmentId, setScreen, showToas
 
   return (
     <div className={`wf-overlay qe-exam-shell ${compact ? "qe-compact" : ""}`}>
+      <InvigilationOverlay invig={invig} />
       <div className="qe-exam-layout">
         {compact && sidebarOpen && <div className="qe-exam-drawer-backdrop" onClick={() => setSidebarOpen(false)} />}
         <aside className={`qe-exam-sidebar ${sidebarOpen ? "" : "collapsed"} ${compact ? "qe-exam-drawer" : ""}`}>
