@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { BookOpen, Users, Plus, Check, Clock, AlertTriangle, LogOut, GraduationCap, FileText, ChevronRight, X, Copy, CheckCircle2, Headphones, PenLine, Mic, ListChecks, ArrowLeft, Loader2, Timer, Highlighter, Trash2, Pencil } from "lucide-react";
+import { BookOpen, Users, Plus, Check, Clock, AlertTriangle, LogOut, GraduationCap, FileText, ChevronRight, X, Copy, CheckCircle2, Headphones, PenLine, Mic, ListChecks, ArrowLeft, Loader2, Timer, Highlighter, Trash2, Pencil , Eye } from "lucide-react";
 import { supabase } from "../../supabaseClient";
 import { uid, makeCode, TYPES, fmtDate, fmtDueDateTime, daysUntil, wordCount, isPdfUrl } from "../../lib/utils";
 import { PageHeader, EmptyState, CenterSpinner, StatusBadge } from "../../components/shared";
 import { TeacherQuestionEngineReview } from "../question-engine/TeacherQuestionEngineReview";
 import { TeacherWritingReview } from "../question-engine/TeacherWritingReview";
+import { TeacherPaperPreview } from "../question-engine/TeacherPaperPreview";
 import { deleteUnusedSpeakingFiles } from "../question-engine/speaking";
 
 const CRITERIA = [
@@ -15,7 +16,15 @@ const CRITERIA = [
 ];
 
 
-export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen, showToast }) {
+// returnTo / examLocked: this screen is now also reached from an exam.
+//   returnTo  — where "Back" goes. Without it, Back would open the exam's
+//               private container as if it were a class.
+//   examLocked — the exam is running. Editing a paper deletes its
+//               questions to rewrite them, which would wipe the whole
+//               room's work, so Edit and Delete disappear. Preview and
+//               Duplicate stay. The database refuses it too (a trigger),
+//               this only spares the teacher the error.
+export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen, showToast, returnTo, examLocked }) {
   const [assignment, setAssignment] = useState(null);
   const [roster, setRoster] = useState([]);
   const [isStructured, setIsStructured] = useState(false);
@@ -33,6 +42,8 @@ export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen,
   const [showDuplicate, setShowDuplicate] = useState(false);
   const [duplicateTargetClass, setDuplicateTargetClass] = useState("");
   const [duplicating, setDuplicating] = useState(false);
+  // Reading the paper itself, with its answer key — no student needed.
+  const [previewing, setPreviewing] = useState(false);
 
   const load = useCallback(async () => {
     const { data: a } = await supabase.from("assignments").select("*").eq("id", assignmentId).single();
@@ -120,7 +131,7 @@ export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen,
       return;
     }
     showToast("Assignment deleted");
-    setScreen({ name: "class", classId });
+    setScreen(returnTo || { name: "class", classId });
   }
 
   // Deep-copies the whole assignment — Parts, groups, questions, answer
@@ -248,6 +259,10 @@ export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen,
     );
   }
 
+  if (previewing) {
+    return <TeacherPaperPreview assignmentId={assignmentId} onBack={() => setPreviewing(false)} />;
+  }
+
   const meta = TYPES[assignment.type] || TYPES.Other;
   const Icon = meta.icon;
 
@@ -292,9 +307,16 @@ export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen,
   return (
     <div className="page page-wide">
       <div className="row-right" style={{ justifyContent: "space-between", marginBottom: 4 }}>
-        <button className="back-link" onClick={() => setScreen({ name: "class", classId })}><ArrowLeft size={14} /> Back to class</button>
+        <button className="back-link" onClick={() => setScreen(returnTo || { name: "class", classId })}>
+          <ArrowLeft size={14} /> {returnTo ? "Back to the exam" : "Back to class"}
+        </button>
         <div style={{ display: "flex", gap: 8 }}>
           {isStructured && (
+            <button className="btn-ghost" onClick={() => setPreviewing(true)}>
+              <Eye size={13} /> Preview
+            </button>
+          )}
+          {isStructured && !examLocked && (
             <button
               className="btn-ghost"
               onClick={() =>
@@ -309,6 +331,7 @@ export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen,
                       : "reading-builder",
                   classId,
                   editAssignmentId: assignmentId,
+                  returnTo,
                 })
               }
             >
@@ -320,9 +343,11 @@ export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen,
               <Copy size={13} /> Duplicate to another class
             </button>
           )}
-          <button className="btn-ghost delete-assignment-btn" disabled={deleting} onClick={handleDelete}>
-            <Trash2 size={13} /> {deleting ? "Checking…" : "Delete assignment"}
-          </button>
+          {!examLocked && (
+            <button className="btn-ghost delete-assignment-btn" disabled={deleting} onClick={handleDelete}>
+              <Trash2 size={13} /> {deleting ? "Checking…" : "Delete assignment"}
+            </button>
+          )}
         </div>
       </div>
 
