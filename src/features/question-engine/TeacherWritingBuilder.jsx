@@ -25,7 +25,10 @@ export function TeacherWritingBuilder({ classId, teacherId, setScreen, showToast
   const [title, setTitle] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [dueTime, setDueTime] = useState("");
-  const [timeLimit, setTimeLimit] = useState(""); // empty = no timer (the teacher adds one only if wanted)
+  // A time limit is now required: an exam paper without one would run
+  // forever. New assignments start at the usual IELTS duration; the
+  // teacher can change it, but not leave it empty.
+  const [timeLimit, setTimeLimit] = useState(editAssignmentId ? "" : "60");
   const [task1, setTask1] = useState(emptyTask());
   const [task2, setTask2] = useState(emptyTask());
   const [fileInputKey, setFileInputKey] = useState(0);
@@ -103,6 +106,15 @@ export function TeacherWritingBuilder({ classId, teacherId, setScreen, showToast
   async function publish() {
     setError("");
     if (!canPublish) return;
+
+    // A paper with no time limit would never end — and inside an exam
+    // the next paper would never unlock. Required, for every skill that
+    // is actually sat under a clock.
+    const minutes = parseInt(timeLimit, 10);
+    if (!minutes || minutes < 1) {
+      setError("Set a time limit, in minutes. Students need a clock, and an exam paper without one never ends.");
+      return;
+    }
 
     const removed = [
       !task1.include && task1.sectionId ? "Task 1" : null,
@@ -239,8 +251,8 @@ export function TeacherWritingBuilder({ classId, teacherId, setScreen, showToast
           <input type="time" className="field-input" value={dueTime} onChange={(e) => setDueTime(e.target.value)} />
         </div>
         <div style={{ flex: 1 }}>
-          <label className="field-label">Time limit, minutes (optional)</label>
-          <input type="number" min="1" className="field-input" placeholder="No timer" value={timeLimit} onChange={(e) => setTimeLimit(e.target.value)} />
+          <label className="field-label">Time limit, minutes</label>
+          <input type="number" min="1" className="field-input" placeholder="e.g. 60" value={timeLimit} onChange={(e) => setTimeLimit(e.target.value)} />
         </div>
       </div>
 
