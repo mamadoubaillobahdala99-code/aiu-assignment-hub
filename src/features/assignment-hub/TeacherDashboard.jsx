@@ -25,7 +25,7 @@ export function TeacherDashboard({ userId, setScreen }) {
   const load = useCallback(async () => {
     setLoading(true);
 
-    const { data: classes } = await supabase.from("classes").select("id, name").eq("teacher_id", userId);
+    const { data: classes } = await supabase.from("classes").select("id, name").eq("teacher_id", userId).eq("kind", "class");
     const classIds = (classes || []).map((c) => c.id);
 
     if (classIds.length === 0) {
