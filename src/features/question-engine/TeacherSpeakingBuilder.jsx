@@ -22,7 +22,7 @@ function emptyPart(include) {
 
 const KIND_ICON = { pdf: FileText, image: ImageIcon, audio: Music, docx: File };
 
-export function TeacherSpeakingBuilder({ classId, teacherId, setScreen, showToast, editAssignmentId }) {
+export function TeacherSpeakingBuilder({ classId, teacherId, setScreen, showToast, editAssignmentId, returnTo}) {
   const [title, setTitle] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [dueTime, setDueTime] = useState("");
@@ -213,7 +213,7 @@ export function TeacherSpeakingBuilder({ classId, teacherId, setScreen, showToas
     setPublishing(false);
     setProgress("");
     showToast?.(editAssignmentId ? "Speaking assignment updated" : "Speaking assignment published");
-    setScreen({ name: "class", classId });
+    setScreen(returnTo || { name: "class", classId });
   }
 
   if (loadingExisting) {
