@@ -106,3 +106,24 @@
   .exs-item { flex-wrap: wrap; }
   .exs-item .btn-primary, .exs-item .btn-ghost, .exs-state { width: 100%; justify-content: center; margin-top: 4px; }
 }
+
+/* ---------- Invigilation (teacher) ---------- */
+
+.ex-frozen-count { margin-left: 10px; font-size: 11.5px; font-weight: 700; color: #fff; background: var(--rose); border-radius: 999px; padding: 2px 9px; }
+.ex-frozen-list { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.ex-frozen-row { display: flex; align-items: flex-start; gap: 12px; background: var(--paper-raised); border: 1px solid var(--rose); border-left-width: 3px; border-radius: 10px; padding: 13px 15px; }
+.ex-frozen-icon { flex-shrink: 0; margin-top: 2px; color: var(--rose); }
+.ex-frozen-main { flex: 1; min-width: 0; }
+.ex-frozen-reason { margin-top: 6px; font-size: 13px; line-height: 1.5; font-style: italic; }
+.ex-frozen-nosay { color: var(--ink-soft); font-style: normal; }
+.ex-frozen-tools { display: flex; flex-wrap: wrap; gap: 8px; flex-shrink: 0; align-items: flex-start; }
+
+.exs-banner-phone { border-left-color: var(--amber); }
+.exs-banner-phone svg { color: var(--amber); }
+.exs-state-phone { color: var(--amber); }
+
+@media (max-width: 760px) {
+  .ex-frozen-row { flex-wrap: wrap; }
+  .ex-frozen-tools { width: 100%; }
+  .ex-frozen-tools .btn-primary, .ex-frozen-tools .btn-ghost { flex: 1; justify-content: center; }
+}
