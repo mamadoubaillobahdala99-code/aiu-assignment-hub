@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { BookOpen, Users, Plus, Check, Clock, AlertTriangle, LogOut, GraduationCap, FileText, ChevronRight, X, Copy, CheckCircle2, Headphones, PenLine, Mic, ListChecks, ArrowLeft, Loader2, Timer, Highlighter, Maximize, Minimize, User, Menu } from "lucide-react";
+import { BookOpen, Users, Plus, Check, Clock, AlertTriangle, LogOut, GraduationCap, FileText, ChevronRight, X, Copy, CheckCircle2, Headphones, PenLine, Mic, ListChecks, ArrowLeft, Loader2, Timer, Highlighter, Maximize, Minimize, User, Menu, ShieldCheck } from "lucide-react";
 import { TeacherHome } from "./features/assignment-hub/TeacherHome";
 import { TeacherDashboard } from "./features/assignment-hub/TeacherDashboard";
 import { ClassDetail } from "./features/assignment-hub/ClassDetail";
@@ -13,6 +13,9 @@ import { AssignmentOpenBridge } from "./features/question-engine/AssignmentOpenB
 import { TeacherReadingBuilder } from "./features/question-engine/TeacherReadingBuilder";
 import { TeacherListeningBuilder } from "./features/question-engine/TeacherListeningBuilder";
 import { TestImporter } from "./features/question-engine/TestImporter";
+import { ExamSessionsHome } from "./features/exam-sessions/ExamSessionsHome";
+import { ExamSessionDetail } from "./features/exam-sessions/ExamSessionDetail";
+import { StudentExamSession } from "./features/exam-sessions/StudentExamSession";
 import { useIsCompact } from "./features/question-engine/useViewport";
 import { TeacherWritingBuilder } from "./features/question-engine/TeacherWritingBuilder";
 import { TeacherSpeakingBuilder } from "./features/question-engine/TeacherSpeakingBuilder";
@@ -20,6 +23,7 @@ import "./features/question-engine/reading-builder.css";
 import "./features/question-engine/listening.css";
 import "./features/question-engine/writing.css";
 import "./features/question-engine/speaking.css";
+import "./features/exam-sessions/exam-sessions.css";
 
 export function Shell({ profile, setProfile, userId, onSignOut, screen, setScreen, showToast }) {
   const isTeacher = profile.role === "teacher";
@@ -91,9 +95,19 @@ export function Shell({ profile, setProfile, userId, onSignOut, screen, setScree
             {isTeacher ? <BookOpen size={17} /> : <ListChecks size={17} />}
             {isTeacher ? "My classes" : "My assignments"}
           </button>
+          {isTeacher && (
+            <button className={`nav-item ${screen.name === "exams" || screen.name === "exam-session" ? "active" : ""}`} onClick={() => setScreen({ name: "exams" })}>
+              <ShieldCheck size={17} /> Exams
+            </button>
+          )}
           {!isTeacher && (
             <button className={`nav-item ${screen.name === "student-classes" ? "active" : ""}`} onClick={() => setScreen({ name: "student-classes" })}>
               <BookOpen size={17} /> My Classes
+            </button>
+          )}
+          {!isTeacher && (
+            <button className={`nav-item ${screen.name === "student-exam" ? "active" : ""}`} onClick={() => setScreen({ name: "student-exam" })}>
+              <ShieldCheck size={17} /> Exam
             </button>
           )}
           {!isTeacher && (
@@ -124,19 +138,23 @@ export function Shell({ profile, setProfile, userId, onSignOut, screen, setScree
         </div>
         {screen.name === "dashboard" && isTeacher && <TeacherDashboard userId={userId} setScreen={setScreen} />}
         {screen.name === "reading-builder" && isTeacher && (
-          <TeacherReadingBuilder classId={screen.classId} teacherId={userId} setScreen={setScreen} showToast={showToast} editAssignmentId={screen.editAssignmentId} />
+          <TeacherReadingBuilder classId={screen.classId} teacherId={userId} setScreen={setScreen} showToast={showToast} editAssignmentId={screen.editAssignmentId} returnTo={screen.returnTo} />
         )}
         {screen.name === "listening-builder" && isTeacher && (
-          <TeacherListeningBuilder classId={screen.classId} teacherId={userId} setScreen={setScreen} showToast={showToast} editAssignmentId={screen.editAssignmentId} />
+          <TeacherListeningBuilder classId={screen.classId} teacherId={userId} setScreen={setScreen} showToast={showToast} editAssignmentId={screen.editAssignmentId} returnTo={screen.returnTo} />
         )}
         {screen.name === "test-importer" && isTeacher && (
-          <TestImporter classId={screen.classId} teacherId={userId} skill={screen.skill} setScreen={setScreen} showToast={showToast} />
+          <TestImporter classId={screen.classId} teacherId={userId} skill={screen.skill} setScreen={setScreen} showToast={showToast} returnTo={screen.returnTo} />
         )}
         {screen.name === "writing-builder" && isTeacher && (
-          <TeacherWritingBuilder classId={screen.classId} teacherId={userId} setScreen={setScreen} showToast={showToast} editAssignmentId={screen.editAssignmentId} />
+          <TeacherWritingBuilder classId={screen.classId} teacherId={userId} setScreen={setScreen} showToast={showToast} editAssignmentId={screen.editAssignmentId} returnTo={screen.returnTo} />
         )}
         {screen.name === "speaking-builder" && isTeacher && (
-          <TeacherSpeakingBuilder classId={screen.classId} teacherId={userId} setScreen={setScreen} showToast={showToast} editAssignmentId={screen.editAssignmentId} />
+          <TeacherSpeakingBuilder classId={screen.classId} teacherId={userId} setScreen={setScreen} showToast={showToast} editAssignmentId={screen.editAssignmentId} returnTo={screen.returnTo} />
+        )}
+        {screen.name === "exams" && isTeacher && <ExamSessionsHome userId={userId} setScreen={setScreen} showToast={showToast} />}
+        {screen.name === "exam-session" && isTeacher && (
+          <ExamSessionDetail sessionId={screen.sessionId} userId={userId} setScreen={setScreen} showToast={showToast} />
         )}
         {screen.name === "home" && isTeacher && <TeacherHome userId={userId} setScreen={setScreen} showToast={showToast} />}
         {screen.name === "home" && !isTeacher && <StudentHome userId={userId} setScreen={setScreen} showToast={showToast} />}
@@ -146,6 +164,7 @@ export function Shell({ profile, setProfile, userId, onSignOut, screen, setScree
         {screen.name === "student-classes" && !isTeacher && <StudentClasses userId={userId} setScreen={setScreen} />}
         {screen.name === "student-class-detail" && !isTeacher && <StudentClassDetail classId={screen.classId} userId={userId} setScreen={setScreen} showToast={showToast} />}
         {screen.name === "join" && !isTeacher && <JoinClass userId={userId} setScreen={setScreen} showToast={showToast} />}
+        {screen.name === "student-exam" && !isTeacher && <StudentExamSession userId={userId} setScreen={setScreen} showToast={showToast} />}
         {screen.name === "class" && isTeacher && <ClassDetail classId={screen.classId} setScreen={setScreen} showToast={showToast} />}
         {screen.name === "assignment-teacher" && isTeacher && (
           <AssignmentTeacher classId={screen.classId} assignmentId={screen.assignmentId} teacherId={userId} setScreen={setScreen} showToast={showToast} />
