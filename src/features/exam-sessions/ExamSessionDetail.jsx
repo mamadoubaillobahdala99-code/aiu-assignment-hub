@@ -21,6 +21,9 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
   const [staff, setStaff] = useState([]);
   const [staffOpen, setStaffOpen] = useState(false);
   const [teachers, setTeachers] = useState([]);
+  // Closing is irreversible for the candidates, so it now goes through
+  // a confirmation that first counts who is still writing.
+  const [closeAsk, setCloseAsk] = useState(null); // null | "counting" | { working, names }
 
   const load = useCallback(async () => {
     const { data: s } = await supabase.from("exam_sessions").select("*").eq("id", sessionId).maybeSingle();
@@ -76,6 +79,24 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
     if (action === "close") showToast?.("Exam closed");
     if (action === "release") showToast?.("Results published");
     if (action === "start_audio") showToast?.("Recording started for everyone");
+  }
+
+  // Who is still writing right now: a paper started, not yet handed in.
+  // Asked just before closing, so the number is the one on the screen.
+  async function askToClose() {
+    setCloseAsk("counting");
+    const ids = items.map((i) => i.assignment_id);
+    const { data, error } = ids.length
+      ? await supabase.from("exam_attempts").select("student_id, assignment_id, submitted_at").in("assignment_id", ids)
+      : { data: [], error: null };
+    if (error) {
+      // Never block the teacher because a count failed — just say so.
+      setCloseAsk({ working: null, names: [] });
+      return;
+    }
+    const busyIds = new Set((data || []).filter((a) => !a.submitted_at).map((a) => a.student_id));
+    const names = roster.filter((s) => busyIds.has(s.id)).map((s) => s.name);
+    setCloseAsk({ working: busyIds.size, names });
   }
 
   async function setSetting(patch) {
@@ -178,7 +199,7 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
           </button>
         )}
         {isLive && (
-          <button className="btn-ghost" disabled={busy === "close"} onClick={() => act("close")}>
+          <button className="btn-ghost" disabled={busy === "close" || closeAsk === "counting"} onClick={askToClose}>
             <Square size={14} /> {busy === "close" ? "Closing…" : "Close the exam"}
           </button>
         )}
@@ -330,6 +351,49 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
             <button className="ex-build" onClick={() => build("speaking-builder")}>
               <Users size={17} />
               <span><strong>Speaking</strong><em>Topics and cue cards to consult.</em></span>
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {closeAsk && closeAsk !== "counting" && (
+        <Modal title="Close the exam?" onClose={() => setCloseAsk(null)}>
+          {closeAsk.working === null ? (
+            <p className="muted-p" style={{ marginTop: 0 }}>
+              The number of candidates still writing could not be counted. Close only if
+              you are sure the room has finished.
+            </p>
+          ) : closeAsk.working === 0 ? (
+            <p className="muted-p" style={{ marginTop: 0 }}>
+              <strong>Nobody is writing right now.</strong> Closing is safe: no candidate
+              will be able to open a paper again.
+            </p>
+          ) : (
+            <>
+              <p className="muted-p" style={{ marginTop: 0 }}>
+                <strong>
+                  {closeAsk.working} candidate{closeAsk.working > 1 ? "s are" : " is"} still writing.
+                </strong>{" "}
+                If you close now, {closeAsk.working > 1 ? "they" : "he or she"} can still hand
+                in the paper already started — nothing is lost — but nobody will be able to
+                open a new one.
+              </p>
+              {closeAsk.names.length > 0 && (
+                <div className="ex-people" style={{ marginTop: 4 }}>
+                  {closeAsk.names.map((n) => (
+                    <div key={n} className="ex-person">
+                      <div className="avatar small">{n.slice(0, 1).toUpperCase()}</div>
+                      <span>{n}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+          <div className="ex-actions" style={{ marginTop: 18 }}>
+            <button className="btn-ghost" onClick={() => setCloseAsk(null)}>Cancel</button>
+            <button className="btn-primary" disabled={busy === "close"} onClick={() => { setCloseAsk(null); act("close"); }}>
+              <Square size={14} /> Close the exam
             </button>
           </div>
         </Modal>
