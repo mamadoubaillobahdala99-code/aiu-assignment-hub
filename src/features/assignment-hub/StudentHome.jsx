@@ -10,8 +10,11 @@ export function StudentHome({ userId, setScreen, showToast }) {
   const [classCount, setClassCount] = useState(0);
 
   const load = useCallback(async () => {
-    const { data: rosterRows } = await supabase.from("roster").select("class_id, classes(id, name)").eq("student_id", userId);
-    const classIds = (rosterRows || []).map((r) => r.class_id);
+    const { data: joined } = await supabase.from("roster").select("class_id, classes(id, name, kind)").eq("student_id", userId);
+    // A student who sat an exam is on that exam's private container as
+    // well. It is not a class and must never show up as one.
+    const rosterRows = (joined || []).filter((r) => r.classes?.kind !== "exam");
+    const classIds = rosterRows.map((r) => r.class_id);
     setClassCount(classIds.length);
     if (classIds.length === 0) { setItems([]); return; }
 
