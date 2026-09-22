@@ -123,7 +123,7 @@ function GroupPreview({ analysis, groupId }) {
   );
 }
 
-export function TestImporter({ classId, teacherId, skill: initialSkill = "reading", setScreen, showToast }) {
+export function TestImporter({ classId, teacherId, skill: initialSkill = "reading", setScreen, showToast, returnTo}) {
   const [skill, setSkill] = useState(initialSkill === "listening" ? "listening" : "reading");
   const [step, setStep] = useState("input"); // "input" | "preview"
   const [testText, setTestText] = useState("");
@@ -378,7 +378,7 @@ export function TestImporter({ classId, teacherId, skill: initialSkill = "readin
     setCreating(false);
     setProgress("");
     showToast?.(`${skill === "reading" ? "Reading" : "Listening"} test imported — ${totalQuestions} question${totalQuestions > 1 ? "s" : ""}`);
-    setScreen({ name: "class", classId });
+    setScreen(returnTo || { name: "class", classId });
   }
 
   // ------------------------------------------------------------------
@@ -387,7 +387,7 @@ export function TestImporter({ classId, teacherId, skill: initialSkill = "readin
   if (step === "input") {
     return (
       <div className="page page-wide">
-        <button className="btn-ghost" onClick={() => setScreen({ name: "class", classId })}><ArrowLeft size={14} /> Back to class</button>
+        <button className="btn-ghost" onClick={() => setScreen(returnTo || { name: "class", classId })}><ArrowLeft size={14} /> Back to class</button>
         <div className="eyebrow" style={{ marginTop: 12 }}>Import a test</div>
         <h1 className="page-title">Import a {skill === "reading" ? "Reading" : "Listening"} test</h1>
 
