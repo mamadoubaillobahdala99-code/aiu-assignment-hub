@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import {
   ArrowLeft, Copy, CheckCircle2, Plus, FileText, Users, Play, Square,
   Send, Trash2, ChevronUp, ChevronDown, UserPlus, X, Headphones, ShieldCheck,
-  ChevronRight, Pencil, Files,
+  ChevronRight, Pencil, Files, ShieldAlert, Unlock, RotateCcw,
 } from "lucide-react";
 import { supabase } from "../../supabaseClient";
 import { PageHeader, CenterSpinner, EmptyState, Modal } from "../../components/shared";
@@ -33,6 +33,9 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
   const [manageBusy, setManageBusy] = useState("");
   // Who has handed in what, so the room's progress is visible at a glance.
   const [progress, setProgress] = useState({});     // student_id -> Set(assignment_id)
+  // Invigilation: who has left the exam screen, and who is frozen.
+  const [board, setBoard] = useState([]);
+  const [resuming, setResuming] = useState("");
 
   const load = useCallback(async () => {
     const { data: s } = await supabase.from("exam_sessions").select("*").eq("id", sessionId).maybeSingle();
@@ -94,6 +97,36 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
   }, [sessionId]);
 
   useEffect(() => { load(); }, [load]);
+
+  // The invigilation board, refreshed on its own every 8 seconds while
+  // the exam is running — a frozen candidate is waiting in front of a
+  // dead screen, so the teacher must see it without reloading.
+  const loadBoard = useCallback(async () => {
+    const { data, error } = await supabase.rpc("exam_invigilation_board", { p_session_id: sessionId });
+    if (!error) setBoard(data || []);
+  }, [sessionId]);
+
+  useEffect(() => { loadBoard(); }, [loadBoard]);
+  useEffect(() => {
+    if (!session?.opened_at || session?.closed_at) return;
+    const id = setInterval(loadBoard, 8000);
+    return () => clearInterval(id);
+  }, [session?.opened_at, session?.closed_at, loadBoard]);
+
+  async function allowResume(studentId) {
+    setResuming(studentId);
+    const { error } = await supabase.rpc("exam_allow_resume", { p_session_id: sessionId, p_student_id: studentId });
+    setResuming("");
+    if (error) { showToast?.("Could not let this candidate back in"); return; }
+    showToast?.("Candidate let back in");
+    loadBoard();
+  }
+
+  async function resetAudio(studentId, assignmentId) {
+    const { error } = await supabase.rpc("exam_reset_audio", { p_assignment_id: assignmentId, p_student_id: studentId });
+    if (error) { showToast?.("Could not give the recording back"); return; }
+    showToast?.("Recording given back — the candidate can play it again");
+  }
 
   async function act(action, itemId) {
     setBusy(action);
@@ -242,6 +275,10 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
     );
   }
 
+  // Suspended candidates first: they are sitting in front of a dead
+  // screen waiting for this button.
+  const frozen = board.filter((c) => c.frozen);
+  const watched = board.reduce((n, c) => n + (c.incidents || 0), 0);
   const isOwner = session.created_by === userId;
   const isLive = Boolean(session.opened_at) && !session.closed_at;
   const sorted = [...items].sort((a, b) => a.order_index - b.order_index);
@@ -412,6 +449,58 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
       </div>
 
       {/* ---------- candidates ---------- */}
+      {/* ---------- invigilation ---------- */}
+      {board.length > 0 && (
+        <>
+          <div className="section-title" style={{ marginTop: 30 }}>
+            Invigilation
+            {frozen.length > 0 && <span className="ex-frozen-count">{frozen.length} suspended</span>}
+          </div>
+
+          {frozen.length === 0 ? (
+            <p className="empty-inline">
+              Nobody has left the exam screen{watched > 0 ? ` — ${watched} incident${watched > 1 ? "s" : ""} noted in all` : ""}.
+            </p>
+          ) : (
+            <div className="ex-frozen-list">
+              {frozen.map((c) => {
+                const listening = sorted.find((it) => it.assignment?.type === "Listening");
+                return (
+                  <div key={c.student_id} className="ex-frozen-row">
+                    <ShieldAlert size={17} className="ex-frozen-icon" />
+                    <div className="ex-frozen-main">
+                      <div className="ex-item-title">{c.name}</div>
+                      <div className="ex-item-sub">
+                        {c.kind === "fullscreen_exit" ? "Left full screen" : "Left the exam screen"}
+                        {c.since ? ` · ${fmtDate(c.since)}` : ""}
+                        {c.incidents > 1 ? ` · ${c.incidents} incidents in all` : ""}
+                      </div>
+                      {c.reason ? (
+                        <div className="ex-frozen-reason">“{c.reason}”</div>
+                      ) : (
+                        <div className="ex-frozen-reason ex-frozen-nosay">Has not said what happened yet.</div>
+                      )}
+                    </div>
+                    <div className="ex-frozen-tools">
+                      {listening && (
+                        <button className="btn-ghost" title="Let this candidate play the recording again"
+                                onClick={() => resetAudio(c.student_id, listening.assignment_id)}>
+                          <RotateCcw size={13} /> Give the recording back
+                        </button>
+                      )}
+                      <button className="btn-primary" disabled={resuming === c.student_id}
+                              onClick={() => allowResume(c.student_id)}>
+                        <Unlock size={14} /> {resuming === c.student_id ? "Letting in…" : "Let back in"}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </>
+      )}
+
       <div className="section-title" style={{ marginTop: 30 }}>Candidates <span className="ex-count">({roster.length})</span></div>
       {roster.length === 0 ? (
         <p className="empty-inline">Nobody has joined yet. They join with the code once the exam is open.</p>
