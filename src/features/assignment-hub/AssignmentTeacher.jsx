@@ -68,7 +68,7 @@ export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen,
     }
 
     if (teacherId) {
-      const { data: classes } = await supabase.from("classes").select("id, name").eq("teacher_id", teacherId).order("name");
+      const { data: classes } = await supabase.from("classes").select("id, name").eq("teacher_id", teacherId).eq("kind", "class").order("name");
       setMyClasses(classes || []);
     }
   }, [classId, assignmentId, teacherId]);
