@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   ShieldCheck, Lock, CheckCircle2, Play, Headphones, FileText,
-  ArrowLeft, Flag, Hourglass, MinusCircle,
+  ArrowLeft, Flag, Hourglass, MinusCircle, Smartphone,
 } from "lucide-react";
 import { supabase } from "../../supabaseClient";
 import { PageHeader, CenterSpinner } from "../../components/shared";
 import { TYPES } from "../../lib/utils";
 import { AssignmentOpenBridge } from "../question-engine/AssignmentOpenBridge";
+import { isPhoneScreen } from "../question-engine/useInvigilation";
 
 // The candidate's screen for an exam session.
 //
@@ -29,6 +30,20 @@ export function StudentExamSession({ userId, setScreen, showToast }) {
   const [code, setCode] = useState("");
   const [joining, setJoining] = useState(false);
   const [err, setErr] = useState("");
+  // A real exam is not sat on a phone: no fullscreen at all on iPhone,
+  // a keyboard over half the screen, a notification every few minutes —
+  // and the invigilation cannot do its job. Re-measured on rotation so
+  // turning the phone sideways changes nothing.
+  const [onPhone, setOnPhone] = useState(() => isPhoneScreen());
+  useEffect(() => {
+    const check = () => setOnPhone(isPhoneScreen());
+    window.addEventListener("resize", check);
+    window.addEventListener("orientationchange", check);
+    return () => {
+      window.removeEventListener("resize", check);
+      window.removeEventListener("orientationchange", check);
+    };
+  }, []);
 
   // ---------- which exams am I in? ----------
   const loadSessions = useCallback(async () => {
@@ -223,6 +238,20 @@ export function StudentExamSession({ userId, setScreen, showToast }) {
       )}
 
       {/* ---------- the papers ---------- */}
+      {onPhone && !released && !closed && (
+        <div className="exs-banner exs-banner-phone" style={{ marginTop: 16 }}>
+          <Smartphone size={18} />
+          <div>
+            <strong>An exam cannot be sat on a phone.</strong>
+            <em>
+              Use a computer or a tablet. On a phone the screen cannot be locked to the exam,
+              the keyboard hides your answers, and a notification would suspend you. You can
+              stay on this page to follow the exam.
+            </em>
+          </div>
+        </div>
+      )}
+
       <div className="section-title" style={{ marginTop: 26 }}>
         Papers <span className="ex-count">({items.filter((i) => i.submitted).length}/{items.length} handed in)</span>
       </div>
@@ -265,6 +294,8 @@ export function StudentExamSession({ userId, setScreen, showToast }) {
                   <span className="exs-state exs-state-done"><CheckCircle2 size={14} /> Handed in</span>
                 ) : waitingForRoom ? (
                   <span className="exs-state"><Headphones size={14} /> Your teacher starts the recording</span>
+                ) : it.readable && onPhone ? (
+                  <span className="exs-state exs-state-phone"><Smartphone size={14} /> Computer or tablet only</span>
                 ) : it.readable ? (
                   <button
                     className={isNext ? "btn-primary" : "btn-ghost"}
