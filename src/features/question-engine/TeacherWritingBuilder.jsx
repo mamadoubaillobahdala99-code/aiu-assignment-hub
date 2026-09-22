@@ -21,7 +21,7 @@ function emptyTask() {
   return { include: true, sectionId: null, prompt: "", imageUrl: "", imageFile: null, imagePreview: "" };
 }
 
-export function TeacherWritingBuilder({ classId, teacherId, setScreen, showToast, editAssignmentId }) {
+export function TeacherWritingBuilder({ classId, teacherId, setScreen, showToast, editAssignmentId, returnTo}) {
   const [title, setTitle] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [dueTime, setDueTime] = useState("");
@@ -208,7 +208,7 @@ export function TeacherWritingBuilder({ classId, teacherId, setScreen, showToast
 
     setPublishing(false);
     showToast?.(editAssignmentId ? "Writing assignment updated" : "Writing assignment published");
-    setScreen({ name: "class", classId });
+    setScreen(returnTo || { name: "class", classId });
   }
 
   if (loadingExisting) {
