@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   ShieldCheck, Lock, CheckCircle2, Play, Headphones, FileText,
-  ArrowLeft, Flag, Hourglass,
+  ArrowLeft, Flag, Hourglass, MinusCircle,
 } from "lucide-react";
 import { supabase } from "../../supabaseClient";
 import { PageHeader, CenterSpinner } from "../../components/shared";
@@ -252,7 +252,12 @@ export function StudentExamSession({ userId, setScreen, showToast }) {
                   </div>
                 </div>
 
-                {released ? (
+                {/* A paper that was never handed in has no result to show
+                    and nothing to open — the exam is over. Offering it
+                    would put the candidate back inside the paper. */}
+                {(released || closed) && !it.submitted ? (
+                  <span className="exs-state"><MinusCircle size={14} /> Not handed in</span>
+                ) : released ? (
                   <button className="btn-ghost" onClick={() => setOpenPaper({ assignmentId: it.assignment_id })}>
                     See my result
                   </button>
