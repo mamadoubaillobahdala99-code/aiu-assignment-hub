@@ -12,9 +12,10 @@ export function StudentClasses({ userId, setScreen }) {
     setLoading(true);
     const { data } = await supabase
       .from("roster")
-      .select("class_id, joined_at, classes(name, profiles(name))")
+      .select("class_id, joined_at, classes(name, kind, profiles(name))")
       .eq("student_id", userId);
-    setClasses(data || []);
+    // Exam containers are not classes — they never appear in this list.
+    setClasses((data || []).filter((r) => r.classes?.kind !== "exam"));
     setLoading(false);
   }, [userId]);
 
