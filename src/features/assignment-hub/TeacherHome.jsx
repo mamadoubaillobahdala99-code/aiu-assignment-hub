@@ -11,7 +11,7 @@ export function TeacherHome({ userId, setScreen, showToast }) {
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
-    const { data } = await supabase.from("classes").select("*").eq("teacher_id", userId).order("created_at", { ascending: false });
+    const { data } = await supabase.from("classes").select("*").eq("teacher_id", userId).eq("kind", "class").order("created_at", { ascending: false });
     setClasses(data || []);
   }, [userId]);
 
