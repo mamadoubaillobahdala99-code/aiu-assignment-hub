@@ -150,10 +150,16 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
     load();
   }
 
+  // The teacher list cannot be read from profiles: since the security
+  // work, a profile is only visible to someone who shares a class with
+  // it, so two teachers with their own classes never see each other and
+  // this window came up empty. The database hands the list over only to
+  // a teacher of this exam, and only for this exam.
   async function openStaff() {
-    const { data } = await supabase.from("profiles").select("id, name").eq("role", "teacher").order("name");
-    setTeachers(data || []);
     setStaffOpen(true);
+    setTeachers(null);
+    const { data, error } = await supabase.rpc("list_invitable_teachers", { p_session_id: sessionId });
+    setTeachers(error ? [] : data || []);
   }
   async function addStaff(teacherId) {
     const { error } = await supabase.from("exam_session_staff").insert({ session_id: sessionId, teacher_id: teacherId, role: "co" });
@@ -576,8 +582,12 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
             An invited teacher can watch the exam, let a candidate back in, and mark the papers.
             Only you can delete the exam.
           </p>
-          {teachers.filter((t) => !staff.some((s) => s.id === t.id)).length === 0 ? (
-            <p className="empty-inline">No other teacher to invite.</p>
+          {teachers === null ? (
+            <p className="empty-inline">Loading…</p>
+          ) : teachers.filter((t) => !staff.some((s) => s.id === t.id)).length === 0 ? (
+            <p className="empty-inline">
+              Nobody else to invite — every teacher of this school is already on this exam.
+            </p>
           ) : (
             <div className="ex-people" style={{ marginTop: 12 }}>
               {teachers.filter((t) => !staff.some((s) => s.id === t.id)).map((t) => (
