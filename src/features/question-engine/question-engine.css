@@ -236,3 +236,16 @@ body.qe-resizing { user-select: none; cursor: col-resize; }
   .qe-confirm-chip { min-width: 40px; height: 36px; }
   .qe-passage-title { font-size: 18px; }
 }
+
+/* ---------- Exam suspended (invigilation) ----------
+   Covers the whole paper. Nothing behind it can be reached until a
+   teacher allows the restart — and the clock keeps running. */
+.qe-frozen { position: fixed; inset: 0; z-index: 2000; background: rgba(20, 20, 22, 0.93); display: flex; align-items: center; justify-content: center; padding: 20px; }
+.qe-frozen-card { width: 100%; max-width: 440px; background: var(--paper-raised); border-radius: 14px; padding: 28px 26px; text-align: center; box-shadow: 0 18px 50px rgba(0,0,0,.4); }
+.qe-frozen-icon { color: var(--rose); }
+.qe-frozen-title { font-size: 21px; font-weight: 700; margin: 10px 0 4px; }
+.qe-frozen-why { font-size: 14px; color: var(--ink-soft); margin: 0; }
+.qe-frozen-clock { font-size: 13.5px; line-height: 1.6; margin: 16px 0 0; }
+.qe-frozen-input { width: 100%; resize: vertical; font-size: 16px; }
+.qe-frozen-card .field-label { display: block; text-align: left; }
+.qe-frozen-waiting { display: flex; align-items: center; justify-content: center; gap: 9px; margin-top: 20px; font-size: 13.5px; color: var(--ink-soft); }
