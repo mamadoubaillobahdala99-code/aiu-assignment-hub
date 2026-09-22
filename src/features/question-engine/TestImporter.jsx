@@ -131,7 +131,10 @@ export function TestImporter({ classId, teacherId, skill: initialSkill = "readin
   const [title, setTitle] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [dueTime, setDueTime] = useState("");
-  const [timeLimit, setTimeLimit] = useState("");
+  // A time limit is now required: an exam paper without one would run
+  // forever. New assignments start at the usual IELTS duration; the
+  // teacher can change it, but not leave it empty.
+  const [timeLimit, setTimeLimit] = useState(initialSkill === "listening" ? "40" : "60");
   const [autoReleaseScore, setAutoReleaseScore] = useState(true);
   const [showAnswerReview, setShowAnswerReview] = useState(true);
   const [parts, setParts] = useState([]);
@@ -240,6 +243,13 @@ export function TestImporter({ classId, teacherId, skill: initialSkill = "readin
     if (!canCreate) return;
     setCreating(true);
     setError("");
+
+    const minutes = parseInt(timeLimit, 10);
+    if (!minutes || minutes < 1) {
+      setCreating(false);
+      setError("Set a time limit, in minutes. Students need a clock, and an exam paper without one never ends.");
+      return;
+    }
     const createdQuestionIds = [];
     let assignmentId = null;
 
@@ -465,8 +475,8 @@ export function TestImporter({ classId, teacherId, skill: initialSkill = "readin
           <input type="time" className="field-input" value={dueTime} onChange={(e) => setDueTime(e.target.value)} />
         </div>
         <div style={{ flex: "1 1 200px" }}>
-          <label className="field-label">Time limit, minutes (optional)</label>
-          <input type="number" min="1" className="field-input" placeholder="No timer" value={timeLimit} onChange={(e) => setTimeLimit(e.target.value)} />
+          <label className="field-label">Time limit, minutes</label>
+          <input type="number" min="1" className="field-input" placeholder="e.g. 60" value={timeLimit} onChange={(e) => setTimeLimit(e.target.value)} />
         </div>
       </div>
       <label className="checkbox-row" style={{ marginTop: 14 }}>
