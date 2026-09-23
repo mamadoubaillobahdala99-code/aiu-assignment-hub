@@ -16,7 +16,7 @@ import { useListeningAudio, ListeningAudioBar } from "./ListeningAudio";
 import { GroupImage } from "./GroupImage";
 import { useIsCompact, useVisualViewportHeight, useKeepFocusVisible } from "./useViewport";
 import { useInvigilation } from "./useInvigilation";
-import { ExamStripButtons, ExamFullscreenButton } from "./ExamSidebarButtons";
+import { ExamStripButtons, ExamFullscreenButton, ExamExitButton } from "./ExamSidebarButtons";
 import { InvigilationOverlay } from "./InvigilationOverlay";
 
 // The countdown comes from useExamTimer: the start time is written once
@@ -560,6 +560,7 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
 
           {!compact && !sidebarOpen && (
             <ExamStripButtons
+              showExit={!invig.watched}
               showSubmit={results === null}
               submitting={submitting}
               onSubmit={() => setConfirmOpen(true)}
@@ -601,9 +602,7 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
                 </button>
               )}
 
-              <button className="qe-exam-sidebar-exit" onClick={() => { invig.stopWatching(); setScreen({ name: "home" }); }}>
-                <ArrowLeft size={14} /> Exit
-              </button>
+              <ExamExitButton invig={invig} onExit={() => { invig.stopWatching(); setScreen({ name: "home" }); }} />
             </div>
           )}
         </aside>
