@@ -25,8 +25,44 @@ import "./features/question-engine/writing.css";
 import "./features/question-engine/speaking.css";
 import "./features/exam-sessions/exam-sessions.css";
 
-export function Shell({ profile, setProfile, userId, onSignOut, screen, setScreen, showToast }) {
+// Every screen the app can show, and who is allowed on it. Since the
+// screen now travels in the address bar (see App.jsx), anyone can type a
+// name in there: without this, a student landing on a teacher's screen —
+// or on a name that no longer exists — would simply get a blank page,
+// because no branch below would match.
+//
+// App reads this when it decodes the address, so a forbidden name never
+// becomes the current screen in the first place. The same check is made
+// again here, on every render, as a plain safety net — and as a net
+// only: correcting from here with a setState fought the browser's own
+// hashchange, which arrives just afterwards and put the bad screen
+// straight back, over and over.
+export const SCREEN_ROLES = {
+  home: "both",
+  profile: "both",
+  dashboard: "teacher",
+  class: "teacher",
+  "assignment-teacher": "teacher",
+  "reading-builder": "teacher",
+  "listening-builder": "teacher",
+  "writing-builder": "teacher",
+  "speaking-builder": "teacher",
+  "test-importer": "teacher",
+  exams: "teacher",
+  "exam-session": "teacher",
+  join: "student",
+  "student-classes": "student",
+  "student-class-detail": "student",
+  "assignment-student": "student",
+  "student-exam": "student",
+};
+
+export function Shell({ profile, setProfile, userId, onSignOut, screen: rawScreen, setScreen, showToast }) {
   const isTeacher = profile.role === "teacher";
+
+  const role = SCREEN_ROLES[rawScreen?.name];
+  const allowed = role === "both" || (role === "teacher") === isTeacher;
+  const screen = role && allowed ? rawScreen : { name: "home" };
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   // On a phone the blue menu no longer fits across the top: it needed
