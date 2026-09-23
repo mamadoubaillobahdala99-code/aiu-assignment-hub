@@ -1,37 +1,37 @@
-import React, { useRef } from "react";
+import React from "react";
 import { Check, X as XIcon } from "lucide-react";
 import { HighlightableText } from "./HighlightableText";
-import { useElementWidth } from "./useViewport";
+import { useIsPhone } from "./useViewport";
 
-// How much room the sentence needs before the grid stops being a good
-// idea, and how much each letter column costs (see matching.css).
+// The grid is the real thing — it is what an IELTS paper looks like, and
+// it stays on every screen big enough to hold a mouse: tablet and
+// computer, always. When the questions panel is too narrow for it, it
+// SLIDES sideways with the sentence column pinned, rather than squeezing
+// the sentence (see matching.css).
 //
-// Below the sum of the two, the grid used to keep every letter column at
-// its full 46px and take the whole shortfall out of the sentence: on a
-// phone with eight options the sentence column reached ZERO pixels and
-// one question ran 950px down the screen, one letter per line. Measured,
-// not guessed. The same thing happened on a computer as soon as the
-// splitter was pushed far enough — which is why this is measured on the
-// panel and not on the window.
-const MIN_PROMPT_PX = 220;
-const CELL_PX = 46;
+// Only a phone gets the stacked layout instead. Sliding a grid with a
+// thumb, on a screen where the pinned sentence would already eat half
+// the width, is not worth defending; and a phone is barred from a real
+// exam anyway, so nothing there has to look like the paper.
+//
+// An earlier version decided this from the width of the PANEL. It read
+// the crushing correctly but drew the wrong conclusion: the questions
+// panel is narrow by design — it is 44% of the screen next to the
+// passage — so on an ordinary 1280px laptop even a four-option grid
+// turned into a list. The panel being tight is normal; it is what
+// sliding is for.
 
 // questions: the group's questions, each sharing the same options.choices
 // bank (every question in a matching group carries its own identical
 // copy of the bank — same convention as multiple_choice/multiple_selection).
 export function MatchingGrid({ questions, answers, onChange, results, disabled, startNumber = 1, assignmentId, userId, correctAnswers }) {
-  const wrapRef = useRef(null);
-  const width = useElementWidth(wrapRef);
+  const stacked = useIsPhone();
 
   if (questions.length === 0) return null;
   const choices = questions[0].options?.choices || [];
   // Map/plan labelling: the letters are on the image itself, so the
   // choices have no text and the legend is not shown.
   const legend = choices.filter((c) => c.text && c.text.trim());
-
-  // null = not measured yet: assume there is room, so a computer never
-  // flashes the narrow layout on the first paint.
-  const stacked = width !== null && width < MIN_PROMPT_PX + CELL_PX * choices.length;
 
   // The number, the sentence, and — on a review screen — the verdict and
   // the right answer. Identical in both layouts, so a correction reads
@@ -59,7 +59,7 @@ export function MatchingGrid({ questions, answers, onChange, results, disabled, 
   }
 
   return (
-    <div className="qe-matching-wrap" ref={wrapRef}>
+    <div className="qe-matching-wrap">
       {legend.length > 0 && (
         <ul className="qe-matching-legend">
           {legend.map((c) => (
@@ -101,37 +101,41 @@ export function MatchingGrid({ questions, answers, onChange, results, disabled, 
           })}
         </div>
       ) : (
-        <table className="qe-matching-grid">
-          <thead>
-            <tr>
-              <th></th>
-              {choices.map((c) => (
-                <th key={c.letter}>{c.letter}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {questions.map((q, i) => {
-              const num = startNumber + i;
-              return (
-                <tr key={q.id} id={`question-${num}`}>
-                  <td className="qe-matching-prompt">{promptBody(q, num)}</td>
-                  {choices.map((c) => (
-                    <td key={c.letter} className="qe-matching-cell">
-                      <input
-                        type="radio"
-                        name={`q-${q.id}`}
-                        checked={answers[q.id] === c.letter}
-                        onChange={() => onChange(q.id, c.letter)}
-                        disabled={disabled}
-                      />
-                    </td>
-                  ))}
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+        // Slides sideways when the panel is narrower than the grid,
+        // instead of the sentence column being squeezed to nothing.
+        <div className="qe-matching-scroll">
+          <table className="qe-matching-grid">
+            <thead>
+              <tr>
+                <th></th>
+                {choices.map((c) => (
+                  <th key={c.letter}>{c.letter}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {questions.map((q, i) => {
+                const num = startNumber + i;
+                return (
+                  <tr key={q.id} id={`question-${num}`}>
+                    <td className="qe-matching-prompt">{promptBody(q, num)}</td>
+                    {choices.map((c) => (
+                      <td key={c.letter} className="qe-matching-cell">
+                        <input
+                          type="radio"
+                          name={`q-${q.id}`}
+                          checked={answers[q.id] === c.letter}
+                          onChange={() => onChange(q.id, c.letter)}
+                          disabled={disabled}
+                        />
+                      </td>
+                    ))}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );
