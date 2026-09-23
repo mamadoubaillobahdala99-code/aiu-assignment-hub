@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { ArrowLeft, GripVertical, ChevronLeft, ChevronRight, Headphones, Menu, X, MonitorSmartphone, Check } from "lucide-react";
+import { ArrowLeft, GripVertical, ChevronLeft, ChevronRight, Headphones, Menu, X, MonitorSmartphone } from "lucide-react";
 import { supabase } from "../../supabaseClient";
 import { QuestionRenderer } from "./QuestionRenderer";
 import { SummaryCompletion } from "./SummaryCompletion";
@@ -16,6 +16,7 @@ import { useListeningAudio, ListeningAudioBar } from "./ListeningAudio";
 import { GroupImage } from "./GroupImage";
 import { useIsCompact, useVisualViewportHeight, useKeepFocusVisible } from "./useViewport";
 import { useInvigilation } from "./useInvigilation";
+import { ExamStripButtons, ExamFullscreenButton } from "./ExamSidebarButtons";
 import { InvigilationOverlay } from "./InvigilationOverlay";
 
 // The countdown comes from useExamTimer: the start time is written once
@@ -557,23 +558,13 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
             </button>
           )}
 
-          {/* The panel gets folded away to gain room, and the paper still
-              has to be handed in. So the folded strip keeps one green
-              button. It opens the same confirmation as the full button:
-              a control always within reach is also one an elbow can
-              brush, and a copy must never leave by accident. */}
-          {!compact && !sidebarOpen && results === null && (
-            <div className="qe-exam-sidebar-mini">
-              <button
-                className="qe-exam-sidebar-mini-submit"
-                disabled={submitting}
-                onClick={() => setConfirmOpen(true)}
-                title="Submit exam"
-                aria-label="Submit exam"
-              >
-                <Check size={17} strokeWidth={3} />
-              </button>
-            </div>
+          {!compact && !sidebarOpen && (
+            <ExamStripButtons
+              showSubmit={results === null}
+              submitting={submitting}
+              onSubmit={() => setConfirmOpen(true)}
+              onExit={() => { invig.stopWatching(); setScreen({ name: "home" }); }}
+            />
           )}
 
           {sidebarOpen && (
@@ -601,6 +592,8 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
                   <div className="qe-exam-sidebar-value">{className}</div>
                 </div>
               )}
+
+              <ExamFullscreenButton invig={invig} />
 
               {results === null && (
                 <button className="btn-primary qe-exam-sidebar-submit" disabled={submitting} onClick={() => setConfirmOpen(true)}>
