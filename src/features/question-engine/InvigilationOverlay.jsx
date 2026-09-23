@@ -1,9 +1,11 @@
 import React, { useState } from "react";
-import { ShieldAlert, Loader2, Send } from "lucide-react";
+import { ShieldAlert, Loader2, Send, Maximize } from "lucide-react";
 
 // Shown over the whole paper when a candidate has left the exam screen
 // and the exam is in strict mode. It covers everything: the paper is
-// unreachable until a teacher allows the restart.
+// unreachable until a teacher allows the restart — and then until the
+// candidate presses Continue, because only a click can give full screen
+// back (see useInvigilation.js).
 //
 // It says plainly that the clock is still running. That is the truth —
 // the countdown is computed from the server's start time — and it is
@@ -17,7 +19,8 @@ export function InvigilationOverlay({ invig }) {
   const [text, setText] = useState("");
   const [sent, setSent] = useState(false);
 
-  if (!invig?.frozen) return null;
+  if (!invig) return null;
+  if (!invig.frozen && !invig.needsReturn) return null;
 
   const told = sent || Boolean(invig.reason);
 
@@ -25,6 +28,31 @@ export function InvigilationOverlay({ invig }) {
     if (text.trim().length < 3) return;
     const ok = await invig.explain(text.trim());
     if (ok) setSent(true);
+  }
+
+  // Let back in, waiting for the click that restores full screen.
+  if (!invig.frozen) {
+    return (
+      <div className="qe-frozen" role="alertdialog" aria-modal="true">
+        <div className="qe-frozen-card">
+          <Maximize size={30} className="qe-frozen-back" />
+          <h2 className="qe-frozen-title">Your teacher let you back in</h2>
+          <p className="qe-frozen-clock">
+            Press Continue to go back to your paper in full screen.{" "}
+            <strong>Your time has not stopped.</strong>
+          </p>
+          <button className="btn-primary" style={{ marginTop: 18 }} onClick={invig.returnToExam}>
+            <Maximize size={15} /> Continue the exam
+          </button>
+          {invig.returnFailed && (
+            <p className="qe-frozen-why" style={{ marginTop: 14 }}>
+              This computer refused full screen. Call your teacher — the exam cannot
+              go on without it.
+            </p>
+          )}
+        </div>
+      </div>
+    );
   }
 
   return (
