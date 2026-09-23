@@ -5,8 +5,17 @@
 .qe-notes-list { margin: 4px 0 4px 20px; padding: 0; }
 .qe-notes-list li { margin: 4px 0; }
 
-.qe-completion-table { border-collapse: collapse; width: 100%; max-width: 100%; font-size: 14px; margin-top: 8px; }
-.qe-completion-table th, .qe-completion-table td { border: 1px solid var(--line); padding: 10px; text-align: left; vertical-align: top; overflow-wrap: break-word; word-break: break-word; }
+/* Slides sideways rather than letting the columns be squeezed to a
+   ribbon of single letters. It only ever scrolls when the panel is
+   genuinely too narrow for the number of columns. */
+.qe-table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; margin-top: 8px; }
+
+.qe-completion-table { border-collapse: collapse; width: 100%; font-size: 14px; }
+/* overflow-wrap only: a word too long for its column overflows instead
+   of being chopped between two letters. min-width is what makes the
+   table ask for the room it needs, column by column. */
+.qe-completion-table th, .qe-completion-table td { border: 1px solid var(--line); padding: 10px; text-align: left; vertical-align: top; overflow-wrap: break-word; min-width: 118px; }
+.qe-completion-table th:first-child, .qe-completion-table td:first-child { min-width: 96px; }
 .qe-completion-table thead th { background: rgba(0, 0, 0, 0.03); font-weight: 600; }
 .qe-table-row-label { font-weight: 600; }
 .qe-table-cell-list { margin: 0; padding-left: 18px; }
