@@ -30,13 +30,19 @@ export function InvigilationOverlay({ invig }) {
     if (ok) setSent(true);
   }
 
-  // Let back in, waiting for the click that restores full screen.
+  // Waiting for the click that restores full screen — either because a
+  // teacher has just let the candidate back in, or because the paper was
+  // reopened outside full screen (a refresh). Only a click can ask for
+  // full screen, so there is nothing to do but ask for one.
   if (!invig.frozen) {
+    const restart = invig.returnMode === "restart";
     return (
       <div className="qe-frozen" role="alertdialog" aria-modal="true">
         <div className="qe-frozen-card">
           <Maximize size={30} className="qe-frozen-back" />
-          <h2 className="qe-frozen-title">Your teacher let you back in</h2>
+          <h2 className="qe-frozen-title">
+            {restart ? "This exam runs in full screen" : "Your teacher let you back in"}
+          </h2>
           <p className="qe-frozen-clock">
             Press Continue to go back to your paper in full screen.{" "}
             <strong>Your time has not stopped.</strong>
