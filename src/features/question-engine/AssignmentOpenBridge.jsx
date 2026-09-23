@@ -14,7 +14,13 @@ import { CenterSpinner } from "../../components/shared";
 // - Has exam_sections, not yet submitted?           → StudentExamRunner (take the exam)
 // - Has exam_sections, submitted, score released?   → StudentQuestionEngineFeedback (results)
 // - Has exam_sections, submitted, not yet released? → a simple waiting message
-export function AssignmentOpenBridge({ userId, classId, assignmentId, setScreen, showToast }) {
+//
+// onSubmitted (optional): given by the exam-room screen. Inside an exam
+// the waiting message has no place — the next paper is waiting — so the
+// hand-in closes the paper and goes straight back to the list of papers.
+// Left out (an ordinary class assignment), the waiting message stays:
+// there, the student really is waiting for a correction.
+export function AssignmentOpenBridge({ userId, classId, assignmentId, setScreen, showToast, onSubmitted }) {
   const [checking, setChecking] = useState(true);
   const [isStructured, setIsStructured] = useState(false);
   const [hasSubmitted, setHasSubmitted] = useState(false);
@@ -147,7 +153,7 @@ export function AssignmentOpenBridge({ userId, classId, assignmentId, setScreen,
         assignmentId={assignmentId}
         setScreen={setScreen}
         showToast={showToast}
-        onSubmitted={() => setHasSubmitted(true)}
+        onSubmitted={() => { if (onSubmitted) onSubmitted(); else setHasSubmitted(true); }}
       />
     );
   }
@@ -164,7 +170,11 @@ export function AssignmentOpenBridge({ userId, classId, assignmentId, setScreen,
         assignmentId={assignmentId}
         setScreen={setScreen}
         showToast={showToast}
-        onSubmitted={() => { setChecking(true); setRecheck((n) => n + 1); }}
+        onSubmitted={() => {
+          if (onSubmitted) { onSubmitted(); return; }
+          setChecking(true);
+          setRecheck((n) => n + 1);
+        }}
       />
     );
   }
