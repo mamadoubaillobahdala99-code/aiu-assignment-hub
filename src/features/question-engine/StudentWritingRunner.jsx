@@ -1,11 +1,12 @@
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { ArrowLeft, GripVertical, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, RotateCcw, Menu, X, MonitorSmartphone, Check } from "lucide-react";
+import { ArrowLeft, GripVertical, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, RotateCcw, Menu, X, MonitorSmartphone } from "lucide-react";
 import { supabase } from "../../supabaseClient";
 import { WritingEditor } from "./WritingEditor";
 import { useExamTimer, ExamTimerDisplay } from "./ExamTimer";
 import { useInvigilation } from "./useInvigilation";
 import { InvigilationOverlay } from "./InvigilationOverlay";
+import { ExamStripButtons, ExamFullscreenButton } from "./ExamSidebarButtons";
 import { useIsCompact, useVisualViewportHeight } from "./useViewport";
 
 // Structured Writing — student exam screen.
@@ -382,21 +383,13 @@ export function StudentWritingRunner({ userId, assignmentId, setScreen, showToas
             </button>
           )}
 
-          {/* Same green button as on the Reading/Listening screen: the
-              folded strip can still hand the paper in, through the same
-              confirmation. */}
           {!compact && !sidebarOpen && (
-            <div className="qe-exam-sidebar-mini">
-              <button
-                className="qe-exam-sidebar-mini-submit"
-                disabled={submitting}
-                onClick={() => setConfirmOpen(true)}
-                title="Submit exam"
-                aria-label="Submit exam"
-              >
-                <Check size={17} strokeWidth={3} />
-              </button>
-            </div>
+            <ExamStripButtons
+              showSubmit
+              submitting={submitting}
+              onSubmit={() => setConfirmOpen(true)}
+              onExit={exitExam}
+            />
           )}
 
           {sidebarOpen && (
@@ -414,6 +407,8 @@ export function StudentWritingRunner({ userId, assignmentId, setScreen, showToas
                   <div className="qe-exam-sidebar-value">{className}</div>
                 </div>
               )}
+              <ExamFullscreenButton invig={invig} />
+
               <button className="btn-primary qe-exam-sidebar-submit" disabled={submitting} onClick={() => setConfirmOpen(true)}>
                 {submitting ? "Submitting…" : "Submit exam"}
               </button>
