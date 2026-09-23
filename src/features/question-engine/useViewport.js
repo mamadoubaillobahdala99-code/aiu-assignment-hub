@@ -107,36 +107,27 @@ export function useKeepFocusVisible(containerRef, enabled = true) {
   }, [containerRef, enabled]);
 }
 
-// Reports the width of one element, live.
+// A phone, in either orientation.
 //
-// Why not a CSS media query: the exam screen has a splitter the student
-// can drag. Dragging it changes the panel but never the window, so a
-// media query sees nothing at all — which is exactly why the matching
-// grid could be crushed on a computer and not just on a phone. Measuring
-// the element itself makes those two situations the same situation, and
-// one rule then covers both.
-//
-// Returns null until the first measurement, so a component can keep its
-// wide layout during the very first paint instead of flashing the narrow
-// one on every computer.
-export function useElementWidth(ref) {
-  const [width, setWidth] = useState(null);
+// Deliberately NOT the width alone: a phone held sideways is 844px wide
+// and would pass for a small laptop. The smallest side is what gives it
+// away. Same rule as isPhoneScreen() in useInvigilation.js, which is how
+// a phone is kept out of a real exam.
+export function useIsPhone() {
+  const read = () => (typeof window === "undefined" ? false : Math.min(window.innerWidth, window.innerHeight) < 600);
+  const [phone, setPhone] = useState(read);
 
   useEffect(() => {
-    const el = ref?.current;
-    if (!el) return;
-    if (typeof ResizeObserver === "undefined") {
-      setWidth(el.getBoundingClientRect().width);
-      return;
-    }
-    const ro = new ResizeObserver((entries) => {
-      const w = entries[0]?.contentRect?.width;
-      if (typeof w === "number") setWidth(w);
-    });
-    ro.observe(el);
-    setWidth(el.getBoundingClientRect().width);
-    return () => ro.disconnect();
-  }, [ref]);
+    if (typeof window === "undefined") return;
+    const check = () => setPhone(read());
+    check();
+    window.addEventListener("resize", check);
+    window.addEventListener("orientationchange", check);
+    return () => {
+      window.removeEventListener("resize", check);
+      window.removeEventListener("orientationchange", check);
+    };
+  }, []);
 
-  return width;
+  return phone;
 }
