@@ -270,9 +270,22 @@ export function parseTest(text, skill = "reading") {
         umbrella = { start: last.start, end: last.end, lines: last.lines };
         part.groups.pop();
         lastEnd = s - 1;
+      } else if (nested && s > last.start) {
+        // The outer group already has its own numbered questions, so its
+        // range was simply printed too wide: "Questions 21-30" over three
+        // sentences, then "Questions 24-30" over a table. The outer group
+        // really stops just before the new heading. Without this the
+        // table was swallowed by the sentences above it.
+        last.end = s - 1;
+        lastEnd = s - 1;
       }
       const inUmbrella = umbrella && s >= umbrella.start && e <= umbrella.end;
-      if (s > lastEnd || inUmbrella) {
+      // The very same range again is never a new group: it is the end of
+      // an instruction that wrapped onto its own line ("…write the
+      // correct letter next to" / "Questions 16-20"). Inside an umbrella
+      // it used to open a second, duplicate group 16-20.
+      const repeated = last && s === last.start && e === last.end;
+      if (s > lastEnd || (inUmbrella && !repeated)) {
         if (!inUmbrella) umbrella = null;
         group = newGroup(s, e, inUmbrella ? umbrella.lines : []);
         if (gm[3]) group.lines.push(gm[3].replace(/^\|\s*/, ""));
@@ -529,7 +542,7 @@ function parseItems(lines, start, end, { choices = false, roman = false, letters
     const nextLine = clean[li + 1] || "";
     const isListTitle =
       /^list of\b/i.test(l) ||
-      (l.split(/\s+/).length <= 5 && !/[.?]$/.test(l) && ((letters || choices) ? /^[A-Z](?:[.)]\s*|\s+)\S/.test(nextLine) : roman && /^[ivx]+[.)]?\s/i.test(nextLine)));
+      (l.split(/\s+/).length <= 5 && !/[.?]$/.test(l) && ((letters || choices) ? /^\(?[A-Z](?:[.)]\s*|\s+)\S/.test(nextLine) : roman && /^[ivx]+[.)]?\s/i.test(nextLine)));
     if (isListTitle) continue;
     if (current && !/^(example|answer)\b/i.test(l)) current.prompt = `${current.prompt} ${l}`.trim();
     else if (!current) pre.push(l);
@@ -538,12 +551,15 @@ function parseItems(lines, start, end, { choices = false, roman = false, letters
   return { items, options, pre };
 }
 
-// "A text" or "A. text" or several on one line ("A red B blue C green").
+// "A text" or "A. text" or "(A) text", or several on one line
+// ("A red B blue C green"). The bracketed form is how IELTSFever writes
+// its Listening options; without it the options stayed glued to the end
+// of the question and every multiple-choice question failed.
 function splitLetterOptions(line) {
-  const first = /^([A-Z])(?:[.)]\s*|\s+)(\S.*)$/.exec(line);
+  const first = /^\(?([A-Z])(?:[.)]\s*|\s+)(\S.*)$/.exec(line);
   if (!first) return null;
   const parts = [];
-  const re = /(?:^|\s)([A-Z])(?:[.)]\s*|\s+)(?=\S)/g;
+  const re = /(?:^|\s)\(?([A-Z])(?:[.)]\s*|\s+)(?=\S)/g;
   let m;
   const marks = [];
   while ((m = re.exec(line))) marks.push({ letter: m[1], at: m.index + (m[0].startsWith(" ") ? 1 : 0), end: re.lastIndex });
