@@ -8,7 +8,7 @@
 .qe-form-title { text-align: center; font-weight: 700; font-size: 15px; letter-spacing: 0.02em; text-transform: uppercase; margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
 .qe-form-table { width: 100%; border-collapse: collapse; font-size: 14.5px; color: var(--ink); }
 .qe-form-table th { width: 38%; text-align: left; font-weight: 600; vertical-align: top; padding: 9px 12px 9px 0; overflow-wrap: break-word; }
-.qe-form-table td { vertical-align: top; padding: 7px 0; line-height: 1.9; overflow-wrap: break-word; word-break: break-word; }
+.qe-form-table td { vertical-align: top; padding: 7px 0; line-height: 1.9; overflow-wrap: break-word; }
 .qe-form-table tr + tr th, .qe-form-table tr + tr td { border-top: 1px dotted var(--line); }
 .qe-form-fullrow { padding-left: 0; }
 .qe-form-example th, .qe-form-example td { color: var(--ink-soft); font-style: italic; }
