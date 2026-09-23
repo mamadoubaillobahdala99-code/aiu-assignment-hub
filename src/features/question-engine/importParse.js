@@ -952,6 +952,20 @@ export function defaultImportInstruction(analysis) {
 // ---------------------------------------------------------------------
 const KEY_LINE = /^\(?(\d{1,2})\)?(?:\s*(?:[-–&,]|and)\s*(\d{1,2}))?\s*[.):\-–]?\s+(\S.*)$/i;
 
+// Text copied out of a PDF often carries characters that take up no room
+// on screen: zero-width spaces, byte-order marks, soft hyphens. The eye
+// never sees them — and JavaScript's own .trim() does not remove the
+// zero-width ones, because Unicode does not class them as spaces. Glued
+// to an answer key they make the question impossible to answer: the
+// student types the right word and is marked wrong. Seven Listening keys
+// were in that state before this was written.
+// Everything invisible goes; every exotic space becomes an ordinary one.
+export function scrubInvisible(s) {
+  return String(s ?? "")
+    .replace(/[​-‏⁠﻿­]/g, "")
+    .replace(/[  -   　]/g, " ");
+}
+
 function cleanKeyAnswer(a) {
   return a
     .replace(/\(?\s*(in\s+)?either\s+order\s*\)?/gi, "")
@@ -962,7 +976,7 @@ function cleanKeyAnswer(a) {
 
 export function parseAnswerKey(text) {
   const map = {};
-  const lines = String(text || "")
+  const lines = scrubInvisible(text)
     .replace(/\r\n?/g, "\n")
     // Keys printed in columns (PDF/Word tables) come as cells: one per line.
     .split(/\n|\t+|\s\|\s/)
@@ -1078,12 +1092,15 @@ function tfValue(raw, labelSet) {
 // answers: { [number]: string } — returns one entry per question.
 export function resolveAnswers(analysis, answers) {
   return analysis.questions.map((q) => {
-    const raw = String(answers[q.number] ?? "").trim();
+    // Also scrubbed here, not only in parseAnswerKey: the teacher can
+    // type an answer straight into a question's own field, and that text
+    // never goes through the pasted-key parser.
+    const raw = scrubInvisible(answers[q.number] ?? "").trim();
     const fail = (msg) => ({ number: q.number, key: null, error: msg });
     if (q.dbType === "multiple_selection") {
       const need = q.options.required_count;
       const all = [];
-      for (let n = analysis.start; n <= analysis.end; n++) all.push(String(answers[n] ?? ""));
+      for (let n = analysis.start; n <= analysis.end; n++) all.push(scrubInvisible(answers[n] ?? ""));
       const letters = [...new Set(all.join(" ").toUpperCase().match(/\b[A-Z]\b/g) || [])];
       if (letters.length === 0) return fail("Answer missing");
       if (letters.length !== need) return fail(`Give ${need} letters (found ${letters.length})`);
