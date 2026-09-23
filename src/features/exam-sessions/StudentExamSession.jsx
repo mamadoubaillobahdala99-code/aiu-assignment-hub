@@ -126,6 +126,11 @@ export function StudentExamSession({ userId, setScreen, showToast }) {
         classId={session?.container_class_id}
         assignmentId={openPaper.assignmentId}
         showToast={showToast}
+        // Handed in: straight back to the list of papers, with a fresh
+        // reading of what is unlocked now. No "waiting for feedback"
+        // screen in between — that belongs to a class assignment, not to
+        // an exam room where the next paper is waiting.
+        onSubmitted={() => { setOpenPaper(null); loadStatus(); }}
         setScreen={(next) => {
           if (next?.name === "assignment-student" && next.assignmentId) {
             setOpenPaper({ assignmentId: next.assignmentId });
