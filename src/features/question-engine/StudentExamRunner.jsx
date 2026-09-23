@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { ArrowLeft, GripVertical, ChevronLeft, ChevronRight, Headphones, Menu, X, MonitorSmartphone } from "lucide-react";
+import { ArrowLeft, GripVertical, ChevronLeft, ChevronRight, Headphones, Menu, X, MonitorSmartphone, Check } from "lucide-react";
 import { supabase } from "../../supabaseClient";
 import { QuestionRenderer } from "./QuestionRenderer";
 import { SummaryCompletion } from "./SummaryCompletion";
@@ -555,6 +555,25 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
             >
               {sidebarOpen ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
             </button>
+          )}
+
+          {/* The panel gets folded away to gain room, and the paper still
+              has to be handed in. So the folded strip keeps one green
+              button. It opens the same confirmation as the full button:
+              a control always within reach is also one an elbow can
+              brush, and a copy must never leave by accident. */}
+          {!compact && !sidebarOpen && results === null && (
+            <div className="qe-exam-sidebar-mini">
+              <button
+                className="qe-exam-sidebar-mini-submit"
+                disabled={submitting}
+                onClick={() => setConfirmOpen(true)}
+                title="Submit exam"
+                aria-label="Submit exam"
+              >
+                <Check size={17} strokeWidth={3} />
+              </button>
+            </div>
           )}
 
           {sidebarOpen && (
