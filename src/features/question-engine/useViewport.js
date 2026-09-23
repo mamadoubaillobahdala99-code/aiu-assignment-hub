@@ -106,3 +106,37 @@ export function useKeepFocusVisible(containerRef, enabled = true) {
     };
   }, [containerRef, enabled]);
 }
+
+// Reports the width of one element, live.
+//
+// Why not a CSS media query: the exam screen has a splitter the student
+// can drag. Dragging it changes the panel but never the window, so a
+// media query sees nothing at all — which is exactly why the matching
+// grid could be crushed on a computer and not just on a phone. Measuring
+// the element itself makes those two situations the same situation, and
+// one rule then covers both.
+//
+// Returns null until the first measurement, so a component can keep its
+// wide layout during the very first paint instead of flashing the narrow
+// one on every computer.
+export function useElementWidth(ref) {
+  const [width, setWidth] = useState(null);
+
+  useEffect(() => {
+    const el = ref?.current;
+    if (!el) return;
+    if (typeof ResizeObserver === "undefined") {
+      setWidth(el.getBoundingClientRect().width);
+      return;
+    }
+    const ro = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect?.width;
+      if (typeof w === "number") setWidth(w);
+    });
+    ro.observe(el);
+    setWidth(el.getBoundingClientRect().width);
+    return () => ro.disconnect();
+  }, [ref]);
+
+  return width;
+}
