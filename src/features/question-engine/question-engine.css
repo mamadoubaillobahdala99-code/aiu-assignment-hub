@@ -1,8 +1,11 @@
 .qe-question { margin: 0; }
 .qe-prompt { font-size: 15px; line-height: 1.6; margin-bottom: 10px; }
 .qe-options { display: flex; flex-direction: column; gap: 0; width: 100%; max-width: 100%; }
-.qe-option { display: flex; align-items: center; gap: 10px; padding: 6px 2px; cursor: pointer; font-size: 14px; line-height: 1.45; border-bottom: 1px solid var(--line); overflow-wrap: break-word; }
-.qe-option:last-child { border-bottom: none; }
+/* No rule between the options: the space does the separating. A line
+   every two centimetres turns a question into a table; the printed
+   exam has none either. Where a border was removed, the padding grows
+   by the same amount so nothing collapses together. */
+.qe-option { display: flex; align-items: center; gap: 10px; padding: 9px 2px; cursor: pointer; font-size: 14px; line-height: 1.45; overflow-wrap: break-word; }
 .qe-option-selected { font-weight: 600; }
 .qe-option input { accent-color: var(--teal); width: 16px; height: 16px; }
 .qe-letter-badge { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; background: var(--paper-raised); border: 1px solid var(--line); font-size: 11.5px; font-weight: 700; color: var(--ink); flex-shrink: 0; }
@@ -15,7 +18,9 @@
 .qe-part-tag { font-size: 13px; font-weight: 500; color: var(--ink-soft); margin: 0 0 2px; }
 .qe-part-quicksummary { font-size: 13px; color: var(--ink-soft); margin: 0 0 14px; }
 
-.qe-highlightable { position: relative; }
+/* -webkit-touch-callout: none keeps iOS from opening its own black
+   "Copy / Look Up" bubble on top of the colour bar. */
+.qe-highlightable { position: relative; -webkit-touch-callout: none; }
 .qe-prompt-highlightable { margin-bottom: 10px; }
 .qe-prompt-highlightable .reading-text { cursor: text; font-size: 15px; line-height: 1.6; margin: 0; }
 
@@ -24,6 +29,14 @@
 .qe-hl-swatch:hover { border-color: var(--ink); }
 .qe-hl-erase { width: 24px; height: 24px; border-radius: 6px; border: 1px solid var(--line); background: #fff; color: var(--ink-soft); cursor: pointer; display: flex; align-items: center; justify-content: center; margin-left: 2px; }
 .qe-hl-erase:hover { color: var(--rose); border-color: var(--rose); }
+
+/* A finger is not a mouse pointer: on any touch screen — phone or
+   tablet — the swatches grow to something that can actually be hit. */
+@media (pointer: coarse) {
+  .qe-hl-toolbar { gap: 9px; padding: 8px 10px; border-radius: 10px; }
+  .qe-hl-swatch { width: 30px; height: 30px; }
+  .qe-hl-erase { width: 32px; height: 32px; }
+}
 .qe-hl-inline { display: inline; }
 
 .qe-hl-word { cursor: text; }
@@ -32,14 +45,14 @@
 .qe-hl-red { background: #F0B4B4; color: var(--ink); }
 .qe-option-locked { opacity: 0.45; cursor: not-allowed; }
 .qe-ms-hint { font-size: 12px; color: var(--ink-soft); margin: -6px 0 10px; }
-.qe-group-block { margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid var(--line); }
-.qe-group-block:last-of-type { border-bottom: none; }
+.qe-group-block { margin-bottom: 34px; }
+.qe-group-block:last-of-type { margin-bottom: 0; }
 .qe-group-heading { font-size: 14px; font-weight: 700; color: var(--ink); margin-bottom: 8px; }
 .qe-group-heading-preview { font-size: 13px; font-weight: 600; color: var(--ink-soft); }
 .qe-part-block { padding-top: 8px; border-top: 2px solid var(--line); margin-top: 20px; }
 .qe-part-block:first-of-type { border-top: none; margin-top: 0; }
 
-.qe-numbered-question { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 16px; }
+.qe-numbered-question { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 22px; }
 .qe-question-badge { flex-shrink: 0; margin-top: 2px; }
 
 /* ---------- Full-screen exam layout (IELTS Computer-Delivered style) ---------- */
@@ -59,6 +72,11 @@
    (background/border/radius/padding) — scoped override here only;
    every other screen that uses .asg-desc elsewhere is untouched. */
 .qe-passage-panel-inner .asg-desc { background: transparent; border: none; border-radius: 0; padding: 0; }
+
+/* The wording of a question is no longer served in a little grey box.
+   It sits on the page, directly above its own options — the way it is
+   printed on a real paper. Highlighting still works on it. */
+.qe-prompt-highlightable .asg-desc { background: transparent; border: none; border-radius: 0; padding: 0; margin: 0 0 12px; }
 
 .qe-resizer { flex-shrink: 0; width: 14px; cursor: col-resize; display: flex; align-items: center; justify-content: center; color: var(--ink-soft); background: var(--line); touch-action: none; }
 .qe-resizer:hover { color: var(--teal); }
@@ -85,7 +103,7 @@
    text selection from firing during fast mouse movement. */
 body.qe-resizing { user-select: none; cursor: col-resize; }
 
-.qe-section-instruction { font-size: 13.5px; color: var(--ink); font-style: italic; margin: 0 0 18px; padding-bottom: 12px; border-bottom: 1px dashed var(--line); white-space: pre-line; }
+.qe-section-instruction { font-size: 13.5px; color: var(--ink); font-style: italic; margin: 0 0 20px; white-space: pre-line; }
 .qe-form { max-width: 480px; }
 .qe-incorrect { background: var(--rose-soft) !important; }
 .qe-incorrect .feedback-band { color: var(--rose) !important; }
@@ -104,8 +122,12 @@ body.qe-resizing { user-select: none; cursor: col-resize; }
 
 /* ---------- Exam sidebar ---------- */
 .qe-exam-layout { display: flex; height: 100%; width: 100%; }
-.qe-exam-sidebar { position: relative; flex: 0 0 auto; width: 240px; background: #14150F; color: #E8E8E3; display: flex; flex-direction: column; transition: width .18s ease; }
-.qe-exam-sidebar.collapsed { width: 24px; }
+/* A softer dark than the near-black it used to be (#14150F): pure black
+   against a white page is hard on the eye over a two-hour exam. The
+   contrast with the light text is still about 12:1, far above the 4.5
+   an accessible interface needs. */
+.qe-exam-sidebar { position: relative; flex: 0 0 auto; width: 240px; background: #282B23; color: #E8E8E3; display: flex; flex-direction: column; transition: width .18s ease; }
+.qe-exam-sidebar.collapsed { width: 46px; }
 .qe-exam-sidebar-toggle { position: absolute; top: 14px; right: -13px; z-index: 5; width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--line); background: var(--paper); color: var(--ink); display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; }
 .qe-exam-sidebar-inner { padding: 22px 18px; overflow-y: auto; display: flex; flex-direction: column; height: 100%; box-sizing: border-box; }
 .qe-exam-sidebar-title { font-family: 'Fraunces', serif; font-size: 17px; font-weight: 600; line-height: 1.35; color: #fff; margin-bottom: 18px; }
@@ -117,6 +139,12 @@ body.qe-resizing { user-select: none; cursor: col-resize; }
 .qe-exam-sidebar-submit { width: 100%; justify-content: center; margin-top: auto; }
 .qe-exam-sidebar-exit { display: flex; align-items: center; gap: 7px; background: none; border: none; color: #E8E8E3; opacity: 0.65; font-family: inherit; font-size: 12.5px; cursor: pointer; padding: 12px 0 0; }
 .qe-exam-sidebar-exit:hover { opacity: 1; }
+
+/* The hand-in button that stays on the folded strip. */
+.qe-exam-sidebar-mini { margin-top: auto; display: flex; justify-content: center; padding: 0 0 14px; }
+.qe-exam-sidebar-mini-submit { width: 34px; height: 34px; border-radius: 50%; border: none; background: var(--teal); color: #fff; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35); }
+.qe-exam-sidebar-mini-submit:hover:not(:disabled) { filter: brightness(1.12); }
+.qe-exam-sidebar-mini-submit:disabled { opacity: 0.5; cursor: default; }
 .qe-exam-main { flex: 1 1 auto; min-width: 0; height: 100%; display: flex; flex-direction: column; }
 
 /* Sidebar audio-file entry — opens the floating player, exam.net style */
