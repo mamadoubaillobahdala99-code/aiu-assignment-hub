@@ -45,6 +45,17 @@ export function useInvigilation(assignmentId, active) {
   // the candidate presses the button.
   const [needsReturn, setNeedsReturn] = useState(false);
   const [returnFailed, setReturnFailed] = useState(false);
+  // Why the paper is covered, which decides what happens if the browser
+  // refuses full screen:
+  //   "resume"  — a teacher has just let the candidate back in. No full
+  //               screen, no exam: he waits for the invigilator.
+  //   "restart" — the paper was reopened without full screen (a refresh,
+  //               a page restored from the browser's cache). A machine
+  //               that simply cannot do full screen must not be stopped
+  //               from sitting the exam, so a refusal lets him through —
+  //               exactly as before, when the same machine was never
+  //               asked in the first place.
+  const [returnMode, setReturnMode] = useState("resume");
   const [sending, setSending] = useState(false);
 
   // Set while the page closes the exam itself (submit, exit): the full
@@ -58,6 +69,8 @@ export function useInvigilation(assignmentId, active) {
   const fsUsedRef = useRef(false);
   const strikesRef = useRef(0);
   const wasFrozenRef = useRef(false);
+  const returnModeRef = useRef("resume");
+  returnModeRef.current = returnMode;
 
   const report = useCallback(async (kind) => {
     if (!activeRef.current || stoppingRef.current || !assignmentId) return;
@@ -166,9 +179,44 @@ export function useInvigilation(assignmentId, active) {
     wasFrozenRef.current = false;
     if (fsUsedRef.current && !document.fullscreenElement) {
       setReturnFailed(false);
+      setReturnMode("resume");
       setNeedsReturn(true);
     }
   }, [state.frozen]);
+
+  // The paper is open, the exam is watched — and we are not in full
+  // screen. That is what a refresh used to leave behind: the reloaded
+  // page had no memory that full screen had ever been used, so it never
+  // reported anything and never asked for it back. Pressing F5 was a
+  // silent way out of full screen for the rest of the paper.
+  //
+  // The delay is for the honest case: pressing Start asks for full
+  // screen inside the same click, and the browser grants it a moment
+  // later. The check is made again when the timer fires, so a normal
+  // start never sees this screen.
+  // fsUsedRef is what separates the two cases, and it matters: a
+  // candidate who HAS been in full screen and is not any more has left
+  // it, which is an incident — the watch below must report it and the
+  // paper must freeze. Asking him politely to come back instead would
+  // turn an escape into a free pass. This screen is only ever for a page
+  // that has never had full screen at all, which is what a reload leaves
+  // behind. And it is asked once: a machine that refuses must not be
+  // nagged for the rest of the paper.
+  const restartAskedRef = useRef(false);
+  useEffect(() => {
+    if (!active || !state.watched || !state.strict) return;
+    if (state.frozen || needsReturn || restartAskedRef.current) return;
+    if (fsUsedRef.current) return;
+    if (!document.documentElement.requestFullscreen) return;  // iPhone: no full screen at all
+    const id = setTimeout(() => {
+      if (stoppingRef.current || fsUsedRef.current || document.fullscreenElement) return;
+      restartAskedRef.current = true;
+      setReturnFailed(false);
+      setReturnMode("restart");
+      setNeedsReturn(true);
+    }, 1500);
+    return () => clearTimeout(id);
+  }, [active, state.watched, state.strict, state.frozen, needsReturn]);
 
   // Only ever called from a real click — browsers refuse otherwise.
   const enterFullscreen = useCallback(async () => {
@@ -190,7 +238,18 @@ export function useInvigilation(assignmentId, active) {
   // invigilator rather than carry on in a window.
   const returnToExam = useCallback(async () => {
     const ok = await enterFullscreen();
-    if (!ok) { setReturnFailed(true); return false; }
+    if (!ok) {
+      // See returnMode above: after a freeze he waits for a teacher;
+      // on a plain reopening he carries on without the full-screen
+      // guard, which is what this machine gave us anyway.
+      if (returnModeRef.current === "restart") {
+        strikesRef.current = 0;
+        setNeedsReturn(false);
+        return true;
+      }
+      setReturnFailed(true);
+      return false;
+    }
     strikesRef.current = 0;
     setReturnFailed(false);
     setNeedsReturn(false);
@@ -218,7 +277,7 @@ export function useInvigilation(assignmentId, active) {
     return Boolean(data?.explained);
   }, [assignmentId]);
 
-  return { ...state, needsReturn, returnFailed, sending, enterFullscreen, returnToExam, stopWatching, explain };
+  return { ...state, needsReturn, returnMode, returnFailed, sending, enterFullscreen, returnToExam, stopWatching, explain };
 }
 
 // A phone is not a place to sit a real exam: no fullscreen at all on
