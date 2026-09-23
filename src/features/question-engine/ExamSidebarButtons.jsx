@@ -10,7 +10,7 @@ import { Check, ArrowLeft, Maximize, Minimize } from "lucide-react";
 // dialogs as their full-size twins — in particular, handing in still
 // asks for confirmation, because a control always within reach is also
 // one an elbow can brush.
-export function ExamStripButtons({ showSubmit, submitting, onSubmit, onExit }) {
+export function ExamStripButtons({ showSubmit, showExit = true, submitting, onSubmit, onExit }) {
   return (
     <div className="qe-exam-sidebar-mini">
       {showSubmit && (
@@ -24,10 +24,25 @@ export function ExamStripButtons({ showSubmit, submitting, onSubmit, onExit }) {
           <Check size={17} strokeWidth={3} />
         </button>
       )}
-      <button className="qe-exam-sidebar-mini-exit" onClick={onExit} title="Exit" aria-label="Exit">
-        <ArrowLeft size={16} />
-      </button>
+      {showExit && (
+        <button className="qe-exam-sidebar-mini-exit" onClick={onExit} title="Exit" aria-label="Exit">
+          <ArrowLeft size={16} />
+        </button>
+      )}
     </div>
+  );
+}
+
+// Leaving the paper. Offered in a class assignment, where a student may
+// well open a Reading on Monday and come back to it on Tuesday — but
+// never during an exam: there, one does not walk out of a paper through
+// a button. Handing in is the way out, and it closes the screen itself.
+export function ExamExitButton({ invig, onExit }) {
+  if (invig?.watched) return null;
+  return (
+    <button className="qe-exam-sidebar-exit" onClick={onExit}>
+      <ArrowLeft size={14} /> Exit
+    </button>
   );
 }
 
