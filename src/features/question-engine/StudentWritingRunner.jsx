@@ -6,7 +6,7 @@ import { WritingEditor } from "./WritingEditor";
 import { useExamTimer, ExamTimerDisplay } from "./ExamTimer";
 import { useInvigilation } from "./useInvigilation";
 import { InvigilationOverlay } from "./InvigilationOverlay";
-import { ExamStripButtons, ExamFullscreenButton } from "./ExamSidebarButtons";
+import { ExamStripButtons, ExamFullscreenButton, ExamExitButton } from "./ExamSidebarButtons";
 import { useIsCompact, useVisualViewportHeight } from "./useViewport";
 
 // Structured Writing — student exam screen.
@@ -385,6 +385,7 @@ export function StudentWritingRunner({ userId, assignmentId, setScreen, showToas
 
           {!compact && !sidebarOpen && (
             <ExamStripButtons
+              showExit={!invig.watched}
               showSubmit
               submitting={submitting}
               onSubmit={() => setConfirmOpen(true)}
@@ -412,9 +413,7 @@ export function StudentWritingRunner({ userId, assignmentId, setScreen, showToas
               <button className="btn-primary qe-exam-sidebar-submit" disabled={submitting} onClick={() => setConfirmOpen(true)}>
                 {submitting ? "Submitting…" : "Submit exam"}
               </button>
-              <button className="qe-exam-sidebar-exit" onClick={exitExam}>
-                <ArrowLeft size={14} /> Exit
-              </button>
+              <ExamExitButton invig={invig} onExit={exitExam} />
             </div>
           )}
         </aside>
