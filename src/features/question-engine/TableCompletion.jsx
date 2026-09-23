@@ -80,26 +80,32 @@ export function TableCompletion({ headers, rows, questions, answers, onChange, r
     );
   }
 
+  // The table keeps its real shape and slides sideways when the panel is
+  // too narrow, instead of the columns being crushed until the words
+  // break up letter by letter. The cells carry a minimum width, so how
+  // much room the table needs follows how many columns it actually has.
   return (
-    <table className="qe-completion-table">
-      <thead>
-        <tr>
-          <th></th>
-          {headers.map((h, ci) => (
-            <th key={ci}>{h}</th>
-          ))}
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((row, ri) => (
-          <tr key={ri}>
-            <th className="qe-table-row-label">{row.label}</th>
-            {row.cells.map((cell, ci) => (
-              <td key={ci}>{renderCell(cell, `r${ri}c${ci}`)}</td>
+    <div className="qe-table-scroll">
+      <table className="qe-completion-table">
+        <thead>
+          <tr>
+            <th></th>
+            {headers.map((h, ci) => (
+              <th key={ci}>{h}</th>
             ))}
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {rows.map((row, ri) => (
+            <tr key={ri}>
+              <th className="qe-table-row-label">{row.label}</th>
+              {row.cells.map((cell, ci) => (
+                <td key={ci}>{renderCell(cell, `r${ri}c${ci}`)}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
