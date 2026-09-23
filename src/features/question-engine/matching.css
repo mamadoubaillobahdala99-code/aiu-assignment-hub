@@ -1,12 +1,29 @@
 .qe-matching-wrap { margin: 8px 0; }
 .qe-matching-grid { border-collapse: collapse; width: 100%; table-layout: fixed; font-size: 14px; }
-.qe-matching-grid th, .qe-matching-grid td { border: 1px solid var(--line); padding: 10px 8px; text-align: center; vertical-align: middle; overflow-wrap: break-word; word-break: break-word; }
+/* overflow-wrap only: a word that cannot fit overflows rather than being
+   chopped letter by letter. word-break was what turned "Riverside" into
+   a vertical ribbon. */
+.qe-matching-grid th, .qe-matching-grid td { border: 1px solid var(--line); padding: 10px 8px; text-align: center; vertical-align: middle; overflow-wrap: break-word; }
 .qe-matching-grid th:not(:first-child), .qe-matching-grid td.qe-matching-cell { width: 46px; }
 .qe-matching-grid thead th { background: rgba(0, 0, 0, 0.03); font-weight: 600; }
 .qe-matching-prompt { text-align: left !important; }
 .qe-matching-cell input[type="radio"] { width: 16px; height: 16px; accent-color: var(--teal); cursor: pointer; }
 .qe-matching-legend { list-style: none; margin: 0 0 12px; padding: 0; font-size: 13.5px; color: var(--ink); }
 .qe-matching-legend li { margin: 3px 0; }
+
+/* ---------- Matching without a grid (narrow panel or phone) ----------
+   The sentence gets the full width, the letters become buttons under it.
+   44px is the smallest target a finger hits reliably. */
+.qe-match-card { margin: 0 0 20px; }
+.qe-match-card:last-child { margin-bottom: 0; }
+.qe-match-card-prompt { font-size: 14.5px; line-height: 1.55; color: var(--ink); margin-bottom: 9px; overflow-wrap: break-word; }
+.qe-match-card-choices { display: flex; flex-wrap: wrap; gap: 8px; }
+.qe-match-chip { position: relative; display: inline-flex; align-items: center; justify-content: center; min-width: 44px; height: 44px; padding: 0 12px; box-sizing: border-box; border: 1.5px solid var(--line); border-radius: 10px; background: #fff; font-size: 15px; font-weight: 600; color: var(--ink); cursor: pointer; user-select: none; }
+.qe-match-chip input { position: absolute; opacity: 0; width: 0; height: 0; margin: 0; }
+.qe-match-chip.selected { border-color: var(--teal); background: var(--teal-soft); color: var(--teal); }
+.qe-match-chip:focus-within { box-shadow: 0 0 0 2px var(--teal-soft); }
+.qe-match-chip.disabled { cursor: default; }
+.qe-match-chip.disabled:not(.selected) { opacity: 0.6; }
 
 .qe-sentence-completion { font-size: 14.5px; line-height: 2.1; color: var(--ink); margin: 0; padding-left: 22px; }
 .qe-sentence-completion li { margin: 8px 0; }
