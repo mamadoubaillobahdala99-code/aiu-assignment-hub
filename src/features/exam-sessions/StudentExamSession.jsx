@@ -54,11 +54,17 @@ export function StudentExamSession({ userId, setScreen, showToast }) {
       .order("created_at", { ascending: false });
     const rows = data || [];
     setSessions(rows);
-    // Sitting an exam right now? Go straight in — no extra click in the room.
+    // Sitting an exam right now? Go straight in — no extra click in the
+    // room. A FINISHED exam never opens by itself, though: it used to,
+    // whenever it was the only one, and that shut the door. The screen
+    // opened on last week's finished paper, and the way back out was
+    // hidden too (see the bottom of this file), so a student who had sat
+    // exactly one exam could never reach the code box again — there was
+    // no way left to enter a new exam at all.
     setActiveId((cur) => {
       if (cur && rows.some((r) => r.id === cur)) return cur;
       const live = rows.find((r) => !r.closed_at && !r.results_released_at);
-      return live ? live.id : rows.length === 1 ? rows[0].id : null;
+      return live ? live.id : null;
     });
   }, []);
 
@@ -320,9 +326,14 @@ export function StudentExamSession({ userId, setScreen, showToast }) {
         </p>
       )}
 
-      {(closed || released) && sessions.length > 1 && (
+      {/* Always offered once the exam is over — it used to appear only
+          for a student who had more than one exam, which is precisely
+          the student who did not need it. The one with a single finished
+          exam was the one with no way out. It leads back to the code
+          box, so it is also how the next exam is entered. */}
+      {(closed || released) && (
         <button className="back-link" style={{ marginTop: 22 }} onClick={() => setActiveId(null)}>
-          <ArrowLeft size={14} /> My other exams
+          <ArrowLeft size={14} /> Enter another exam
         </button>
       )}
     </div>
