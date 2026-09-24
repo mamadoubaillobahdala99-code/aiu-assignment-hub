@@ -12,6 +12,7 @@ import { SentenceCompletion } from "./SentenceCompletion";
 import { FormCompletion, FlowchartCompletion, WordBankCompletion } from "./CompletionExtras";
 import { GroupImagePicker, GroupImage } from "./GroupImage";
 import { AudioFilePicker } from "./AudioFilePicker";
+import { useIsExamContainer } from "./useExamContainer";
 import { PassageImageTools, PassageView, defaultResolve, imageUrlsIn, imageMarker, stripImageMarkers, uploadPassageImage } from "./PassageImages";
 
 // Test importer (Reading / Listening).
@@ -152,6 +153,15 @@ export function TestImporter({ classId, teacherId, skill: initialSkill = "readin
   const [singleAudio, setSingleAudio] = useState(null); // { url, filename }
   const [examMode, setExamMode] = useState(false);
   const [checkMinutes, setCheckMinutes] = useState("2");
+  // Imported into an exam: one listening only (and one play per section)
+  // unless the teacher unticks it. An ordinary class is unchanged.
+  const inExam = useIsExamContainer(classId);
+  const examDefaultsApplied = useRef(false);
+  useEffect(() => {
+    if (inExam !== true || examDefaultsApplied.current) return;
+    examDefaultsApplied.current = true;
+    setExamMode(true);
+  }, [inExam]);
   const localRef = useRef({});
   useEffect(() => {
     localRef.current = localImages;
@@ -183,7 +193,7 @@ export function TestImporter({ classId, teacherId, skill: initialSkill = "readin
       setError('No question groups found. Each group must start with a line such as "Questions 1-6".');
       return;
     }
-    setParts(parsed);
+    setParts(inExam ? parsed.map((p) => (p.maxPlays ? p : { ...p, maxPlays: "1" })) : parsed);
     setAnswers(parseAnswerKey(keyText));
     setEditing({});
     setInstructions({});
@@ -504,6 +514,9 @@ export function TestImporter({ classId, teacherId, skill: initialSkill = "readin
                 <input type="checkbox" checked={examMode} onChange={(e) => setExamMode(e.target.checked)} />
                 Exam mode: one listening only, no pause and no rewind
               </label>
+              {inExam && !examMode && (
+                <p className="qe-exam-warn">This paper is part of an exam, but candidates will be able to pause and replay the recording.</p>
+              )}
               <label className="field-label" style={{ marginTop: 14 }}>Checking time after the recording (minutes)</label>
               <input type="number" min="0" max="30" className="field-input" style={{ maxWidth: 160 }} value={checkMinutes} onChange={(e) => setCheckMinutes(e.target.value)} />
               <p className="field-hint" style={{ marginTop: 2 }}>0 = students submit when they want.</p>
@@ -553,6 +566,9 @@ export function TestImporter({ classId, teacherId, skill: initialSkill = "readin
               />
               <label className="field-label" style={{ marginTop: 12 }}>Plays allowed (leave blank for unlimited)</label>
               <input type="number" min="1" className="field-input" style={{ maxWidth: 160 }} placeholder="Unlimited" value={part.maxPlays} onChange={(e) => patchPart(part.id, { maxPlays: e.target.value })} />
+              {inExam && !part.maxPlays && (
+                <p className="qe-exam-warn">This paper is part of an exam, but candidates will be able to replay this section as often as they like.</p>
+              )}
             </>
             )
           )}
