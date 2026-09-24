@@ -3,6 +3,7 @@ import React, { useState, useEffect } from "react";
 import { ImagePlus, X } from "lucide-react";
 import { supabase } from "../../supabaseClient";
 import { uid } from "../../lib/utils";
+import { StoredImg, fileRef } from "../../lib/storageFiles";
 
 // Structured Writing — teacher side.
 // One assignment = one or two Parts:
@@ -99,8 +100,7 @@ export function TeacherWritingBuilder({ classId, teacherId, setScreen, showToast
     const path = `images/${teacherId}/${uid("writing")}.${ext}`;
     const { error: upError } = await supabase.storage.from("assignment-files").upload(path, task1.imageFile);
     if (upError) throw new Error("Image upload failed: " + upError.message);
-    const { data: pub } = supabase.storage.from("assignment-files").getPublicUrl(path);
-    return pub.publicUrl;
+    return fileRef(path);
   }
 
   async function publish() {
@@ -289,7 +289,7 @@ export function TeacherWritingBuilder({ classId, teacherId, setScreen, showToast
           <label className="field-label" style={{ marginTop: 14 }}>Image (chart, graph, map, diagram…)</label>
           {shownImage ? (
             <div className="qe-writing-image-preview">
-              <img src={shownImage} alt="Writing Task 1" />
+              <StoredImg src={shownImage} alt="Writing Task 1" />
               <button type="button" className="btn-ghost" onClick={removeImage}><X size={13} /> Remove image</button>
             </div>
           ) : (
