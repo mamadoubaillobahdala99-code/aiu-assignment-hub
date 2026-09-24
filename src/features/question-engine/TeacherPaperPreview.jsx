@@ -6,6 +6,7 @@ import { ReviewContent } from "./ReviewContent";
 import { formatAnswerValue } from "./answerFormat";
 import { numberQuestions } from "./bulkParse";
 import { SPEAKING_PARTS, cleanDocuments, fmtSize } from "./speaking";
+import { StoredImg, StoredLink } from "../../lib/storageFiles";
 
 // The teacher reads a paper he has just built — passage, parts, questions,
 // and the correct answer under each one.
@@ -143,7 +144,7 @@ export function TeacherPaperPreview({ assignmentId, onBack }) {
         ) : writingTasks.map((t) => (
           <div key={t.id} className="qe-review-part">
             <h3 className="section-title">Task {t.taskNumber}{t.title ? ` — ${t.title}` : ""}</h3>
-            {t.imageUrl && <img className="qe-sp-doc-img" src={t.imageUrl} alt={`Task ${t.taskNumber}`} />}
+            {t.imageUrl && <StoredImg className="qe-sp-doc-img" src={t.imageUrl} alt={`Task ${t.taskNumber}`} />}
             <div className="qe-sp-questions">{t.prompt}</div>
           </div>
         ))}
@@ -174,11 +175,11 @@ export function TeacherPaperPreview({ assignmentId, onBack }) {
                       <Icon size={15} />
                       <span className="qe-sp-docname">{d.name}</span>
                       {d.size > 0 && <span className="qe-sp-docmeta">{fmtSize(d.size)}</span>}
-                      <a className="btn-ghost qe-sp-download" href={d.url} target="_blank" rel="noopener noreferrer">
+                      <StoredLink className="btn-ghost qe-sp-download" href={d.url} target="_blank" rel="noopener noreferrer">
                         <Download size={13} /> Open
-                      </a>
+                      </StoredLink>
                     </div>
-                    {d.kind === "image" && <img className="qe-sp-doc-img" src={d.url} alt={d.name} />}
+                    {d.kind === "image" && <StoredImg className="qe-sp-doc-img" src={d.url} alt={d.name} />}
                   </div>
                 );
               })}
