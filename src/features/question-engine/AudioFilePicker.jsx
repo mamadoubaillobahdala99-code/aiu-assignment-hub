@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { Upload, Music, Check, X, Trash2 } from "lucide-react";
 import { supabase } from "../../supabaseClient";
 import { uid } from "../../lib/utils";
+import { fileRef } from "../../lib/storageFiles";
 
 // Every Listening audio file lives under audio/{teacherId}/ in the same
 // "assignment-files" bucket already used for assignment images — no new
@@ -28,8 +29,7 @@ export function AudioFilePicker({ teacherId, value, onChange }) {
         .filter((f) => f.name && !f.name.startsWith("."))
         .map((f) => {
           const path = `${audioFolder(teacherId)}/${f.name}`;
-          const { data: pub } = supabase.storage.from("assignment-files").getPublicUrl(path);
-          return { name: f.name, url: pub.publicUrl };
+          return { name: f.name, url: fileRef(path) };
         });
       setFiles(withUrls);
     }
@@ -51,8 +51,7 @@ export function AudioFilePicker({ teacherId, value, onChange }) {
       setError("Upload failed: " + uploadError.message);
       return;
     }
-    const { data: pub } = supabase.storage.from("assignment-files").getPublicUrl(path);
-    onChange({ url: pub.publicUrl, filename: file.name });
+    onChange({ url: fileRef(path), filename: file.name });
     loadLibrary();
     setTab("library");
   }
