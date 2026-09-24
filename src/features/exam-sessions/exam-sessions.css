@@ -127,3 +127,6 @@
   .ex-frozen-tools { width: 100%; }
   .ex-frozen-tools .btn-primary, .ex-frozen-tools .btn-ghost { flex: 1; justify-content: center; }
 }
+
+/* A Listening paper whose recording can be paused / replayed. */
+.ex-replay-badge { display: inline-block; margin-left: 8px; padding: 1px 8px; border-radius: 999px; background: #fdf0d9; color: #8a5a00; font-size: 11px; font-weight: 700; white-space: nowrap; }
