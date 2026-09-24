@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
-import { ArrowLeft, Lock, Plus, X, Copy, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { ArrowLeft, Lock, Plus, X, Copy, AlertTriangle, CheckCircle2, Trash2, Undo2 } from "lucide-react";
 import { supabase } from "../../supabaseClient";
 import { CenterSpinner } from "../../components/shared";
 import { numberQuestions } from "./bulkParse";
 import { AudioFilePicker } from "./AudioFilePicker";
-import { GroupImage } from "./GroupImage";
+import { GroupImagePicker } from "./GroupImage";
 
 // Editing a Reading or Listening paper IN PLACE.
 //
@@ -19,9 +19,11 @@ import { GroupImage } from "./GroupImage";
 //   level 2 — copies handed in, no mark seen: wording + correct answers
 //             (the copies are re-marked);
 //   level 3 — a student has seen his mark:    wording only.
-// The LAYOUT never changes here: same choices and letters, same number of
-// blanks "___", same notes / table blocks. Adding or removing questions
-// comes in a later step.
+// The LAYOUT of what stays never changes: same choices and letters, same
+// notes / table blocks, one "___" per question of its group.
+// At level 1 only, questions and whole groups can also be removed. The
+// recording and plays of each Part and the picture of each group can be
+// changed at every level (they never change a mark).
 
 const TFNG_LABELS = {
   true_false: { positive: "True", negative: "False", not_given: "Not Given" },
@@ -76,6 +78,9 @@ export function PaperEditor({ assignmentId, classId, teacherId, setScreen, showT
   const [structure, setStructure] = useState([]); // sections → groups → question ids
   const [orig, setOrig] = useState(null); // { sections, groups, questions } as stored
   const [draft, setDraft] = useState(null);
+  // Removed on screen, deleted for real only by "Save changes" (level 1).
+  const [removedGroups, setRemovedGroups] = useState(() => new Set());
+  const [removedQuestions, setRemovedQuestions] = useState(() => new Set());
   const [settings, setSettings] = useState(null);
   const [origSettings, setOrigSettings] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -114,7 +119,7 @@ export function PaperEditor({ assignmentId, classId, teacherId, setScreen, showT
     const built = [];
     let counter = 0;
     for (const s of sectionRows || []) {
-      o.sections[s.id] = { passage_title: s.passage_title || "", passage_text: s.passage_text || "" };
+      o.sections[s.id] = { passage_title: s.passage_title || "", passage_text: s.passage_text || "", audio_url: s.audio_url || null, max_plays: s.max_plays == null ? "" : String(s.max_plays) };
       const { data: groupRows } = await supabase
         .from("question_groups")
         .select("id, instruction, passage_text, image_url, order_index")
@@ -130,9 +135,9 @@ export function PaperEditor({ assignmentId, classId, teacherId, setScreen, showT
         const qs = (links || []).map((l) => l.questions).filter(Boolean);
         const { numbers, end, nextStart } = numberQuestions(qs, counter + 1);
         counter = nextStart - 1;
-        o.groups[g.id] = { instruction: g.instruction || "", passage_text: g.passage_text || "" };
+        o.groups[g.id] = { instruction: g.instruction || "", passage_text: g.passage_text || "", image_url: g.image_url || null };
         qs.forEach((q) => {
-          o.questions[q.id] = { type: q.type, prompt: q.prompt || "", options: q.options || {}, key: null, slots: 1 };
+          o.questions[q.id] = { type: q.type, prompt: q.prompt || "", options: q.options || {}, key: null };
         });
         groups.push({ id: g.id, imageUrl: g.image_url, questionIds: qs.map((q) => q.id), numbers, end });
       }
@@ -188,46 +193,95 @@ export function PaperEditor({ assignmentId, classId, teacherId, setScreen, showT
     const questions = [];
     const problems = [];
     let keysChanged = 0;
-    for (const [id, d] of Object.entries(draft.sections)) {
+    const qAlive = (id) => !removedQuestions.has(id);
+
+    for (const sec of structure) {
+      const id = sec.id;
+      const d = draft.sections[id];
       const o = orig.sections[id];
       const e = { id };
       if (d.passage_title !== o.passage_title) e.passage_title = d.passage_title;
       if (d.passage_text !== o.passage_text) e.passage_text = d.passage_text;
+      if (d.audio_url !== o.audio_url) e.audio_url = d.audio_url;
+      if (d.max_plays !== o.max_plays) {
+        const n = d.max_plays === "" ? null : Number(d.max_plays);
+        if (n !== null && (!Number.isInteger(n) || n < 1 || n > 20)) problems.push(`plays:${id}`);
+        e.max_plays = n;
+      }
       if (Object.keys(e).length > 1) sections.push(e);
-    }
-    for (const [id, d] of Object.entries(draft.groups)) {
-      const o = orig.groups[id];
-      const e = { id };
-      if (d.instruction !== o.instruction) e.instruction = d.instruction;
-      if (d.passage_text !== o.passage_text) {
-        e.passage_text = d.passage_text;
-        if (countBlanks(d.passage_text) !== countBlanks(o.passage_text)) problems.push(`group:${id}`);
+      if (sec.groups.every((g) => removedGroups.has(g.id))) problems.push(`part:${id}`);
+
+      for (const g of sec.groups) {
+        if (removedGroups.has(g.id)) continue;
+        const gd = draft.groups[g.id];
+        const go = orig.groups[g.id];
+        const ge = { id: g.id };
+        if (gd.instruction !== go.instruction) ge.instruction = gd.instruction;
+        if (gd.passage_text !== go.passage_text) ge.passage_text = gd.passage_text;
+        if (gd.image_url !== go.image_url) ge.image_url = gd.image_url;
+        if (Object.keys(ge).length > 1) groups.push(ge);
+
+        const alive = g.questionIds.filter(qAlive);
+        if (alive.length === 0) problems.push(`empty:${g.id}`);
+        const blanksWas = countBlanks(go.passage_text);
+        const blanksNow = countBlanks(gd.passage_text);
+        if (blanksWas > 0 ? blanksNow !== alive.length : blanksNow !== 0) problems.push(`group:${g.id}`);
+        if (!gd.image_url && g.questionIds.some((qid) => orig.questions[qid].type === "matching_map_labelling")) problems.push(`image:${g.id}`);
+
+        for (const qid of alive) {
+          const qd = draft.questions[qid];
+          const qo = orig.questions[qid];
+          const qe = { id: qid };
+          if (qd.prompt !== qo.prompt) {
+            qe.prompt = qd.prompt;
+            if (countBlanks(qd.prompt) !== countBlanks(qo.prompt)) problems.push(`prompt:${qid}`);
+          }
+          if (!same(qd.options, qo.options)) qe.options = qd.options;
+          if (!same(qd.key, qo.key)) {
+            const bad =
+              qd.type === "gap_fill"
+                ? !Array.isArray(qd.key) || qd.key.length === 0 || qd.key.some((x) => !String(x).trim())
+                : qd.type === "multiple_selection"
+                ? !Array.isArray(qd.key) || qd.key.length !== (Array.isArray(qo.key) ? qo.key.length : 0)
+                : !qd.key;
+            if (bad) problems.push(`key:${qid}`);
+            qe.correct_answer = qd.type === "gap_fill" && Array.isArray(qd.key) ? qd.key.map((x) => String(x).trim()) : qd.key;
+            keysChanged += 1;
+          }
+          if (Object.keys(qe).length > 1) questions.push(qe);
+        }
       }
-      if (Object.keys(e).length > 1) groups.push(e);
     }
-    for (const [id, d] of Object.entries(draft.questions)) {
-      const o = orig.questions[id];
-      const e = { id };
-      if (d.prompt !== o.prompt) {
-        e.prompt = d.prompt;
-        if (countBlanks(d.prompt) !== countBlanks(o.prompt)) problems.push(`prompt:${id}`);
+
+    const deleteGroups = [...removedGroups];
+    const deleteQuestions = [...removedQuestions].filter((qid) => {
+      const owner = structure.flatMap((sec) => sec.groups).find((g) => g.questionIds.includes(qid));
+      return owner && !removedGroups.has(owner.id);
+    });
+    const deleted = deleteGroups.length + deleteQuestions.length;
+    return {
+      sections, groups, questions, deleteGroups, deleteQuestions, deleted, problems, keysChanged,
+      count: sections.length + groups.length + questions.length + deleted,
+    };
+  }, [orig, draft, structure, removedGroups, removedQuestions]);
+
+  // Question numbers as the students will see them, without what is removed.
+  const numbering = useMemo(() => {
+    const map = {};
+    let next = 1;
+    for (const sec of structure) {
+      for (const g of sec.groups) {
+        if (removedGroups.has(g.id)) continue;
+        const alive = g.questionIds.filter((id) => !removedQuestions.has(id));
+        const qs = alive.map((id) => ({ ...orig.questions[id] }));
+        const r = numberQuestions(qs, next);
+        alive.forEach((id, i) => (map[id] = r.numbers[i]));
+        map[`group:${g.id}`] = alive.length ? [r.start, r.end] : null;
+        next = r.nextStart;
       }
-      if (!same(d.options, o.options)) e.options = d.options;
-      if (!same(d.key, o.key)) {
-        const bad =
-          d.type === "gap_fill"
-            ? !Array.isArray(d.key) || d.key.length === 0 || d.key.some((x) => !String(x).trim())
-            : d.type === "multiple_selection"
-            ? !Array.isArray(d.key) || d.key.length !== (Array.isArray(o.key) ? o.key.length : 0)
-            : !d.key;
-        if (bad) problems.push(`key:${id}`);
-        e.correct_answer = d.type === "gap_fill" && Array.isArray(d.key) ? d.key.map((x) => String(x).trim()) : d.key;
-        keysChanged += 1;
-      }
-      if (Object.keys(e).length > 1) questions.push(e);
     }
-    return { sections, groups, questions, problems, keysChanged, count: sections.length + groups.length + questions.length };
-  }, [orig, draft]);
+    return map;
+  }, [structure, orig, removedGroups, removedQuestions]);
 
   const settingsChanged = settings && origSettings && !same(settings, origSettings);
   const hasProblem = (tag) => diff?.problems.includes(tag);
@@ -252,8 +306,16 @@ export function PaperEditor({ assignmentId, classId, teacherId, setScreen, showT
     setError("");
     if (!diff) return;
     if (diff.problems.length > 0) {
-      setError("Some fields need fixing first (marked in red): the number of blanks \"___\" must stay the same, and every question needs a correct answer.");
+      setError("Some fields need fixing first (marked in red): one \"___\" per question in a text with blanks, a correct answer for every question, a picture for a map, at least one question in each group and one group in each part.");
       return;
+    }
+    if (diff.deleted > 0) {
+      const nq = diff.deleteQuestions.length;
+      const ng = diff.deleteGroups.length;
+      const parts = [];
+      if (ng) parts.push(`${ng} question group${ng > 1 ? "s" : ""}`);
+      if (nq) parts.push(`${nq} question${nq > 1 ? "s" : ""}`);
+      if (!window.confirm(`Delete ${parts.join(" and ")} from this paper? This cannot be undone.`)) return;
     }
     const minutes = parseInt(settings.time_limit_minutes, 10);
     if (!minutes || minutes < 1) {
@@ -273,7 +335,13 @@ export function PaperEditor({ assignmentId, classId, teacherId, setScreen, showT
     if (diff.count > 0) {
       const { data, error: rpcError } = await supabase.rpc("save_paper_edits", {
         p_assignment_id: assignmentId,
-        p_edits: { sections: diff.sections, groups: diff.groups, questions: diff.questions },
+        p_edits: {
+          sections: diff.sections,
+          groups: diff.groups,
+          questions: diff.questions,
+          delete_groups: diff.deleteGroups,
+          delete_questions: diff.deleteQuestions,
+        },
       });
       if (rpcError) {
         setSaving(false);
@@ -346,6 +414,7 @@ export function PaperEditor({ assignmentId, classId, teacherId, setScreen, showT
   }
 
   const isListening = assignment.type === "Listening";
+  const canRemove = state.level === 1;
   const nothingToSave = diff.count === 0 && !settingsChanged;
 
   return (
@@ -462,27 +531,78 @@ export function PaperEditor({ assignmentId, classId, teacherId, setScreen, showT
               <p className="field-hint">Lines such as [[image:…]] are the pictures of the passage: leave them where they are.</p>
             </>
           )}
-          {isListening && sec.audioUrl && (
-            <p className="field-hint">This part has its own recording{sec.maxPlays ? ` (${sec.maxPlays} play${sec.maxPlays > 1 ? "s" : ""})` : " (unlimited plays)"}. Changing it comes in the next step.</p>
+          {isListening && !origSettings.listening_audio && (
+            <div className="qe-pe-media">
+              <label className="field-label" style={{ marginTop: 0 }}>Recording of this part</label>
+              <AudioFilePicker
+                teacherId={teacherId}
+                value={draft.sections[sec.id].audio_url ? { url: draft.sections[sec.id].audio_url, filename: draft.sections[sec.id].audio_url === orig.sections[sec.id].audio_url ? "Current recording" : "New recording" } : null}
+                onChange={(f) => patchSection(sec.id, { audio_url: f?.url || null })}
+              />
+              <label className="field-label">Plays allowed (leave blank for unlimited)</label>
+              <input
+                type="number"
+                min="1"
+                max="20"
+                placeholder="Unlimited"
+                className={`field-input ${hasProblem(`plays:${sec.id}`) ? "is-invalid" : ""}`}
+                style={{ maxWidth: 160 }}
+                value={draft.sections[sec.id].max_plays}
+                onChange={(e) => patchSection(sec.id, { max_plays: e.target.value })}
+              />
+              {hasProblem(`plays:${sec.id}`) && <div className="field-error">A whole number between 1 and 20, or empty.</div>}
+            </div>
+          )}
+          {hasProblem(`part:${sec.id}`) && (
+            <div className="field-error">A part must keep at least one question group: undo one of the removals.</div>
           )}
 
           {sec.groups.map((g) => {
+            if (removedGroups.has(g.id)) {
+              return (
+                <div key={g.id} className="qe-pe-removed">
+                  <span>Question group removed ({g.questionIds.length} question{g.questionIds.length > 1 ? "s" : ""}) — deleted when you save.</span>
+                  <button type="button" className="btn-ghost" onClick={() => setRemovedGroups((set) => { const n = new Set(set); n.delete(g.id); return n; })}>
+                    <Undo2 size={13} /> Undo
+                  </button>
+                </div>
+              );
+            }
             const qids = g.questionIds;
             const qs = qids.map((id) => draft.questions[id]);
             const shared = sharedChoices(qs);
             const sharedHasText = shared && (qs[0].options?.choices || []).some((c) => c.text);
-            const first = g.numbers[0];
-            const last = g.end;
+            const range = numbering[`group:${g.id}`];
+            const first = range ? range[0] : null;
+            const last = range ? range[1] : null;
+            const aliveCount = qids.filter((id) => !removedQuestions.has(id)).length;
+            const isLabelling = qids.some((id) => orig.questions[id].type === "matching_map_labelling");
             const gText = draft.groups[g.id].passage_text;
             const gOrigText = orig.groups[g.id].passage_text;
             return (
               <div key={g.id} className="qe-pe-group">
-                <div className="qe-pe-group-head">Questions {first}{last && last !== first ? `–${last}` : ""}</div>
+                <div className="qe-pe-group-head">
+                  <span>{range ? `Questions ${first}${last !== first ? `–${last}` : ""}` : "No question left"}</span>
+                  {canRemove && (
+                    <button type="button" className="btn-ghost qe-pe-remove" onClick={() => setRemovedGroups((set) => new Set(set).add(g.id))}>
+                      <Trash2 size={13} /> Remove this group
+                    </button>
+                  )}
+                </div>
+                {hasProblem(`empty:${g.id}`) && <div className="field-error">A group cannot be left without questions: remove the whole group instead, or undo.</div>}
                 <label className="field-label">Instruction</label>
                 <textarea className="field-input textarea qe-pe-short" value={draft.groups[g.id].instruction} onChange={(e) => patchGroup(g.id, { instruction: e.target.value })} />
 
-                {g.imageUrl && (
-                  <div className="qe-pe-image"><GroupImage url={g.imageUrl} /></div>
+                {(orig.groups[g.id].image_url || isLabelling) && (
+                  <div className={`qe-pe-image ${hasProblem(`image:${g.id}`) ? "is-invalid" : ""}`}>
+                    <GroupImagePicker
+                      teacherId={teacherId}
+                      value={draft.groups[g.id].image_url || ""}
+                      onChange={(url) => patchGroup(g.id, { image_url: url || null })}
+                      label={isLabelling ? "Map / plan (required)" : "Picture"}
+                      required={isLabelling}
+                    />
+                  </div>
                 )}
 
                 {gOrigText && (
@@ -490,6 +610,7 @@ export function PaperEditor({ assignmentId, classId, teacherId, setScreen, showT
                     value={gText}
                     original={gOrigText}
                     invalid={hasProblem(`group:${g.id}`)}
+                    questionsLeft={aliveCount}
                     onChange={(v) => patchGroup(g.id, { passage_text: v })}
                   />
                 )}
@@ -506,10 +627,19 @@ export function PaperEditor({ assignmentId, classId, teacherId, setScreen, showT
                   </div>
                 )}
 
-                {qids.map((id, qi) => (
+                {qids.map((id) =>
+                  removedQuestions.has(id) ? (
+                    <div key={id} className="qe-pe-removed">
+                      <span>Question removed — deleted when you save.{countBlanks(gOrigText) > 0 ? " Also remove its \"___\" from the text above." : ""}</span>
+                      <button type="button" className="btn-ghost" onClick={() => setRemovedQuestions((set) => { const n = new Set(set); n.delete(id); return n; })}>
+                        <Undo2 size={13} /> Undo
+                      </button>
+                    </div>
+                  ) : (
                   <QuestionEditor
                     key={id}
-                    number={g.numbers[qi]}
+                    number={numbering[id]}
+                    onRemove={canRemove ? () => setRemovedQuestions((set) => new Set(set).add(id)) : null}
                     q={draft.questions[id]}
                     orig={orig.questions[id]}
                     hideChoices={shared}
@@ -519,7 +649,8 @@ export function PaperEditor({ assignmentId, classId, teacherId, setScreen, showT
                     onPatch={(patch) => patchQuestion(id, patch)}
                     onChoice={(letter, text) => setChoiceText([id], letter, text)}
                   />
-                ))}
+                  )
+                )}
               </div>
             );
           })}
@@ -536,22 +667,27 @@ export function PaperEditor({ assignmentId, classId, teacherId, setScreen, showT
         <span className="field-hint" style={{ margin: 0 }}>
           {nothingToSave
             ? "Nothing changed yet."
-            : `${diff.count + (settingsChanged ? 1 : 0)} change${diff.count + (settingsChanged ? 1 : 0) > 1 ? "s" : ""} to save${diff.keysChanged ? ` — ${diff.keysChanged} correct answer${diff.keysChanged > 1 ? "s" : ""}` : ""}.`}
+            : `${diff.count + (settingsChanged ? 1 : 0)} change${diff.count + (settingsChanged ? 1 : 0) > 1 ? "s" : ""} to save${diff.keysChanged ? ` — ${diff.keysChanged} correct answer${diff.keysChanged > 1 ? "s" : ""}` : ""}${diff.deleted ? ` — ${diff.deleted} removal${diff.deleted > 1 ? "s" : ""}` : ""}.`}
         </span>
       </div>
-      <p className="field-hint">Adding or removing questions will come in a next step. For now, duplicate the paper and build a new version if you need to.</p>
+      <p className="field-hint">
+        {canRemove
+          ? "Adding new questions will come in a next step."
+          : "Questions can only be removed while nobody has handed in this paper. To make a shorter version, duplicate it and edit the copy."}
+      </p>
     </div>
   );
 }
 
 // The words of a notes / table / summary text. The layout (and every
 // blank "___") stays; only the words change.
-function GroupTextEditor({ value, original, invalid, onChange }) {
+function GroupTextEditor({ value, original, invalid, onChange, questionsLeft }) {
   const blanksNow = countBlanks(value);
   const blanksWas = countBlanks(original);
+  const needed = blanksWas > 0 ? questionsLeft : 0;
   const badge = (
-    <span className={`qe-pe-blanks ${blanksNow !== blanksWas ? "is-bad" : ""}`}>
-      {blanksNow} / {blanksWas} blanks
+    <span className={`qe-pe-blanks ${blanksNow !== needed ? "is-bad" : ""}`} title="One blank per question of this group">
+      {blanksNow} blank{blanksNow === 1 ? "" : "s"} / {needed} question{needed === 1 ? "" : "s"}
     </span>
   );
 
@@ -595,7 +731,7 @@ function GroupTextEditor({ value, original, invalid, onChange }) {
   );
 }
 
-function QuestionEditor({ number, q, orig, hideChoices, keysLocked, promptInvalid, keyInvalid, onPatch, onChoice }) {
+function QuestionEditor({ number, q, orig, hideChoices, keysLocked, promptInvalid, keyInvalid, onPatch, onChoice, onRemove }) {
   const choices = q.options?.choices || [];
   const showPrompt = !isPlaceholderPrompt(orig.prompt) || q.prompt !== orig.prompt;
   const keyChanged = !same(q.key, orig.key);
@@ -664,6 +800,11 @@ function QuestionEditor({ number, q, orig, hideChoices, keysLocked, promptInvali
       <div className="qe-pe-q-head">
         <span className="rf-answer-num qe-question-badge">{number}</span>
         <span className="qe-pe-type">{TYPE_LABELS[q.type] || q.type}</span>
+        {onRemove && (
+          <button type="button" className="qe-pe-icon qe-pe-remove-q" title="Remove this question" onClick={onRemove}>
+            <Trash2 size={14} />
+          </button>
+        )}
       </div>
       {showPrompt && (
         <>
