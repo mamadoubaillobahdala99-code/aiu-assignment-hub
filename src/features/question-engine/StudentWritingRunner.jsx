@@ -8,6 +8,7 @@ import { useInvigilation } from "./useInvigilation";
 import { InvigilationOverlay } from "./InvigilationOverlay";
 import { ExamStripButtons, ExamFullscreenButton, ExamExitButton } from "./ExamSidebarButtons";
 import { useIsCompact, useVisualViewportHeight } from "./useViewport";
+import { StoredImg } from "../../lib/storageFiles";
 
 // Structured Writing — student exam screen.
 // Same shell as Reading/Listening (start screen, black sidebar, green
@@ -467,7 +468,7 @@ export function StudentWritingRunner({ userId, assignmentId, setScreen, showToas
                     )}
                   </div>
                   <div className="qe-wr-image-scroll">
-                    <img src={active.imageUrl} alt={`Writing Task ${active.taskNumber}`} style={{ width: `${zoom * 100}%` }} draggable={false} />
+                    <StoredImg src={active.imageUrl} alt={`Writing Task ${active.taskNumber}`} style={{ width: `${zoom * 100}%` }} draggable={false} />
                   </div>
                 </div>
               )}
