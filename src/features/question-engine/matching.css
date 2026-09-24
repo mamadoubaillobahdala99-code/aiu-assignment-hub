@@ -1,38 +1,31 @@
 .qe-matching-wrap { margin: 8px 0; }
-/* The grid keeps its own width and slides inside the panel rather than
-   being squeezed. table-layout is no longer fixed: with the minimum
-   widths below, the table asks for the room its columns really need,
-   fills the panel when there is enough, and overflows when there is not. */
-.qe-matching-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-.qe-matching-grid { border-collapse: separate; border-spacing: 0; width: 100%; font-size: 14px; }
-/* One line between two cells, not two: with separate borders each cell
-   draws its own, so only the bottom and right edges are drawn and the
-   table closes itself on the top and left. overflow-wrap only — a word
-   too long for its column overflows instead of being chopped between
-   two letters. */
-.qe-matching-grid th, .qe-matching-grid td {
-  border: 0;
-  border-bottom: 1px solid var(--line);
-  border-right: 1px solid var(--line);
-  padding: 10px 8px; text-align: center; vertical-align: middle; overflow-wrap: break-word;
-}
-.qe-matching-grid thead th { border-top: 1px solid var(--line); }
-.qe-matching-grid th:first-child, .qe-matching-grid td:first-child { border-left: 1px solid var(--line); }
-.qe-matching-grid th:not(:first-child), .qe-matching-grid td.qe-matching-cell { width: 46px; min-width: 46px; }
-.qe-matching-grid thead th { background: var(--paper-raised); font-weight: 600; }
 
-/* The sentence stays put while the letters slide past it — otherwise
-   you would scroll right to tick and lose sight of what you are ticking.
-   It needs a background of its own: a sticky cell is transparent, and
-   the letters would show through it. */
-.qe-matching-grid th:first-child, .qe-matching-prompt {
-  position: sticky; left: 0; z-index: 1;
-  min-width: 200px;
-  background: var(--paper);
-}
-.qe-matching-grid thead th:first-child { background: var(--paper-raised); }
-.qe-matching-prompt { text-align: left !important; }
-.qe-matching-cell input[type="radio"] { width: 16px; height: 16px; accent-color: var(--teal); cursor: pointer; }
+/* The grid always fits its panel — on a computer and a tablet nothing in
+   it is ever out of sight. When the student pushes the separator, both
+   sides give way together: the sentence wraps onto a second line (or a
+   third), and the letter columns close up, from 62px down to the 24px
+   the tick box itself needs. Every letter, A to the last, stays on
+   screen.
+
+   An earlier version did the opposite and let the grid slide sideways:
+   on an ordinary 1280px laptop with eight options, only A to D were
+   visible, with nothing to say that E to H existed.
+
+   The column widths themselves are computed in MatchingGrid.jsx:
+   left to the browser, the table crushed the sentence first. */
+.qe-matching-grid { border-collapse: collapse; width: 100%; table-layout: fixed; font-size: 14px; }
+.qe-matching-grid th, .qe-matching-grid td { border: 1px solid var(--line); padding: 10px 8px; text-align: center; vertical-align: middle; }
+.qe-matching-grid thead th { background: rgba(0, 0, 0, 0.03); font-weight: 600; }
+
+/* Narrow side padding and no margin on the tick box: that is what lets
+   a letter column close up to 24px without the box spilling over. */
+.qe-matching-grid th:not(:first-child), .qe-matching-grid td.qe-matching-cell { padding-left: 4px; padding-right: 4px; }
+
+/* "anywhere" rather than "break-word": the sentence may cut a long word
+   rather than push the grid out of its panel. It only comes to that
+   when the separator is pushed right to its end. */
+.qe-matching-prompt { text-align: left !important; overflow-wrap: anywhere; }
+.qe-matching-cell input[type="radio"] { width: 16px; height: 16px; margin: 0; vertical-align: middle; accent-color: var(--teal); cursor: pointer; }
 .qe-matching-legend { list-style: none; margin: 0 0 12px; padding: 0; font-size: 13.5px; color: var(--ink); }
 .qe-matching-legend li { margin: 3px 0; }
 
