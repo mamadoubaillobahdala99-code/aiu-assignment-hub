@@ -5,6 +5,7 @@ import { supabase } from "../../supabaseClient";
 import { CenterSpinner } from "../../components/shared";
 import { WritingView } from "./WritingView";
 import { sanitizeWritingHtml } from "./writingHtml";
+import { StoredImg } from "../../lib/storageFiles";
 
 // Structured Writing — what the student sees once the teacher publishes:
 // overall band + general feedback, then per task the teacher's corrected
@@ -119,7 +120,7 @@ export function StudentWritingFeedback({ assignmentId, userId, setScreen }) {
             <details className="qe-wrv-question">
               <summary>Question — Writing Task {active.taskNumber}</summary>
               {active.prompt && <div className="qe-wr-prompt">{active.prompt}</div>}
-              {active.imageUrl && <img className="qe-wrv-question-img" src={active.imageUrl} alt={`Writing Task ${active.taskNumber}`} />}
+              {active.imageUrl && <StoredImg className="qe-wrv-question-img" src={active.imageUrl} alt={`Writing Task ${active.taskNumber}`} />}
             </details>
 
             <div className="qe-wrv-viewbar">
