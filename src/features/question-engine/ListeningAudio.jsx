@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Headphones, Play, Pause, Volume2, Lock } from "lucide-react";
 import { supabase } from "../../supabaseClient";
+import { useStoredAudio } from "../../lib/storageFiles";
 
 // One audio for the whole Listening test, like the real IELTS.
 //
@@ -93,6 +94,10 @@ export function ListeningAudioBar({ url, filename, audio, onTimeUp, disabled = f
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState("");
   const timeUpRef = useRef(false);
+  // Signed link (3 hours). If it ever stops working mid-recording, a new
+  // one is fetched and the sound goes on from the same second (in exam
+  // mode the server clock below puts it back in step anyway).
+  const media = useStoredAudio(url, ref, (e) => setDuration(e.target.duration || 0));
 
   const { startedAt, examMode, checkMinutes, elapsedSec, start } = audio;
   const ended = duration > 0 && startedAt && elapsedSec >= duration;
@@ -173,9 +178,10 @@ export function ListeningAudioBar({ url, filename, audio, onTimeUp, disabled = f
     <div className={`qe-lsa ${examMode ? "qe-lsa-exam" : ""}`}>
       <audio
         ref={ref}
-        src={url}
+        src={media.src}
         preload="auto"
-        onLoadedMetadata={(e) => setDuration(e.target.duration || 0)}
+        onError={media.onError}
+        onLoadedMetadata={media.onLoadedMetadata}
         onTimeUpdate={(e) => setCurrentTime(e.target.currentTime)}
         onPlay={() => setPlaying(true)}
         onPause={() => {
@@ -195,7 +201,7 @@ export function ListeningAudioBar({ url, filename, audio, onTimeUp, disabled = f
 
       {!startedAt ? (
         <div className="qe-lsa-startrow">
-          <button type="button" className="btn-primary" disabled={starting || disabled} onClick={handleStart}>
+          <button type="button" className="btn-primary" disabled={starting || disabled || !media.src} onClick={handleStart}>
             {starting ? "Starting…" : "I'm ready — start the recording"}
           </button>
           <span className="qe-lsa-note">
