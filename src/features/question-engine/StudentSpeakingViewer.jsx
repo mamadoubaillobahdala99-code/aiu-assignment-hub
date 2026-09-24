@@ -1,9 +1,10 @@
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { ArrowLeft, ChevronLeft, ChevronRight, Download, FileText, Image as ImageIcon, Music, File, Menu, X } from "lucide-react";
 import { supabase } from "../../supabaseClient";
 import { SPEAKING_PARTS, cleanDocuments, fmtSize } from "./speaking";
 import { useIsCompact, useVisualViewportHeight } from "./useViewport";
+import { useSignedUrl } from "../../lib/storageFiles";
 
 // Structured Speaking — student screen. CONSULT ONLY: topics / cue card /
 // questions and the teacher's documents. No recording, no submit.
@@ -14,19 +15,28 @@ const KIND_ICON = { pdf: FileText, image: ImageIcon, audio: Music, docx: File };
 
 function DocumentBlock({ doc }) {
   const Icon = KIND_ICON[doc.kind] || File;
+  // Signed link (3 hours), shared by the button, the picture, the player
+  // and the PDF frame.
+  const [url, renew] = useSignedUrl(doc.url);
+  const renewed = useRef(false);
+  const renewOnce = () => {
+    if (renewed.current) return;
+    renewed.current = true;
+    renew();
+  };
   return (
     <div className="qe-sp-doc">
       <div className="qe-sp-doc-head">
         <Icon size={15} />
         <span className="qe-sp-docname">{doc.name}</span>
         {doc.size > 0 && <span className="qe-sp-docmeta">{fmtSize(doc.size)}</span>}
-        <a className="btn-ghost qe-sp-download" href={doc.url} target="_blank" rel="noopener noreferrer" download={doc.name}>
+        <a className="btn-ghost qe-sp-download" href={url || undefined} target="_blank" rel="noopener noreferrer" download={doc.name}>
           <Download size={13} /> {doc.kind === "docx" ? "Download" : "Open"}
         </a>
       </div>
-      {doc.kind === "image" && <img className="qe-sp-doc-img" src={doc.url} alt={doc.name} />}
-      {doc.kind === "audio" && <audio className="qe-sp-doc-audio" controls preload="metadata" src={doc.url} />}
-      {doc.kind === "pdf" && <iframe className="qe-sp-doc-pdf" src={doc.url} title={doc.name} />}
+      {url && doc.kind === "image" && <img className="qe-sp-doc-img" src={url} alt={doc.name} onError={renewOnce} />}
+      {url && doc.kind === "audio" && <audio className="qe-sp-doc-audio" controls preload="metadata" src={url} onError={renewOnce} />}
+      {url && doc.kind === "pdf" && <iframe className="qe-sp-doc-pdf" src={url} title={doc.name} />}
       {doc.kind === "docx" && <p className="qe-sp-doc-note">Word document — download it to read it.</p>}
     </div>
   );
