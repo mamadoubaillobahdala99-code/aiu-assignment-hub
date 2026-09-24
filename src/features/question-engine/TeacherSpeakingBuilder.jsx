@@ -3,6 +3,7 @@ import React, { useState, useEffect } from "react";
 import { Paperclip, X, FileText, Image as ImageIcon, Music, File } from "lucide-react";
 import { supabase } from "../../supabaseClient";
 import { uid } from "../../lib/utils";
+import { fileRef } from "../../lib/storageFiles";
 import { SPEAKING_PARTS, DOC_ACCEPT, MAX_DOC_MB, MAX_DOCS_PER_PART, docKindOf, extOf, fmtSize, cleanDocuments, deleteUnusedSpeakingFiles } from "./speaking";
 
 // Structured Speaking — teacher side.
@@ -104,8 +105,7 @@ export function TeacherSpeakingBuilder({ classId, teacherId, setScreen, showToas
       setProgress(`Uploading ${f.file.name}…`);
       const { error: upError } = await supabase.storage.from("assignment-files").upload(path, f.file, { contentType: f.file.type || undefined });
       if (upError) throw new Error(`Upload of "${f.file.name}" failed: ${upError.message}`);
-      const { data: pub } = supabase.storage.from("assignment-files").getPublicUrl(path);
-      uploaded.push({ name: f.file.name, url: pub.publicUrl, path, kind: f.kind, size: f.file.size });
+      uploaded.push({ name: f.file.name, url: fileRef(path), path, kind: f.kind, size: f.file.size });
     }
     return uploaded;
   }
