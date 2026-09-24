@@ -1,14 +1,42 @@
-import React, { useState, useEffect, useCallback } from "react";
-import { Upload, Music, Check, X, Trash2 } from "lucide-react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
+import { Upload, Music, Check, X, Trash2, Play, Square } from "lucide-react";
 import { supabase } from "../../supabaseClient";
 import { uid } from "../../lib/utils";
-import { fileRef } from "../../lib/storageFiles";
+import { fileRef, useSignedUrl } from "../../lib/storageFiles";
 
 // Every Listening audio file lives under audio/{teacherId}/ in the same
 // "assignment-files" bucket already used for assignment images — no new
 // bucket, same upload pattern already proven in AssignmentsTab.jsx.
 function audioFolder(teacherId) {
   return `audio/${teacherId}`;
+}
+
+// The teacher's own player: normal controls, no limit — it is only there
+// to check the file before (or after) choosing it. Starting one player
+// pauses every other one on the page.
+function AudioPreview({ url, autoPlay = false }) {
+  const [src, renew] = useSignedUrl(url);
+  const renewed = useRef(false);
+  if (!src) return <p className="qe-audio-preview-wait">Loading the recording…</p>;
+  return (
+    <audio
+      className="qe-audio-preview"
+      controls
+      preload="metadata"
+      autoPlay={autoPlay}
+      src={src}
+      onPlay={(e) => {
+        document.querySelectorAll("audio.qe-audio-preview").forEach((el) => {
+          if (el !== e.target && !el.paused) el.pause();
+        });
+      }}
+      onError={() => {
+        if (renewed.current) return;
+        renewed.current = true;
+        renew();
+      }}
+    />
+  );
 }
 
 export function AudioFilePicker({ teacherId, value, onChange }) {
@@ -18,6 +46,8 @@ export function AudioFilePicker({ teacherId, value, onChange }) {
   const [uploading, setUploading] = useState(false);
   const [deletingName, setDeletingName] = useState(null);
   const [error, setError] = useState("");
+  // The library file being listened to (one at a time), or null.
+  const [listening, setListening] = useState(null);
 
   const loadLibrary = useCallback(async () => {
     setLoading(true);
@@ -57,37 +87,38 @@ export function AudioFilePicker({ teacherId, value, onChange }) {
   }
 
   // Deletes the file from the library entirely — not just from the
-  // current Part. Checked against every assignment first (not only this
-  // one), since the same file is often reused across several Parts.
+  // current Part. Refused while ANY paper still uses it: the teacher's own
+  // papers, and copies other teachers made (duplicated into their exam),
+  // which this browser cannot see. The database counts them for us
+  // (storage_file_usage) and gives back numbers only, never titles.
   async function handleDeleteForever(f) {
     setError("");
     setDeletingName(f.name);
-
-    const { data: usedIn, error: usageError } = await supabase
-      .from("exam_sections")
-      .select("id, title, assignment_id, assignments!exam_sections_assignment_id_fkey(title)")
-      .eq("audio_url", f.url);
-
-    if (usageError) {
-      setDeletingName(null);
-      setError("Could not check where this file is used: " + usageError.message);
-      return;
-    }
-
-    const count = usedIn?.length || 0;
-    const message =
-      count > 0
-        ? `"${f.name}" is currently used in ${count} part${count > 1 ? "s" : ""} across your assignments` +
-          (usedIn.length <= 5 ? ": " + usedIn.map((s) => `${s.assignments?.title || "an assignment"} — ${s.title}`).join(", ") : "") +
-          `. Deleting it will remove the audio from ${count > 1 ? "those parts" : "that part"} too — students opening ${count > 1 ? "them" : "it"} will see no audio until you pick a new one. Delete anyway?`
-        : `Delete "${f.name}"? This can't be undone.`;
-
-    if (!window.confirm(message)) {
-      setDeletingName(null);
-      return;
-    }
-
     const path = `${audioFolder(teacherId)}/${f.name}`;
+
+    const { data: usage, error: usageError } = await supabase.rpc("storage_file_usage", { p_name: path });
+    if (usageError || !usage) {
+      setDeletingName(null);
+      setError("Could not check where this file is used, so nothing was deleted. Try again in a moment.");
+      return;
+    }
+
+    const mine = Number(usage.mine) || 0;
+    const others = Number(usage.others) || 0;
+    if (mine + others > 0) {
+      setDeletingName(null);
+      const parts = [];
+      if (mine) parts.push(`${mine} of your paper${mine > 1 ? "s" : ""}`);
+      if (others) parts.push(`${others} paper${others > 1 ? "s" : ""} of another teacher (a copy of yours)`);
+      setError(`"${f.name}" can't be deleted: it is used in ${parts.join(" and ")}. Deleting it would leave ${mine + others > 1 ? "them" : "it"} without audio.`);
+      return;
+    }
+
+    if (!window.confirm(`Delete "${f.name}"? No paper uses it. This can't be undone.`)) {
+      setDeletingName(null);
+      return;
+    }
+
     const { error: removeError } = await supabase.storage.from("assignment-files").remove([path]);
     if (removeError) {
       setDeletingName(null);
@@ -95,13 +126,10 @@ export function AudioFilePicker({ teacherId, value, onChange }) {
       return;
     }
 
-    if (count > 0) {
-      await supabase.from("exam_sections").update({ audio_url: null }).eq("audio_url", f.url);
-    }
-
     // If the file we just deleted was selected right here, clear it too
     // — no point leaving a phantom selection pointing at a dead file.
     if (value?.url === f.url) onChange(null);
+    if (listening === f.name) setListening(null);
 
     setDeletingName(null);
     loadLibrary();
@@ -122,21 +150,33 @@ export function AudioFilePicker({ teacherId, value, onChange }) {
         ) : (
           <div className="qe-audio-library" style={{ marginTop: 10 }}>
             {files.map((f) => (
-              <div key={f.name} className={`qe-audio-library-item ${value?.url === f.url ? "active" : ""}`}>
-                <button type="button" className="qe-audio-library-select" onClick={() => onChange({ url: f.url, filename: f.name })}>
-                  <Music size={14} />
-                  <span className="qe-audio-library-name">{f.name}</span>
-                  {value?.url === f.url && <Check size={14} className="qe-question-check" />}
-                </button>
-                <button
-                  type="button"
-                  className="qe-audio-delete-btn"
-                  title="Delete this file forever"
-                  disabled={deletingName === f.name}
-                  onClick={() => handleDeleteForever(f)}
-                >
-                  <Trash2 size={13} />
-                </button>
+              <div key={f.name} className={`qe-audio-library-row ${value?.url === f.url ? "active" : ""}`}>
+                <div className={`qe-audio-library-item ${value?.url === f.url ? "active" : ""}`}>
+                  <button
+                    type="button"
+                    className={`qe-audio-listen-btn ${listening === f.name ? "is-on" : ""}`}
+                    title={listening === f.name ? "Stop listening" : "Listen to this file"}
+                    aria-label={listening === f.name ? "Stop listening" : "Listen to this file"}
+                    onClick={() => setListening((n) => (n === f.name ? null : f.name))}
+                  >
+                    {listening === f.name ? <Square size={12} /> : <Play size={13} />}
+                  </button>
+                  <button type="button" className="qe-audio-library-select" onClick={() => onChange({ url: f.url, filename: f.name })}>
+                    <Music size={14} />
+                    <span className="qe-audio-library-name">{f.name}</span>
+                    {value?.url === f.url && <Check size={14} className="qe-question-check" />}
+                  </button>
+                  <button
+                    type="button"
+                    className="qe-audio-delete-btn"
+                    title="Delete this file forever"
+                    disabled={deletingName === f.name}
+                    onClick={() => handleDeleteForever(f)}
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+                {listening === f.name && <AudioPreview url={f.url} autoPlay />}
               </div>
             ))}
           </div>
@@ -153,12 +193,15 @@ export function AudioFilePicker({ teacherId, value, onChange }) {
       {error && <div className="field-error" style={{ marginTop: 8 }}>{error}</div>}
 
       {value?.url && (
-        <div className="qe-audio-selected">
-          <Music size={13} /> Selected: {value.filename || "audio file"}
-          <button type="button" className="qe-audio-remove-btn" onClick={() => onChange(null)}>
-            <X size={12} /> Remove
-          </button>
-        </div>
+        <>
+          <div className="qe-audio-selected">
+            <Music size={13} /> Selected: {value.filename || "audio file"}
+            <button type="button" className="qe-audio-remove-btn" onClick={() => onChange(null)}>
+              <X size={12} /> Remove
+            </button>
+          </div>
+          <AudioPreview url={value.url} />
+        </>
       )}
     </div>
   );
