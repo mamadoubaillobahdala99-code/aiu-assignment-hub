@@ -4,6 +4,7 @@ import { ImagePlus, X } from "lucide-react";
 import { supabase } from "../../supabaseClient";
 import { uid } from "../../lib/utils";
 import { GroupImage } from "./GroupImage";
+import { StoredImg, fileRef } from "../../lib/storageFiles";
 
 // Images inside a Reading passage (a plant, an animal, a chart between
 // two paragraphs). The passage stays plain text: an image is a line of
@@ -25,8 +26,7 @@ export function imageMarker(url) {
 
 // "https://<project>.supabase.co/storage/v1/object/public/assignment-files/images/"
 function storagePrefix() {
-  const { data } = supabase.storage.from("assignment-files").getPublicUrl("images/");
-  return data?.publicUrl || "";
+  return fileRef("images/");
 }
 
 export function isStoredImageUrl(url) {
@@ -105,8 +105,7 @@ export async function uploadPassageImage(teacherId, fileOrBlob, name = "image.pn
   const path = `images/${teacherId}/${uid("passage")}.${ext}`;
   const { error } = await supabase.storage.from("assignment-files").upload(path, fileOrBlob, { contentType: type });
   if (error) throw new Error("Upload failed: " + error.message);
-  const { data } = supabase.storage.from("assignment-files").getPublicUrl(path);
-  return data.publicUrl;
+  return fileRef(path);
 }
 
 // Teacher tools under a passage text box: insert an image where the
@@ -158,7 +157,7 @@ export function PassageImageTools({ teacherId, text, onChange, textareaId, resol
             const src = resolveImage(u);
             return (
               <div key={`${u}-${i}`} className="qe-pimg-item">
-                {src ? <img src={src} alt="" /> : <span className="qe-pimg-missing">Image not available</span>}
+                {src ? <StoredImg src={src} alt="" /> : <span className="qe-pimg-missing">Image not available</span>}
                 <button type="button" className="btn-ghost" onClick={() => remove(u)}><X size={12} /> Remove</button>
               </div>
             );
