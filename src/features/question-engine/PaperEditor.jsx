@@ -5,6 +5,7 @@ import { CenterSpinner } from "../../components/shared";
 import { numberQuestions } from "./bulkParse";
 import { AudioFilePicker } from "./AudioFilePicker";
 import { GroupImagePicker } from "./GroupImage";
+import { AddGroupPanel, newAddedGroup, isAddedGroupReady } from "./AddGroupPanel";
 
 // Editing a Reading or Listening paper IN PLACE.
 //
@@ -81,6 +82,8 @@ export function PaperEditor({ assignmentId, classId, teacherId, setScreen, showT
   // Removed on screen, deleted for real only by "Save changes" (level 1).
   const [removedGroups, setRemovedGroups] = useState(() => new Set());
   const [removedQuestions, setRemovedQuestions] = useState(() => new Set());
+  // New groups, per part: { [sectionId]: [group, ...] } (level 1 only).
+  const [added, setAdded] = useState({});
   const [settings, setSettings] = useState(null);
   const [origSettings, setOrigSettings] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -209,7 +212,9 @@ export function PaperEditor({ assignmentId, classId, teacherId, setScreen, showT
         e.max_plays = n;
       }
       if (Object.keys(e).length > 1) sections.push(e);
-      if (sec.groups.every((g) => removedGroups.has(g.id))) problems.push(`part:${id}`);
+      const newHere = (added[id] || []).filter((g) => isAddedGroupReady(g));
+      if (sec.groups.every((g) => removedGroups.has(g.id)) && newHere.length === 0) problems.push(`part:${id}`);
+      for (const g of added[id] || []) if (!isAddedGroupReady(g)) problems.push(`new:${g.localId}`);
 
       for (const g of sec.groups) {
         if (removedGroups.has(g.id)) continue;
@@ -259,11 +264,24 @@ export function PaperEditor({ assignmentId, classId, teacherId, setScreen, showT
       return owner && !removedGroups.has(owner.id);
     });
     const deleted = deleteGroups.length + deleteQuestions.length;
+    const addGroups = [];
+    for (const sec of structure) {
+      for (const g of added[sec.id] || []) {
+        if (!isAddedGroupReady(g)) continue;
+        addGroups.push({
+          section_id: sec.id,
+          instruction: g.instruction || "",
+          passage_text: g.mode === "completion" ? g.summaryText.trim() : null,
+          image_url: g.imageUrl || null,
+          question_ids: g.questions.map((q) => q.id),
+        });
+      }
+    }
     return {
-      sections, groups, questions, deleteGroups, deleteQuestions, deleted, problems, keysChanged,
-      count: sections.length + groups.length + questions.length + deleted,
+      sections, groups, questions, deleteGroups, deleteQuestions, deleted, addGroups, problems, keysChanged,
+      count: sections.length + groups.length + questions.length + deleted + addGroups.length,
     };
-  }, [orig, draft, structure, removedGroups, removedQuestions]);
+  }, [orig, draft, structure, removedGroups, removedQuestions, added]);
 
   // Question numbers as the students will see them, without what is removed.
   const numbering = useMemo(() => {
@@ -279,9 +297,23 @@ export function PaperEditor({ assignmentId, classId, teacherId, setScreen, showT
         map[`group:${g.id}`] = alive.length ? [r.start, r.end] : null;
         next = r.nextStart;
       }
+      for (const g of added[sec.id] || []) {
+        map[`new:${g.localId}`] = next;
+        next = numberQuestions(g.questions, next).nextStart;
+      }
     }
     return map;
-  }, [structure, orig, removedGroups, removedQuestions]);
+  }, [structure, orig, removedGroups, removedQuestions, added]);
+
+  const updateAdded = (sectionId, localId, fn) =>
+    setAdded((a) => ({ ...a, [sectionId]: (a[sectionId] || []).map((g) => (g.localId === localId ? fn(g) : g)) }));
+  // Cancelling a new group also deletes the questions its tools created
+  // (they belong to no paper yet). Best effort: an error changes nothing.
+  const cancelAdded = (sectionId, g) => {
+    setAdded((a) => ({ ...a, [sectionId]: (a[sectionId] || []).filter((x) => x.localId !== g.localId) }));
+    const ids = g.questions.map((q) => q.id).filter(Boolean);
+    if (ids.length) supabase.from("questions").delete().in("id", ids).then(() => {});
+  };
 
   const settingsChanged = settings && origSettings && !same(settings, origSettings);
   const hasProblem = (tag) => diff?.problems.includes(tag);
@@ -306,7 +338,7 @@ export function PaperEditor({ assignmentId, classId, teacherId, setScreen, showT
     setError("");
     if (!diff) return;
     if (diff.problems.length > 0) {
-      setError("Some fields need fixing first (marked in red): one \"___\" per question in a text with blanks, a correct answer for every question, a picture for a map, at least one question in each group and one group in each part.");
+      setError("Some fields need fixing first (marked in red): one \"___\" per question in a text with blanks, a correct answer for every question, a picture for a map, at least one question in each group and one group in each part, and every new group finished (or cancelled).");
       return;
     }
     if (diff.deleted > 0) {
@@ -341,6 +373,7 @@ export function PaperEditor({ assignmentId, classId, teacherId, setScreen, showT
           questions: diff.questions,
           delete_groups: diff.deleteGroups,
           delete_questions: diff.deleteQuestions,
+          add_groups: diff.addGroups,
         },
       });
       if (rpcError) {
@@ -654,6 +687,27 @@ export function PaperEditor({ assignmentId, classId, teacherId, setScreen, showT
               </div>
             );
           })}
+
+          {(added[sec.id] || []).map((g) => (
+            <AddGroupPanel
+              key={g.localId}
+              group={g}
+              teacherId={teacherId}
+              skill={isListening ? "listening" : "reading"}
+              startNumber={numbering[`new:${g.localId}`] || 1}
+              onUpdate={(fn) => updateAdded(sec.id, g.localId, fn)}
+              onCancel={() => cancelAdded(sec.id, g)}
+            />
+          ))}
+          {canRemove && (
+            <button
+              type="button"
+              className="btn-ghost qe-pe-addgroup"
+              onClick={() => setAdded((a) => ({ ...a, [sec.id]: [...(a[sec.id] || []), newAddedGroup(isListening ? "listening" : "reading")] }))}
+            >
+              <Plus size={14} /> Add a question group to {sec.title || `Part ${si + 1}`}
+            </button>
+          )}
         </div>
       ))}
 
@@ -667,13 +721,13 @@ export function PaperEditor({ assignmentId, classId, teacherId, setScreen, showT
         <span className="field-hint" style={{ margin: 0 }}>
           {nothingToSave
             ? "Nothing changed yet."
-            : `${diff.count + (settingsChanged ? 1 : 0)} change${diff.count + (settingsChanged ? 1 : 0) > 1 ? "s" : ""} to save${diff.keysChanged ? ` — ${diff.keysChanged} correct answer${diff.keysChanged > 1 ? "s" : ""}` : ""}${diff.deleted ? ` — ${diff.deleted} removal${diff.deleted > 1 ? "s" : ""}` : ""}.`}
+            : `${diff.count + (settingsChanged ? 1 : 0)} change${diff.count + (settingsChanged ? 1 : 0) > 1 ? "s" : ""} to save${diff.keysChanged ? ` — ${diff.keysChanged} correct answer${diff.keysChanged > 1 ? "s" : ""}` : ""}${diff.deleted ? ` — ${diff.deleted} removal${diff.deleted > 1 ? "s" : ""}` : ""}${diff.addGroups.length ? ` — ${diff.addGroups.length} new group${diff.addGroups.length > 1 ? "s" : ""}` : ""}.`}
         </span>
       </div>
       <p className="field-hint">
         {canRemove
-          ? "Adding new questions will come in a next step."
-          : "Questions can only be removed while nobody has handed in this paper. To make a shorter version, duplicate it and edit the copy."}
+          ? "New groups are added at the end of their part. Adding a whole new part (passage) will come later."
+          : "Questions can only be added or removed while nobody has handed in this paper. To make a different version, duplicate it and edit the copy."}
       </p>
     </div>
   );
