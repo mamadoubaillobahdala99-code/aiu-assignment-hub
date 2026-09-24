@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Play, Pause, Volume2, Headphones, GripHorizontal, X } from "lucide-react";
 import { supabase } from "../../supabaseClient";
+import { useStoredAudio } from "../../lib/storageFiles";
 
 function formatTime(sec) {
   if (!isFinite(sec) || sec < 0) return "00:00";
@@ -23,6 +24,8 @@ export function AudioPlayer({ url, filename, maxPlays, assignmentId, userId, sec
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(1);
+  // Signed link (3 hours); renewed on its own if it expires mid-listening.
+  const media = useStoredAudio(url, audioRef, (e) => setDuration(e.target.duration));
 
   // null = use the default CSS position (top-right). Once the student
   // drags it, we switch to explicit pixel coordinates so it stays put.
@@ -163,9 +166,10 @@ export function AudioPlayer({ url, filename, maxPlays, assignmentId, userId, sec
     <div className="qe-audio-player" ref={panelRef} style={style}>
       <audio
         ref={audioRef}
-        src={url}
+        src={media.src}
+        onError={media.onError}
         onTimeUpdate={(e) => setCurrentTime(e.target.currentTime)}
-        onLoadedMetadata={(e) => setDuration(e.target.duration)}
+        onLoadedMetadata={media.onLoadedMetadata}
         onPlay={() => setPlaying(true)}
         onPause={() => { setPlaying(false); handleNativePause(); }}
         onEnded={() => { setPlaying(false); setActive(false); }}
@@ -191,7 +195,7 @@ export function AudioPlayer({ url, filename, maxPlays, assignmentId, userId, sec
           type="button"
           className="qe-audio-play-btn"
           onClick={playing ? handlePauseClick : handlePlay}
-          disabled={exhausted || checking}
+          disabled={exhausted || checking || !media.src}
         >
           {playing ? <Pause size={16} /> : <Play size={16} />}
         </button>
