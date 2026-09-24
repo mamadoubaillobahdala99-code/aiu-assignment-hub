@@ -11,6 +11,7 @@ import { LabellingBuilder } from "./LabellingBuilder";
 import { GroupImagePicker } from "./GroupImage";
 import { PassageImageTools, stripImageMarkers } from "./PassageImages";
 import { FormCompletionBuilder, FlowchartCompletionBuilder, WordBankCompletionBuilder, ShortAnswerBuilder } from "./CompletionExtraBuilders";
+import { countStoredQuestions } from "./useExamContainer";
 
 function newGroup() {
   return { localId: crypto.randomUUID(), instruction: "", mode: "questions", completionStyle: "paragraph", matchingType: "matching_information", labellingKind: "map", imageUrl: "", questions: [], summaryText: "" };
@@ -37,6 +38,10 @@ export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast
   const [error, setError] = useState("");
   const [loadingExisting, setLoadingExisting] = useState(Boolean(editAssignmentId));
   const [existingAnswerCount, setExistingAnswerCount] = useState(0);
+  // Editing: how many questions the paper holds right now. They are not
+  // shown below yet, so "Save changes" would replace them all.
+  const [storedQuestionCount, setStoredQuestionCount] = useState(0);
+  const [savingSettings, setSavingSettings] = useState(false);
 
   // Edit mode only prefills the assignment's own metadata (title, due
   // date, time limit) — the Parts/questions below always start fresh,
@@ -58,6 +63,7 @@ export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast
       }
       const { count } = await supabase.from("student_answers").select("id", { count: "exact", head: true }).eq("assignment_id", editAssignmentId);
       setExistingAnswerCount(count || 0);
+      setStoredQuestionCount(await countStoredQuestions(editAssignmentId));
       setLoadingExisting(false);
     })();
   }, [editAssignmentId]);
@@ -237,6 +243,11 @@ export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast
         `${existingAnswerCount} answer${existingAnswerCount > 1 ? "s have" : " has"} already been submitted for this assignment. Saving your changes will delete all of that and reset the assignment for every student — they'll need to redo it. Continue?`
       );
       if (!ok) return;
+    } else if (editAssignmentId && storedQuestionCount > 0) {
+      const ok = window.confirm(
+        `This paper has ${storedQuestionCount} question${storedQuestionCount > 1 ? "s" : ""}. "Save changes" deletes ${storedQuestionCount > 1 ? "them all" : "it"} and keeps only the Parts built on this screen. To change only the title or the settings, cancel and use "Save title and settings only". Replace the questions?`
+      );
+      if (!ok) return;
     }
 
     setPublishing(true);
@@ -380,6 +391,36 @@ export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast
     setScreen(returnTo || { name: "class", classId });
   }
 
+  // Title, dates, time limit and results options — nothing else. Passages,
+  // questions and students' answers are not touched.
+  async function saveSettingsOnly() {
+    setError("");
+    const minutes = parseInt(timeLimit, 10);
+    if (!minutes || minutes < 1) {
+      setError("Set a time limit, in minutes. Students need a clock, and an exam paper without one never ends.");
+      return;
+    }
+    setSavingSettings(true);
+    const { error: uError } = await supabase
+      .from("assignments")
+      .update({
+        title: title.trim() || `Reading — ${new Date().toLocaleDateString()}`,
+        due_date: dueDate || null,
+        due_time: dueTime || null,
+        time_limit_minutes: minutes,
+        auto_release_score: autoReleaseScore,
+        show_answer_review: showAnswerReview,
+      })
+      .eq("id", editAssignmentId);
+    setSavingSettings(false);
+    if (uError) {
+      setError("Could not save: " + uError.message);
+      return;
+    }
+    showToast?.("Title and settings saved — the questions are unchanged");
+    setScreen(returnTo || { name: "class", classId });
+  }
+
   if (loadingExisting) {
     return (
       <div className="page page-wide">
@@ -393,10 +434,12 @@ export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast
       <div className="eyebrow">Structured Reading</div>
       <h1 className="page-title">{editAssignmentId ? "Edit Reading assignment" : "New Reading assignment"}</h1>
       {editAssignmentId && (
-        <p className="field-hint" style={{ marginTop: 4 }}>
-          Rebuild the Parts and questions below — saving replaces everything currently in this assignment.
-          {existingAnswerCount > 0 && ` ${existingAnswerCount} answer${existingAnswerCount > 1 ? "s have" : " has"} already been submitted and will be reset if you save.`}
-        </p>
+        <div className="qe-edit-notice">
+          <strong>The {storedQuestionCount > 0 ? `${storedQuestionCount} questions` : "questions"} and passages already in this paper are not shown below.</strong>{" "}
+          To change only the title, dates or time, use <em>Save title and settings only</em> at the bottom: the passages, the questions and the students' answers stay exactly as they are.
+          {" "}<em>Save changes</em> replaces everything with the Parts you build on this screen.
+          {existingAnswerCount > 0 && ` ${existingAnswerCount} answer${existingAnswerCount > 1 ? "s have" : " has"} already been submitted and would be reset.`}
+        </div>
       )}
 
       <label className="field-label" style={{ marginTop: 16 }}>Title (optional — auto-filled from Part 1's passage)</label>
@@ -669,9 +712,16 @@ export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast
 
       {error && <div className="field-error" style={{ marginTop: 16 }}>{error}</div>}
 
-      <button className="btn-primary" style={{ marginTop: 24 }} disabled={!canPublish || publishing} onClick={publish}>
-        {publishing ? "Saving…" : editAssignmentId ? "Save changes" : "Publish assignment"}
-      </button>
+      <div className="qe-builder-actions">
+        {editAssignmentId && (
+          <button className="btn-primary" disabled={savingSettings || publishing} onClick={saveSettingsOnly}>
+            {savingSettings ? "Saving…" : "Save title and settings only"}
+          </button>
+        )}
+        <button className={editAssignmentId ? "btn-ghost" : "btn-primary"} disabled={!canPublish || publishing || savingSettings} onClick={publish}>
+          {publishing ? "Saving…" : editAssignmentId ? "Save changes (replace the questions)" : "Publish assignment"}
+        </button>
+      </div>
     </div>
   );
 }
