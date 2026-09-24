@@ -65,3 +65,7 @@
 .qe-pe-removed { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-top: 12px; padding: 10px 12px; border: 1px dashed #cf3b2e; border-radius: 8px; background: #fbeeec; color: #7a1d15; font-size: 13px; }
 .qe-pe-media { margin-top: 10px; padding: 12px 14px; border-radius: 8px; background: var(--paper); }
 .qe-pe-image.is-invalid { outline: 2px solid #cf3b2e; border-radius: 8px; padding: 4px; }
+
+/* Paper editor, step 3: new question groups */
+.qe-pe-new { border: 2px dashed var(--teal); background: #fbfefd; }
+.qe-pe-addgroup { margin-top: 14px; }
