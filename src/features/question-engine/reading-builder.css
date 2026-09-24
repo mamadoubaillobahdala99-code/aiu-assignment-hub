@@ -4,9 +4,49 @@
 .qe-result-correct { margin-top: 6px; font-size: 12.5px; font-weight: 600; color: var(--teal); }
 .qe-result-incorrect { margin-top: 6px; font-size: 12.5px; font-weight: 600; color: var(--rose); }
 
-/* ---------- Edit screen: what is (not) shown, and the two saves ---------- */
-.qe-edit-notice { margin: 10px 0 4px; padding: 12px 14px; border: 1px solid #e8c77a; border-radius: 8px; background: #fdf6e3; color: #5c4200; font-size: 13.5px; line-height: 1.55; }
-.qe-builder-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 24px; }
-
-/* A Listening inside an exam that would let candidates replay. */
-.qe-exam-warn { margin: 6px 0 0; padding: 7px 10px; border-radius: 6px; background: #fdf0d9; color: #8a5a00; font-size: 12.5px; line-height: 1.45; }
+/* ---------- Paper editor (edit a Reading / Listening in place) ---------- */
+.qe-pe .section-title { margin-top: 26px; }
+.qe-pe-banner { display: flex; align-items: flex-start; gap: 10px; margin: 12px 0 6px; padding: 12px 14px; border-radius: 8px; font-size: 13.5px; line-height: 1.55; }
+.qe-pe-banner svg { flex-shrink: 0; margin-top: 2px; }
+.qe-pe-banner.is-ok { background: var(--teal-soft); color: var(--ink); }
+.qe-pe-banner.is-warn { background: #fdf6e3; border: 1px solid #e8c77a; color: #5c4200; }
+.qe-pe-banner.is-lock { background: #f3f1ec; border: 1px solid var(--line); color: var(--ink); }
+.qe-pe-dup { margin: 6px 0 4px; padding: 12px 14px; border: 1px dashed var(--line); border-radius: 8px; font-size: 13px; color: var(--ink-soft); }
+.qe-pe-dup-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.qe-pe-dup-row .field-input { max-width: 280px; margin: 0; }
+.qe-pe-row { display: flex; flex-wrap: wrap; gap: 14px; }
+.qe-pe-row > div { flex: 1 1 180px; }
+.qe-pe-part { margin-top: 18px; padding-top: 6px; border-top: 2px solid var(--line); }
+.qe-pe-passage { min-height: 220px; font-size: 14px; line-height: 1.6; }
+.field-input.textarea.qe-pe-short { min-height: 56px; height: 64px; font-size: 14px; line-height: 1.5; }
+.qe-pe-group { margin-top: 18px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
+.qe-pe-group-head { font-weight: 700; font-size: 14px; }
+.qe-pe-image { margin-top: 10px; max-width: 520px; }
+.qe-pe-layout { margin-top: 12px; padding: 10px 12px; border-radius: 8px; background: var(--paper); }
+.qe-pe-layout.is-invalid { outline: 2px solid #cf3b2e; }
+.qe-pe-layout-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 6px; }
+.qe-pe-leaf { margin: 0 0 6px; font-size: 13.5px; }
+.qe-pe-leaf.has-blank { border-left: 3px solid var(--teal); }
+.qe-pe-blanks { font-size: 12px; font-weight: 700; color: var(--teal); white-space: nowrap; }
+.qe-pe-blanks.is-bad { color: #a3261c; }
+.qe-pe-options { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+.qe-pe-choice { display: flex; align-items: center; gap: 8px; }
+.qe-pe-choice .field-input { margin: 0; }
+.qe-pe-letter { width: 22px; flex-shrink: 0; font-weight: 700; text-align: center; }
+.qe-pe-q { margin-top: 14px; padding-top: 12px; border-top: 1px dotted var(--line); }
+.qe-pe-q-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.qe-pe-type { font-size: 12px; color: var(--ink-soft); }
+.qe-pe-answer { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 8px; padding: 8px 10px; border-radius: 8px; background: #eef7f3; }
+.qe-pe-answer.is-changed { background: #fdf6e3; }
+.qe-pe-answer.is-invalid { outline: 2px solid #cf3b2e; }
+.qe-pe-answer-label { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-soft); }
+.qe-pe-answer .qe-pe-select { max-width: 380px; width: auto; min-width: 160px; margin: 0; height: auto; min-height: 36px; padding: 6px 8px; line-height: 1.3; }
+.qe-pe-variants { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.qe-pe-variant { display: inline-flex; align-items: center; gap: 2px; }
+.qe-pe-variant .field-input { margin: 0; width: 190px; height: 32px; }
+.qe-pe-icon { border: none; background: none; color: var(--ink-soft); cursor: pointer; padding: 4px; }
+.qe-pe-add { font-size: 12px; padding: 4px 8px; }
+.qe-pe-letters { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.qe-pe-letter-pick { margin: 0; }
+.qe-pe-actions { position: sticky; bottom: 0; padding: 12px 0; background: var(--paper); border-top: 1px solid var(--line); z-index: 2; }
+.field-input.is-invalid { border-color: #cf3b2e; }
