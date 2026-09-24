@@ -87,11 +87,9 @@ export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen,
       setStructuredStudentIds(new Set([...(sa || []), ...(att || [])].map((row) => row.student_id)));
     }
 
-    // Where this paper can be copied: my classes, and the exams I am on
-    // the team of that have not started yet (the database decides).
     if (teacherId) {
-      const { data: targets } = await supabase.rpc("duplicate_targets");
-      setMyClasses(Array.isArray(targets) ? targets : []);
+      const { data: classes } = await supabase.from("classes").select("id, name").eq("teacher_id", teacherId).eq("kind", "class").order("name");
+      setMyClasses(classes || []);
     }
   }, [classId, assignmentId, teacherId]);
 
@@ -145,38 +143,102 @@ export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen,
     setScreen(returnTo || { name: "class", classId });
   }
 
-  // The whole copy is made by the database in ONE step
-  // (duplicate_assignment): the paper, its Parts, groups, questions and
-  // answer keys — or nothing at all if anything fails. Never the
-  // students' answers. Into an exam, a Listening becomes "one listening
-  // only" and the paper is added at the end of the exam's list.
+  // Deep-copies the whole assignment — Parts, groups, questions, answer
+  // keys — into a brand new assignment under the chosen class. Every
+  // copied question is a fresh row, never shared with the original, so
+  // editing or deleting either assignment later can never affect the
+  // other (see the "one question belongs to exactly one assignment"
+  // rule the rest of the app already depends on).
   async function duplicateToClass() {
     if (!duplicateTargetClass) return;
-    const target = myClasses.find((t) => t.class_id === duplicateTargetClass);
     setDuplicating(true);
-    const { data, error } = await supabase.rpc("duplicate_assignment", {
-      p_assignment_id: assignmentId,
-      p_target_class_id: duplicateTargetClass,
-    });
-    setDuplicating(false);
-    if (error || !data?.assignment_id) {
-      showToast("Could not duplicate: " + (error?.message || "unknown error") + " — nothing was copied.");
+
+    const { data: newAssignment, error: aError } = await supabase
+      .from("assignments")
+      .insert({
+        class_id: duplicateTargetClass,
+        title: assignment.title,
+        type: assignment.type,
+        description: assignment.description,
+        time_limit_minutes: assignment.time_limit_minutes,
+        auto_release_score: assignment.auto_release_score,
+        show_answer_review: assignment.show_answer_review,
+        reading_test_type: assignment.reading_test_type,
+        listening_audio_url: assignment.listening_audio_url,
+        listening_exam_mode: assignment.listening_exam_mode,
+        listening_check_minutes: assignment.listening_check_minutes,
+        due_date: null,
+      })
+      .select()
+      .single();
+
+    if (aError || !newAssignment) {
+      setDuplicating(false);
+      showToast("Could not duplicate: " + (aError?.message || "unknown error"));
       return;
     }
-    setShowDuplicate(false);
-    setDuplicateTargetClass("");
-    if (data.session_id) {
-      showToast(`Copied into the exam "${target?.name || ""}"`);
-      setScreen({
-        name: "assignment-teacher",
-        classId: data.class_id,
-        assignmentId: data.assignment_id,
-        returnTo: { name: "exam-session", sessionId: data.session_id },
-      });
-    } else {
-      showToast("Duplicated — set a due date in the new class when you're ready");
-      setScreen({ name: "assignment-teacher", classId: data.class_id, assignmentId: data.assignment_id });
+
+    const { data: sourceSections } = await supabase.from("exam_sections").select("*").eq("assignment_id", assignmentId).order("order_index");
+
+    for (const section of sourceSections || []) {
+      const { data: newSection, error: sError } = await supabase
+        .from("exam_sections")
+        .insert({
+          assignment_id: newAssignment.id,
+          title: section.title,
+          passage_title: section.passage_title,
+          passage_text: section.passage_text,
+          audio_url: section.audio_url,
+          max_plays: section.max_plays,
+          image_url: section.image_url,
+          task_number: section.task_number,
+          speaking_part: section.speaking_part,
+          documents: section.documents || [],
+          order_index: section.order_index,
+        })
+        .select()
+        .single();
+      if (sError || !newSection) continue;
+
+      const { data: sourceGroups } = await supabase.from("question_groups").select("*").eq("section_id", section.id).order("order_index");
+      for (const group of sourceGroups || []) {
+        const { data: newGroup, error: gError } = await supabase
+          .from("question_groups")
+          .insert({ section_id: newSection.id, instruction: group.instruction, passage_text: group.passage_text, image_url: group.image_url || null, order_index: group.order_index })
+          .select()
+          .single();
+        if (gError || !newGroup) continue;
+
+        const { data: links } = await supabase.from("assignment_questions").select("order_index, questions(*)").eq("group_id", group.id).order("order_index");
+        for (const link of links || []) {
+          const q = link.questions;
+          if (!q) continue;
+          const { data: newQuestion, error: qError } = await supabase
+            .from("questions")
+            .insert({ teacher_id: teacherId, type: q.type, skill: q.skill, prompt: q.prompt, options: q.options, points: q.points })
+            .select()
+            .single();
+          if (qError || !newQuestion) continue;
+
+          const { data: key } = await supabase.from("question_answer_key").select("correct_answer").eq("question_id", q.id).single();
+          if (key) {
+            await supabase.from("question_answer_key").insert({ question_id: newQuestion.id, correct_answer: key.correct_answer });
+          }
+
+          await supabase.from("assignment_questions").insert({
+            section_id: newSection.id,
+            group_id: newGroup.id,
+            question_id: newQuestion.id,
+            order_index: link.order_index,
+          });
+        }
+      }
     }
+
+    setDuplicating(false);
+    setShowDuplicate(false);
+    showToast("Duplicated — set a due date in the new class when you're ready");
+    setScreen({ name: "assignment-teacher", classId: duplicateTargetClass, assignmentId: newAssignment.id });
   }
 
 
@@ -267,7 +329,12 @@ export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen,
             <button
               className="btn-ghost"
               onClick={() =>
-                setScreen({
+                setScreen(
+                  // Reading and Listening open the paper itself, in place
+                  // (PaperEditor): nothing is rebuilt, the answers stay.
+                  assignment.type === "Reading" || assignment.type === "Listening"
+                    ? { name: "paper-editor", classId, assignmentId, returnTo }
+                    : {
                   name:
                     assignment.type === "Listening"
                       ? "listening-builder"
@@ -287,7 +354,7 @@ export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen,
           )}
           {isStructured && (
             <button className="btn-ghost" onClick={() => setShowDuplicate((v) => !v)}>
-              <Copy size={13} /> Duplicate
+              <Copy size={13} /> Duplicate to another class
             </button>
           )}
           {!examLocked && (
@@ -300,31 +367,18 @@ export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen,
 
       {showDuplicate && (
         <div className="feedback-panel" style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-          <span className="field-label" style={{ margin: 0 }}>Duplicate this paper to:</span>
-          <select className="field-input" style={{ maxWidth: 280 }} value={duplicateTargetClass} onChange={(e) => setDuplicateTargetClass(e.target.value)}>
-            <option value="">Choose a class or an exam…</option>
-            {myClasses.some((t) => t.kind === "class") && (
-              <optgroup label="My classes">
-                {myClasses.filter((t) => t.kind === "class").map((t) => (
-                  <option key={t.class_id} value={t.class_id}>{t.name}</option>
-                ))}
-              </optgroup>
-            )}
-            {myClasses.some((t) => t.kind === "exam") && (
-              <optgroup label="My exams (not started yet)">
-                {myClasses.filter((t) => t.kind === "exam").map((t) => (
-                  <option key={t.class_id} value={t.class_id}>{t.name}</option>
-                ))}
-              </optgroup>
-            )}
+          <span className="field-label" style={{ margin: 0 }}>Duplicate this assignment to:</span>
+          <select className="field-input" style={{ maxWidth: 220 }} value={duplicateTargetClass} onChange={(e) => setDuplicateTargetClass(e.target.value)}>
+            <option value="">Choose a class…</option>
+            {myClasses.map((c) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
           </select>
           <button className="btn-primary" disabled={!duplicateTargetClass || duplicating} onClick={duplicateToClass}>
             {duplicating ? "Duplicating…" : "Duplicate"}
           </button>
           <span className="field-hint" style={{ margin: 0, flexBasis: "100%" }}>
             Creates a completely independent copy — editing or deleting one afterwards never affects the other.
-            Students' answers and marks are never copied. Only exams that have not started are listed;
-            copied into an exam, a Listening is set to one listening only.
           </span>
         </div>
       )}
