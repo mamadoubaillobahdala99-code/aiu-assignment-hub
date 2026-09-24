@@ -131,3 +131,29 @@ export function useIsPhone() {
 
   return phone;
 }
+
+// Reports the width of one element, live — for a layout that has to
+// follow a panel the student can resize (the exam splitter changes the
+// panel, never the window, so a media query cannot see it). Returns null
+// until the first measurement.
+export function useElementWidth(ref) {
+  const [width, setWidth] = useState(null);
+
+  useEffect(() => {
+    const el = ref?.current;
+    if (!el) return;
+    if (typeof ResizeObserver === "undefined") {
+      setWidth(el.getBoundingClientRect().width);
+      return;
+    }
+    const ro = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect?.width;
+      if (typeof w === "number") setWidth(w);
+    });
+    ro.observe(el);
+    setWidth(el.getBoundingClientRect().width);
+    return () => ro.disconnect();
+  }, [ref]);
+
+  return width;
+}
