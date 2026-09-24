@@ -13,6 +13,7 @@ import { AssignmentOpenBridge } from "./features/question-engine/AssignmentOpenB
 import { TeacherReadingBuilder } from "./features/question-engine/TeacherReadingBuilder";
 import { TeacherListeningBuilder } from "./features/question-engine/TeacherListeningBuilder";
 import { TestImporter } from "./features/question-engine/TestImporter";
+import { PaperEditor } from "./features/question-engine/PaperEditor";
 import { ExamSessionsHome } from "./features/exam-sessions/ExamSessionsHome";
 import { ExamSessionDetail } from "./features/exam-sessions/ExamSessionDetail";
 import { StudentExamSession } from "./features/exam-sessions/StudentExamSession";
@@ -48,6 +49,7 @@ export const SCREEN_ROLES = {
   "writing-builder": "teacher",
   "speaking-builder": "teacher",
   "test-importer": "teacher",
+  "paper-editor": "teacher",
   exams: "teacher",
   "exam-session": "teacher",
   join: "student",
@@ -178,6 +180,9 @@ export function Shell({ profile, setProfile, userId, onSignOut, screen: rawScree
         )}
         {screen.name === "listening-builder" && isTeacher && (
           <TeacherListeningBuilder classId={screen.classId} teacherId={userId} setScreen={setScreen} showToast={showToast} editAssignmentId={screen.editAssignmentId} returnTo={screen.returnTo} />
+        )}
+        {screen.name === "paper-editor" && isTeacher && (
+          <PaperEditor key={screen.assignmentId} assignmentId={screen.assignmentId} classId={screen.classId} teacherId={userId} setScreen={setScreen} showToast={showToast} returnTo={screen.returnTo} />
         )}
         {screen.name === "test-importer" && isTeacher && (
           <TestImporter classId={screen.classId} teacherId={userId} skill={screen.skill} setScreen={setScreen} showToast={showToast} returnTo={screen.returnTo} />
