@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import { Plus, X, Check } from "lucide-react";
 import { supabase } from "../../supabaseClient";
 import { TeacherQuestionForm } from "./TeacherQuestionForm";
@@ -8,6 +8,7 @@ import { SummaryCompletionBuilder, NotesCompletionBuilder, TableCompletionBuilde
 import { MatchingBuilder } from "./MatchingBuilder";
 import { LabellingBuilder } from "./LabellingBuilder";
 import { GroupImagePicker } from "./GroupImage";
+import { useIsExamContainer, countStoredQuestions } from "./useExamContainer";
 import { FormCompletionBuilder, FlowchartCompletionBuilder, WordBankCompletionBuilder, ShortAnswerBuilder } from "./CompletionExtraBuilders";
 
 const MAX_LISTENING_PARTS = 4;
@@ -15,8 +16,9 @@ const MAX_LISTENING_PARTS = 4;
 function newGroup() {
   return { localId: crypto.randomUUID(), instruction: "", mode: "questions", completionStyle: "paragraph", matchingType: "matching_features", labellingKind: "map", imageUrl: "", questions: [], summaryText: "" };
 }
-function newPart() {
-  return { localId: crypto.randomUUID(), audioUrl: "", audioFilename: "", maxPlays: "", groups: [newGroup()] };
+// Inside an exam a part is heard once by default (maxPlays "1").
+function newPart(maxPlays = "") {
+  return { localId: crypto.randomUUID(), audioUrl: "", audioFilename: "", maxPlays, groups: [newGroup()] };
 }
 
 export function TeacherListeningBuilder({ classId, teacherId, setScreen, showToast, editAssignmentId, returnTo}) {
@@ -41,6 +43,22 @@ export function TeacherListeningBuilder({ classId, teacherId, setScreen, showToa
   const [singleAudio, setSingleAudio] = useState(null); // { url, filename }
   const [examMode, setExamMode] = useState(false);
   const [checkMinutes, setCheckMinutes] = useState("2");
+  // Editing: how many questions the paper holds right now. They are not
+  // shown below yet, so "Save changes" would replace them all.
+  const [storedQuestionCount, setStoredQuestionCount] = useState(0);
+  const [savingSettings, setSavingSettings] = useState(false);
+
+  // A new Listening built inside an exam starts as a real exam: one
+  // listening only (and one play per part). The teacher can still untick
+  // it; an ordinary class is unchanged.
+  const inExam = useIsExamContainer(classId);
+  const examDefaultsApplied = useRef(false);
+  useEffect(() => {
+    if (editAssignmentId || inExam !== true || examDefaultsApplied.current) return;
+    examDefaultsApplied.current = true;
+    setExamMode(true);
+    setParts((prev) => prev.map((p) => (p.maxPlays === "" ? { ...p, maxPlays: "1" } : p)));
+  }, [inExam, editAssignmentId]);
 
   // Same approach as the Reading builder: only the assignment's own
   // metadata is prefilled — Parts/questions always start fresh and
@@ -63,6 +81,7 @@ export function TeacherListeningBuilder({ classId, teacherId, setScreen, showToa
       }
       const { count } = await supabase.from("student_answers").select("id", { count: "exact", head: true }).eq("assignment_id", editAssignmentId);
       setExistingAnswerCount(count || 0);
+      setStoredQuestionCount(await countStoredQuestions(editAssignmentId));
       setLoadingExisting(false);
     })();
   }, [editAssignmentId]);
@@ -76,7 +95,7 @@ export function TeacherListeningBuilder({ classId, teacherId, setScreen, showToa
 
   function addPart() {
     if (parts.length >= MAX_LISTENING_PARTS) return;
-    setParts((prev) => [...prev, newPart()]);
+    setParts((prev) => [...prev, newPart(inExam && !editAssignmentId ? "1" : "")]);
   }
   function removePart(partLocalId) {
     setParts((prev) => (prev.length > 1 ? prev.filter((p) => p.localId !== partLocalId) : prev));
@@ -224,6 +243,11 @@ export function TeacherListeningBuilder({ classId, teacherId, setScreen, showToa
         `${existingAnswerCount} answer${existingAnswerCount > 1 ? "s have" : " has"} already been submitted for this assignment. Saving your changes will delete all of that and reset the assignment for every student — they'll need to redo it. Continue?`
       );
       if (!ok) return;
+    } else if (editAssignmentId && storedQuestionCount > 0) {
+      const ok = window.confirm(
+        `This paper has ${storedQuestionCount} question${storedQuestionCount > 1 ? "s" : ""}. "Save changes" deletes ${storedQuestionCount > 1 ? "them all" : "it"} and keeps only the Parts built on this screen. To change only the title or the settings, cancel and use "Save title and settings only". Replace the questions?`
+      );
+      if (!ok) return;
     }
 
     setPublishing(true);
@@ -367,6 +391,41 @@ export function TeacherListeningBuilder({ classId, teacherId, setScreen, showToa
     setScreen(returnTo || { name: "class", classId });
   }
 
+  // Title, dates, time limit, results options and the audio settings —
+  // nothing else. Parts, questions and students' answers are not touched.
+  async function saveSettingsOnly() {
+    setError("");
+    const minutes = parseInt(timeLimit, 10);
+    if (!minutes || minutes < 1) {
+      setError("Set a time limit, in minutes. Students need a clock, and an exam paper without one never ends.");
+      return;
+    }
+    if (audioMode === "single" && !singleAudio?.url) {
+      setError("Choose the recording for the whole test, or switch to one audio per part.");
+      return;
+    }
+    setSavingSettings(true);
+    const { error: uError } = await supabase
+      .from("assignments")
+      .update({
+        title: title.trim() || `Listening Practice — ${new Date().toLocaleDateString()}`,
+        due_date: dueDate || null,
+        due_time: dueTime || null,
+        time_limit_minutes: minutes,
+        auto_release_score: autoReleaseScore,
+        show_answer_review: showAnswerReview,
+        ...listeningAudioFields(),
+      })
+      .eq("id", editAssignmentId);
+    setSavingSettings(false);
+    if (uError) {
+      setError("Could not save: " + uError.message);
+      return;
+    }
+    showToast?.("Title and settings saved — the questions are unchanged");
+    setScreen(returnTo || { name: "class", classId });
+  }
+
   if (loadingExisting) {
     return (
       <div className="page page-wide">
@@ -380,10 +439,12 @@ export function TeacherListeningBuilder({ classId, teacherId, setScreen, showToa
       <div className="eyebrow">Structured Listening</div>
       <h1 className="page-title">{editAssignmentId ? "Edit Listening assignment" : "New Listening assignment"}</h1>
       {editAssignmentId && (
-        <p className="field-hint" style={{ marginTop: 4 }}>
-          Rebuild the Parts and questions below — saving replaces everything currently in this assignment.
-          {existingAnswerCount > 0 && ` ${existingAnswerCount} answer${existingAnswerCount > 1 ? "s have" : " has"} already been submitted and will be reset if you save.`}
-        </p>
+        <div className="qe-edit-notice">
+          <strong>The {storedQuestionCount > 0 ? `${storedQuestionCount} questions` : "questions"} already in this paper are not shown below.</strong>{" "}
+          To change only the title, dates, time or audio settings, use <em>Save title and settings only</em> at the bottom: the questions and the students' answers stay exactly as they are.
+          {" "}<em>Save changes</em> replaces all the questions with the Parts you build on this screen.
+          {existingAnswerCount > 0 && ` ${existingAnswerCount} answer${existingAnswerCount > 1 ? "s have" : " has"} already been submitted and would be reset.`}
+        </div>
       )}
 
       <label className="field-label" style={{ marginTop: 16 }}>Title (optional — auto-generated if left blank)</label>
@@ -440,6 +501,9 @@ export function TeacherListeningBuilder({ classId, teacherId, setScreen, showToa
             <input type="checkbox" checked={examMode} onChange={(e) => setExamMode(e.target.checked)} />
             Exam mode: one listening only, no pause and no rewind
           </label>
+          {inExam && !examMode && (
+            <p className="qe-exam-warn">This paper is part of an exam, but candidates will be able to pause and replay the recording.</p>
+          )}
           <p className="field-hint" style={{ marginTop: 2 }}>
             {examMode
               ? "The recording starts when the student presses \"I'm ready\" and plays straight through. Refreshing the page carries on where the server says it is — never back at the beginning."
@@ -492,6 +556,9 @@ export function TeacherListeningBuilder({ classId, teacherId, setScreen, showToa
             value={part.maxPlays}
             onChange={(e) => handleMaxPlaysChange(part.localId, e.target.value)}
           />
+          {inExam && !part.maxPlays && (
+            <p className="qe-exam-warn">This paper is part of an exam, but candidates will be able to replay this part as often as they like.</p>
+          )}
           </>
           )}
 
@@ -700,9 +767,16 @@ export function TeacherListeningBuilder({ classId, teacherId, setScreen, showToa
 
       {error && <div className="field-error" style={{ marginTop: 16 }}>{error}</div>}
 
-      <button className="btn-primary" style={{ marginTop: 24 }} disabled={!canPublish || publishing} onClick={publish}>
-        {publishing ? "Saving…" : editAssignmentId ? "Save changes" : "Publish assignment"}
-      </button>
+      <div className="qe-builder-actions">
+        {editAssignmentId && (
+          <button className="btn-primary" disabled={savingSettings || publishing} onClick={saveSettingsOnly}>
+            {savingSettings ? "Saving…" : "Save title and settings only"}
+          </button>
+        )}
+        <button className={editAssignmentId ? "btn-ghost" : "btn-primary"} disabled={!canPublish || publishing || savingSettings} onClick={publish}>
+          {publishing ? "Saving…" : editAssignmentId ? "Save changes (replace the questions)" : "Publish assignment"}
+        </button>
+      </div>
     </div>
   );
 }
