@@ -3,3 +3,10 @@
 .qe-question-check { color: var(--teal); flex-shrink: 0; }
 .qe-result-correct { margin-top: 6px; font-size: 12.5px; font-weight: 600; color: var(--teal); }
 .qe-result-incorrect { margin-top: 6px; font-size: 12.5px; font-weight: 600; color: var(--rose); }
+
+/* ---------- Edit screen: what is (not) shown, and the two saves ---------- */
+.qe-edit-notice { margin: 10px 0 4px; padding: 12px 14px; border: 1px solid #e8c77a; border-radius: 8px; background: #fdf6e3; color: #5c4200; font-size: 13.5px; line-height: 1.55; }
+.qe-builder-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 24px; }
+
+/* A Listening inside an exam that would let candidates replay. */
+.qe-exam-warn { margin: 6px 0 0; padding: 7px 10px; border-radius: 6px; background: #fdf0d9; color: #8a5a00; font-size: 12.5px; line-height: 1.45; }
