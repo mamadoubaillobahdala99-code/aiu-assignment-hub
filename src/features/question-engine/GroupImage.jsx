@@ -4,6 +4,7 @@ import { ZoomIn, ZoomOut, RotateCcw, Maximize2, X, ImagePlus } from "lucide-reac
 import { supabase } from "../../supabaseClient";
 import { uid } from "../../lib/utils";
 import { isSafeUrl } from "./speaking";
+import { StoredImg, fileRef } from "../../lib/storageFiles";
 
 // Image attached to a question group — the map, plan or diagram of a
 // labelling task (or any figure a group needs). Students can zoom in/out
@@ -46,13 +47,13 @@ export function GroupImage({ url, alt = "Figure for these questions", allowBlob 
         </button>
       </div>
       <div className="qe-gimg-scroll">
-        <img src={url} alt={alt} style={{ width: `${zoom * 100}%` }} draggable={false} />
+        <StoredImg src={url} alt={alt} style={{ width: `${zoom * 100}%` }} draggable={false} />
       </div>
 
       {fullscreen && (
         <div className="qe-gimg-lightbox" role="dialog" aria-modal="true" onClick={() => setFullscreen(false)}>
           <button type="button" className="qe-gimg-close" onClick={() => setFullscreen(false)} aria-label="Close"><X size={20} /></button>
-          <img src={url} alt={alt} onClick={(e) => e.stopPropagation()} draggable={false} />
+          <StoredImg src={url} alt={alt} onClick={(e) => e.stopPropagation()} draggable={false} />
         </div>
       )}
     </figure>
@@ -92,8 +93,7 @@ export function GroupImagePicker({ teacherId, value, onChange, label = "Image (o
       setError("Upload failed: " + upError.message);
       return;
     }
-    const { data: pub } = supabase.storage.from("assignment-files").getPublicUrl(path);
-    onChange(pub.publicUrl);
+    onChange(fileRef(path));
   }
 
   return (
@@ -104,7 +104,7 @@ export function GroupImagePicker({ teacherId, value, onChange, label = "Image (o
       </label>
       {value ? (
         <div className="qe-gimg-picker-preview">
-          <img src={previewUrl || value} alt="" />
+          <StoredImg src={previewUrl || value} alt="" />
           <button type="button" className="btn-ghost" onClick={() => onChange("")}><X size={13} /> Remove image</button>
         </div>
       ) : (
