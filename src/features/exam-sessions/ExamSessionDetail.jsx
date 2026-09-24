@@ -36,6 +36,10 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
   // Invigilation: who has left the exam screen, and who is frozen.
   const [board, setBoard] = useState([]);
   const [resuming, setResuming] = useState("");
+  // Listening papers on which candidates could pause / replay the sound
+  // (practice settings). Shown with a badge, and asked about before Open.
+  const [replayIds, setReplayIds] = useState(new Set());
+  const [openAsk, setOpenAsk] = useState(false);
 
   const load = useCallback(async () => {
     const { data: s } = await supabase.from("exam_sessions").select("*").eq("id", sessionId).maybeSingle();
@@ -47,7 +51,7 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
     // built — adopt it, in the order it was created.
     const { data: inContainer } = await supabase
       .from("assignments")
-      .select("id, title, type, time_limit_minutes, created_at")
+      .select("id, title, type, time_limit_minutes, created_at, listening_audio_url, listening_exam_mode")
       .eq("class_id", s.container_class_id)
       .order("created_at");
     const { data: rows } = await supabase
@@ -69,6 +73,17 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
     }
 
     const byId = new Map((inContainer || []).map((a) => [a.id, a]));
+
+    // A Listening lets candidates replay when its single recording is not
+    // in exam mode, or when one of its parts has audio with no play limit.
+    const listening = (inContainer || []).filter((a) => a.type === "Listening");
+    const replay = new Set(listening.filter((a) => a.listening_audio_url && !a.listening_exam_mode).map((a) => a.id));
+    const perPart = listening.filter((a) => !a.listening_audio_url).map((a) => a.id);
+    if (perPart.length > 0) {
+      const { data: secs } = await supabase.from("exam_sections").select("assignment_id, audio_url, max_plays").in("assignment_id", perPart);
+      for (const sec of secs || []) if (sec.audio_url && !sec.max_plays) replay.add(sec.assignment_id);
+    }
+    setReplayIds(replay);
     setItems((rows || []).map((r) => ({ ...r, assignment: byId.get(r.assignment_id) || null })));
 
     const [{ data: r }, { data: st }] = await Promise.all([
@@ -308,7 +323,7 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
 
       <div className="ex-actions">
         {!isLive && !session.closed_at && (
-          <button className="btn-primary" disabled={busy === "open" || sorted.length === 0} onClick={() => act("open")}>
+          <button className="btn-primary" disabled={busy === "open" || sorted.length === 0} onClick={() => (sorted.some((it) => replayIds.has(it.assignment_id)) ? setOpenAsk(true) : act("open"))}>
             <Play size={15} /> {busy === "open" ? "Opening…" : "Open now"}
           </button>
         )}
@@ -364,6 +379,11 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
                     <div className="ex-item-sub">
                       {it.assignment?.type}
                       {it.assignment?.time_limit_minutes ? ` · ${it.assignment.time_limit_minutes} min` : " · no time limit"}
+                      {replayIds.has(it.assignment_id) && (
+                        <span className="ex-replay-badge" title="Practice setting: candidates can pause and replay the recording.">
+                          Replay allowed
+                        </span>
+                      )}
                       {roster.length > 0 && (
                         <> · {roster.filter((s) => progress[s.id]?.has(it.assignment_id)).length}/{roster.length} handed in</>
                       )}
@@ -660,6 +680,29 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
             <button className="btn-ghost" onClick={() => setCloseAsk(null)}>Cancel</button>
             <button className="btn-primary" disabled={busy === "close"} onClick={() => { setCloseAsk(null); act("close"); }}>
               <Square size={14} /> Close the exam
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {openAsk && (
+        <Modal title="Open the exam?" onClose={() => setOpenAsk(false)}>
+          <p className="muted-p" style={{ marginTop: 0 }}>
+            <strong>
+              {sorted.filter((it) => replayIds.has(it.assignment_id)).map((it) => it.assignment?.title || "A Listening paper").join(", ")}
+            </strong>{" "}
+            {sorted.filter((it) => replayIds.has(it.assignment_id)).length > 1 ? "let" : "lets"} candidates pause and
+            replay the recording, like a practice test. In the real IELTS the recording is heard once.
+          </p>
+          <p className="muted-p">
+            To change it (one recording for the whole test): cancel, open the paper, choose{" "}
+            <em>Edit assignment</em>, tick “Exam mode: one listening only” and use{" "}
+            <em>Save title and settings only</em>.
+          </p>
+          <div className="ex-actions" style={{ marginTop: 18 }}>
+            <button className="btn-ghost" onClick={() => setOpenAsk(false)}>Cancel</button>
+            <button className="btn-primary" disabled={busy === "open"} onClick={() => { setOpenAsk(false); act("open"); }}>
+              <Play size={15} /> Open anyway
             </button>
           </div>
         </Modal>
