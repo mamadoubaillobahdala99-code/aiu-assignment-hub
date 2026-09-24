@@ -74,8 +74,17 @@ export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen,
       const { data: fb } = await supabase.from("assignment_feedback").select("student_id, released_at").eq("assignment_id", assignmentId);
       setWritingReleasedIds(new Set((fb || []).filter((row) => row.released_at).map((row) => row.student_id)));
     } else if (structured) {
-      const { data: sa } = await supabase.from("student_answers").select("student_id").eq("assignment_id", assignmentId);
-      setStructuredStudentIds(new Set((sa || []).map((row) => row.student_id)));
+      // Handed in = has answers, OR is marked handed in in exam_attempts.
+      // Looking at the answers alone showed a copy handed in empty as
+      // "Not submitted", and the teacher could not open it — while the
+      // student's own screen, the class page and the exam screen all
+      // (rightly) counted it as handed in. An empty copy that was handed
+      // in is not a copy that was never handed in: it opens, and scores 0.
+      const [{ data: sa }, { data: att }] = await Promise.all([
+        supabase.from("student_answers").select("student_id").eq("assignment_id", assignmentId),
+        supabase.from("exam_attempts").select("student_id").eq("assignment_id", assignmentId).not("submitted_at", "is", null),
+      ]);
+      setStructuredStudentIds(new Set([...(sa || []), ...(att || [])].map((row) => row.student_id)));
     }
 
     if (teacherId) {
