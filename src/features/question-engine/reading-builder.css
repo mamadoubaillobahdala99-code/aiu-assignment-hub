@@ -4,6 +4,13 @@
 .qe-result-correct { margin-top: 6px; font-size: 12.5px; font-weight: 600; color: var(--teal); }
 .qe-result-incorrect { margin-top: 6px; font-size: 12.5px; font-weight: 600; color: var(--rose); }
 
+/* ---------- Edit screen: what is (not) shown, and the two saves ---------- */
+.qe-edit-notice { margin: 10px 0 4px; padding: 12px 14px; border: 1px solid #e8c77a; border-radius: 8px; background: #fdf6e3; color: #5c4200; font-size: 13.5px; line-height: 1.55; }
+.qe-builder-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 24px; }
+
+/* A Listening inside an exam that would let candidates replay. */
+.qe-exam-warn { margin: 6px 0 0; padding: 7px 10px; border-radius: 6px; background: #fdf0d9; color: #8a5a00; font-size: 12.5px; line-height: 1.45; }
+
 /* ---------- Paper editor (edit a Reading / Listening in place) ---------- */
 .qe-pe .section-title { margin-top: 26px; }
 .qe-pe-banner { display: flex; align-items: flex-start; gap: 10px; margin: 12px 0 6px; padding: 12px 14px; border-radius: 8px; font-size: 13.5px; line-height: 1.55; }
@@ -50,3 +57,11 @@
 .qe-pe-letter-pick { margin: 0; }
 .qe-pe-actions { position: sticky; bottom: 0; padding: 12px 0; background: var(--paper); border-top: 1px solid var(--line); z-index: 2; }
 .field-input.is-invalid { border-color: #cf3b2e; }
+
+/* Paper editor, step 2: removals, part recording, group picture */
+.qe-pe-group-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.qe-pe-remove { font-size: 12px; padding: 4px 10px; color: #a3261c; }
+.qe-pe-remove-q { margin-left: auto; color: #a3261c; }
+.qe-pe-removed { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-top: 12px; padding: 10px 12px; border: 1px dashed #cf3b2e; border-radius: 8px; background: #fbeeec; color: #7a1d15; font-size: 13px; }
+.qe-pe-media { margin-top: 10px; padding: 12px 14px; border-radius: 8px; background: var(--paper); }
+.qe-pe-image.is-invalid { outline: 2px solid #cf3b2e; border-radius: 8px; padding: 4px; }
