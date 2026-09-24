@@ -6,6 +6,7 @@ import { CenterSpinner } from "../../components/shared";
 import { WritingEditor } from "./WritingEditor";
 import { WritingView } from "./WritingView";
 import { taskBandFrom, overallWritingBand } from "./writingHtml";
+import { StoredImg } from "../../lib/storageFiles";
 
 // Structured Writing — teacher correction screen (one student).
 // The teacher works on a CORRECTED COPY of each task: it starts as an
@@ -247,7 +248,7 @@ export function TeacherWritingReview({ assignmentId, studentId, studentName, onB
           <details className="qe-wrv-question">
             <summary>Question — Writing Task {active.taskNumber}</summary>
             {active.prompt && <div className="qe-wr-prompt">{active.prompt}</div>}
-            {active.imageUrl && <img className="qe-wrv-question-img" src={active.imageUrl} alt={`Writing Task ${active.taskNumber}`} />}
+            {active.imageUrl && <StoredImg className="qe-wrv-question-img" src={active.imageUrl} alt={`Writing Task ${active.taskNumber}`} />}
           </details>
 
           <div className="qe-wrv-viewbar">
