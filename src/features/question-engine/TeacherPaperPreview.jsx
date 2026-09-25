@@ -25,19 +25,13 @@ export function TeacherPaperPreview({ assignmentId, onBack }) {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const { data: a } = await supabase
-      .from("assignments")
-      .select("id, title, type, time_limit_minutes, reading_test_type")
-      .eq("id", assignmentId)
-      .single();
+    // One call first (get_paper, script 30). If it fails for any reason —
+    // the SQL not run yet, a network hiccup — the old step-by-step loading
+    // below takes over, so the page never breaks because of the fast path.
+    const paper = (await loadPaperInOneCall(assignmentId)) || (await loadPaperStepByStep(assignmentId));
+    const a = paper.assignment;
+    const rows = paper.sections;
     setAssignment(a || null);
-
-    const { data: sectionRows } = await supabase
-      .from("exam_sections")
-      .select("id, title, passage_title, passage_text, instruction, audio_url, max_plays, image_url, task_number, speaking_part, documents, order_index")
-      .eq("assignment_id", assignmentId)
-      .order("order_index");
-    const rows = sectionRows || [];
 
     if (a?.type === "Writing") {
       setWritingTasks(
@@ -65,20 +59,9 @@ export function TeacherPaperPreview({ assignmentId, onBack }) {
     const built = [];
     let globalCounter = 0;
     for (const s of rows) {
-      const { data: groupRows } = await supabase
-        .from("question_groups")
-        .select("id, instruction, passage_text, image_url, order_index")
-        .eq("section_id", s.id)
-        .order("order_index");
-
       const groups = [];
-      for (const g of groupRows || []) {
-        const { data: links } = await supabase
-          .from("assignment_questions")
-          .select("order_index, questions(*)")
-          .eq("group_id", g.id)
-          .order("order_index");
-        const questions = (links || []).map((l) => l.questions).filter(Boolean);
+      for (const g of s.groups) {
+        const questions = g.questions;
         const { start: startNumber, end: endNumber, numbers: questionNumbers, nextStart } =
           numberQuestions(questions, globalCounter + 1);
         globalCounter = nextStart - 1;
@@ -87,17 +70,7 @@ export function TeacherPaperPreview({ assignmentId, onBack }) {
       built.push({ id: s.id, title: s.title, passageTitle: s.passage_title, passageText: s.passage_text, audioUrl: s.audio_url, maxPlays: s.max_plays, groups });
     }
     setSections(built);
-
-    const ids = built.flatMap((s) => s.groups.flatMap((g) => g.questions.map((q) => q.id)));
-    if (ids.length > 0) {
-      const { data: keys } = await supabase
-        .from("question_answer_key")
-        .select("question_id, correct_answer")
-        .in("question_id", ids);
-      const map = {};
-      (keys || []).forEach((k) => { map[k.question_id] = k.correct_answer; });
-      setCorrectByQ(map);
-    }
+    setCorrectByQ(paper.answerKeys);
     setLoading(false);
   }, [assignmentId]);
 
@@ -218,4 +191,92 @@ export function TeacherPaperPreview({ assignmentId, onBack }) {
       )}
     </div>
   );
+}
+
+// ---------------------------------------------------------------------------
+// Loading a paper. Both functions return the same shape:
+//   { assignment, sections: [{ ...section, groups: [{ ...group, questions: [...] }] }], answerKeys: { [questionId]: correctAnswer } }
+// ---------------------------------------------------------------------------
+
+// Fast path: the whole paper in one call (get_paper, script 30). The function
+// runs with the teacher's own rights, so the database's RLS decides what comes
+// back — exactly as with the step-by-step queries. Returns null when the call
+// fails, so the caller can fall back.
+async function loadPaperInOneCall(assignmentId) {
+  try {
+    const { data, error } = await supabase.rpc("get_paper", { p_assignment_id: assignmentId, p_with_keys: true });
+    if (error) {
+      console.warn("get_paper failed, falling back to step-by-step loading:", error.message);
+      return null;
+    }
+    // null = the paper does not exist or this account cannot read it.
+    if (data === null) return { assignment: null, sections: [], answerKeys: {} };
+    if (!data || !Array.isArray(data.sections)) {
+      console.warn("get_paper returned an unexpected shape, falling back to step-by-step loading.");
+      return null;
+    }
+    return {
+      assignment: data.assignment || null,
+      sections: data.sections.map((s) => ({
+        ...s,
+        groups: (s.groups || []).map((g) => ({ ...g, questions: (g.questions || []).filter(Boolean) })),
+      })),
+      answerKeys: data.answer_keys || {},
+    };
+  } catch (e) {
+    console.warn("get_paper failed, falling back to step-by-step loading:", e?.message || e);
+    return null;
+  }
+}
+
+// Safety net: the loading this screen has always used, one query at a time.
+async function loadPaperStepByStep(assignmentId) {
+  const { data: a } = await supabase
+    .from("assignments")
+    .select("id, title, type, time_limit_minutes, reading_test_type")
+    .eq("id", assignmentId)
+    .single();
+
+  const { data: sectionRows } = await supabase
+    .from("exam_sections")
+    .select("id, title, passage_title, passage_text, instruction, audio_url, max_plays, image_url, task_number, speaking_part, documents, order_index")
+    .eq("assignment_id", assignmentId)
+    .order("order_index");
+  const rows = sectionRows || [];
+
+  // Writing and Speaking papers have no question groups to fetch.
+  if (a?.type === "Writing" || a?.type === "Speaking") {
+    return { assignment: a || null, sections: rows.map((s) => ({ ...s, groups: [] })), answerKeys: {} };
+  }
+
+  const sections = [];
+  for (const s of rows) {
+    const { data: groupRows } = await supabase
+      .from("question_groups")
+      .select("id, instruction, passage_text, image_url, order_index")
+      .eq("section_id", s.id)
+      .order("order_index");
+
+    const groups = [];
+    for (const g of groupRows || []) {
+      const { data: links } = await supabase
+        .from("assignment_questions")
+        .select("order_index, questions(*)")
+        .eq("group_id", g.id)
+        .order("order_index");
+      groups.push({ ...g, questions: (links || []).map((l) => l.questions).filter(Boolean) });
+    }
+    sections.push({ ...s, groups });
+  }
+
+  const answerKeys = {};
+  const ids = sections.flatMap((s) => s.groups.flatMap((g) => g.questions.map((q) => q.id)));
+  if (ids.length > 0) {
+    const { data: keys } = await supabase
+      .from("question_answer_key")
+      .select("question_id, correct_answer")
+      .in("question_id", ids);
+    (keys || []).forEach((k) => { answerKeys[k.question_id] = k.correct_answer; });
+  }
+  return { assignment: a || null, sections, answerKeys };
 }
