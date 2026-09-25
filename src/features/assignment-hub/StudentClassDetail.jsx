@@ -4,6 +4,7 @@ import { supabase } from "../../supabaseClient";
 import { PageHeader, EmptyState, CenterSpinner } from "../../components/shared";
 import { TicketCard } from "./TicketCard";
 import { StatusBadge } from "../../components/shared";
+import { confirmDialog } from "../../lib/confirmDialog";
 
 export function StudentClassDetail({ classId, userId, setScreen, showToast }) {
   const [cls, setCls] = useState(null);
@@ -92,7 +93,7 @@ export function StudentClassDetail({ classId, userId, setScreen, showToast }) {
   useEffect(() => { load(); }, [load]);
 
   async function leaveClass() {
-    if (!window.confirm(`Leave "${cls.name}"? You'll lose access to its assignments, and you'll need the class code to rejoin.`)) return;
+    if (!(await confirmDialog({ title: "Leave this class?", message: `Leave "${cls.name}"? You'll lose access to its assignments, and you'll need the class code to rejoin.`, confirmLabel: "Leave the class", danger: true }))) return;
     setLeaving(true);
     const { error } = await supabase.from("roster").delete().eq("class_id", classId).eq("student_id", userId);
     setLeaving(false);
