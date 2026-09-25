@@ -6,6 +6,7 @@ import { numberQuestions } from "./bulkParse";
 import { AudioFilePicker } from "./AudioFilePicker";
 import { GroupImagePicker } from "./GroupImage";
 import { AddGroupPanel, newAddedGroup, isAddedGroupReady } from "./AddGroupPanel";
+import { confirmDialog } from "../../lib/confirmDialog";
 
 // Editing a Reading or Listening paper IN PLACE.
 //
@@ -347,7 +348,7 @@ export function PaperEditor({ assignmentId, classId, teacherId, setScreen, showT
       const parts = [];
       if (ng) parts.push(`${ng} question group${ng > 1 ? "s" : ""}`);
       if (nq) parts.push(`${nq} question${nq > 1 ? "s" : ""}`);
-      if (!window.confirm(`Delete ${parts.join(" and ")} from this paper? This cannot be undone.`)) return;
+      if (!(await confirmDialog({ title: "Delete from this paper?", message: `Delete ${parts.join(" and ")} from this paper? This cannot be undone.`, confirmLabel: "Delete and save", danger: true }))) return;
     }
     const minutes = parseInt(settings.time_limit_minutes, 10);
     if (!minutes || minutes < 1) {
@@ -355,11 +356,14 @@ export function PaperEditor({ assignmentId, classId, teacherId, setScreen, showT
       return;
     }
     if (diff.keysChanged > 0 && state.level === 2) {
-      const ok = window.confirm(
-        `${state.submitted} student${state.submitted > 1 ? "s have" : " has"} already handed in this paper. ` +
+      const ok = await confirmDialog({
+        title: "Re-mark the copies?",
+        message:
+          `${state.submitted} student${state.submitted > 1 ? "s have" : " has"} already handed in this paper. ` +
           `You changed ${diff.keysChanged} correct answer${diff.keysChanged > 1 ? "s" : ""}: the copies will be re-marked automatically. ` +
-          `No student has seen a mark yet. Continue?`
-      );
+          `No student has seen a mark yet. Continue?`,
+        confirmLabel: "Save and re-mark",
+      });
       if (!ok) return;
     }
     setSaving(true);
