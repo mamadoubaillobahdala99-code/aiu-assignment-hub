@@ -12,6 +12,7 @@ import { GroupImagePicker } from "./GroupImage";
 import { PassageImageTools, stripImageMarkers } from "./PassageImages";
 import { FormCompletionBuilder, FlowchartCompletionBuilder, WordBankCompletionBuilder, ShortAnswerBuilder } from "./CompletionExtraBuilders";
 import { countStoredQuestions } from "./useExamContainer";
+import { confirmDialog } from "../../lib/confirmDialog";
 
 function newGroup() {
   return { localId: crypto.randomUUID(), instruction: "", mode: "questions", completionStyle: "paragraph", matchingType: "matching_information", labellingKind: "map", imageUrl: "", questions: [], summaryText: "" };
@@ -239,14 +240,20 @@ export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast
     const finalTitle = title.trim() || `Reading — ${new Date().toLocaleDateString()}`;
 
     if (editAssignmentId && existingAnswerCount > 0) {
-      const ok = window.confirm(
-        `${existingAnswerCount} answer${existingAnswerCount > 1 ? "s have" : " has"} already been submitted for this assignment. Saving your changes will delete all of that and reset the assignment for every student — they'll need to redo it. Continue?`
-      );
+      const ok = await confirmDialog({
+        title: "Reset this assignment?",
+        message: `${existingAnswerCount} answer${existingAnswerCount > 1 ? "s have" : " has"} already been submitted for this assignment. Saving your changes will delete all of that and reset the assignment for every student — they'll need to redo it. Continue?`,
+        confirmLabel: "Delete the answers and save",
+        danger: true,
+      });
       if (!ok) return;
     } else if (editAssignmentId && storedQuestionCount > 0) {
-      const ok = window.confirm(
-        `This paper has ${storedQuestionCount} question${storedQuestionCount > 1 ? "s" : ""}. "Save changes" deletes ${storedQuestionCount > 1 ? "them all" : "it"} and keeps only the Parts built on this screen. To change only the title or the settings, cancel and use "Save title and settings only". Replace the questions?`
-      );
+      const ok = await confirmDialog({
+        title: "Replace the questions?",
+        message: `This paper has ${storedQuestionCount} question${storedQuestionCount > 1 ? "s" : ""}. "Save changes" deletes ${storedQuestionCount > 1 ? "them all" : "it"} and keeps only the Parts built on this screen. To change only the title or the settings, cancel and use "Save title and settings only". Replace the questions?`,
+        confirmLabel: "Replace the questions",
+        danger: true,
+      });
       if (!ok) return;
     }
 
