@@ -7,6 +7,7 @@ import { TeacherQuestionEngineReview } from "../question-engine/TeacherQuestionE
 import { TeacherWritingReview } from "../question-engine/TeacherWritingReview";
 import { TeacherPaperPreview } from "../question-engine/TeacherPaperPreview";
 import { deleteUnusedSpeakingFiles } from "../question-engine/speaking";
+import { confirmDialog } from "../../lib/confirmDialog";
 
 const CRITERIA = [
   { key: "score_task_achievement", label: "Task Achievement" },
@@ -107,7 +108,7 @@ export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen,
       warningCount > 0
         ? `${warningCount} student${warningCount === 1 ? " has" : "s have"} already submitted this assignment. Deleting it will permanently remove their work too. Delete anyway?`
         : "Delete this assignment? This cannot be undone.";
-    if (!window.confirm(msg)) return;
+    if (!(await confirmDialog({ title: "Delete this assignment?", message: msg, confirmLabel: "Delete", danger: true }))) return;
 
     setDeleting(true);
 
