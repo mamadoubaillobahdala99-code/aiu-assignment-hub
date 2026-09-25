@@ -3,6 +3,7 @@ import React, { useState } from "react";
 import { supabase } from "../../supabaseClient";
 import { TeacherQuestionForm } from "./TeacherQuestionForm";
 import { QuestionRenderer } from "./QuestionRenderer";
+import { alertDialog } from "../../lib/confirmDialog";
 
 // TEMPORARY test page — not linked from the real navigation yet.
 // Purpose: prove, end to end, that a question can be created, answered,
@@ -24,7 +25,7 @@ export function QuestionEngineLab({ userId }) {
     });
     setChecking(false);
     if (error) {
-      alert("Error checking answer: " + error.message);
+      await alertDialog({ title: "Could not check the answer", message: error.message });
       return;
     }
     setResult(isCorrect ? "correct" : "incorrect");
