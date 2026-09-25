@@ -7,6 +7,7 @@ import { WritingEditor } from "./WritingEditor";
 import { WritingView } from "./WritingView";
 import { taskBandFrom, overallWritingBand } from "./writingHtml";
 import { StoredImg } from "../../lib/storageFiles";
+import { confirmDialog } from "../../lib/confirmDialog";
 
 // Structured Writing — teacher correction screen (one student).
 // The teacher works on a CORRECTED COPY of each task: it starts as an
@@ -139,12 +140,12 @@ export function TeacherWritingReview({ assignmentId, studentId, studentName, onB
     setError("");
   }
 
-  function confirmLeave() {
-    if (!dirty || window.confirm("You have unsaved changes. Leave without saving?")) onBack();
+  async function confirmLeave() {
+    if (!dirty || (await confirmDialog({ title: "Leave without saving?", message: "You have unsaved changes. Leave without saving?", confirmLabel: "Leave without saving", danger: true }))) onBack();
   }
 
-  function resetToOriginal(sectionId) {
-    if (!window.confirm("Replace your corrected copy of this task with the student's original text? Your marks and edits on this task will be lost.")) return;
+  async function resetToOriginal(sectionId) {
+    if (!(await confirmDialog({ title: "Go back to the original text?", message: "Replace your corrected copy of this task with the student's original text? Your marks and edits on this task will be lost.", confirmLabel: "Replace my corrections", danger: true }))) return;
     setCorrected((prev) => ({ ...prev, [sectionId]: responses[sectionId]?.html || "" }));
     setEditorVersion((v) => v + 1);
     setDirty(true);
