@@ -283,3 +283,11 @@ body.qe-resizing { user-select: none; cursor: col-resize; }
 .qe-frozen-card .field-label { display: block; text-align: left; }
 .qe-frozen-waiting { display: flex; align-items: center; justify-content: center; gap: 9px; margin-top: 20px; font-size: 13.5px; color: var(--ink-soft); }
 .qe-frozen-back { color: var(--teal); }
+
+/* ---------- The site's own confirmation window (lib/confirmDialog) ---------- */
+#confirm-dialog-root .modal-overlay { z-index: 10000; }
+.confirm-dialog { max-width: 460px; }
+.confirm-dialog-message { margin: 0; font-size: 14.5px; line-height: 1.6; color: var(--ink); white-space: pre-line; }
+.confirm-dialog-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
+.btn-primary.confirm-dialog-danger { background: #b3261e; border-color: #b3261e; }
+.btn-primary.confirm-dialog-danger:hover { background: #8f1d17; }
