@@ -3,6 +3,7 @@ import { Upload, Music, Check, X, Trash2, Play, Square } from "lucide-react";
 import { supabase } from "../../supabaseClient";
 import { uid } from "../../lib/utils";
 import { fileRef, useSignedUrl } from "../../lib/storageFiles";
+import { confirmDialog } from "../../lib/confirmDialog";
 
 // Every Listening audio file lives under audio/{teacherId}/ in the same
 // "assignment-files" bucket already used for assignment images — no new
@@ -114,7 +115,7 @@ export function AudioFilePicker({ teacherId, value, onChange }) {
       return;
     }
 
-    if (!window.confirm(`Delete "${f.name}"? No paper uses it. This can't be undone.`)) {
+    if (!(await confirmDialog({ title: "Delete this recording?", message: `Delete "${f.name}"? No paper uses it. This can't be undone.`, confirmLabel: "Delete", danger: true }))) {
       setDeletingName(null);
       return;
     }
