@@ -4,6 +4,7 @@ import { ImagePlus, X } from "lucide-react";
 import { supabase } from "../../supabaseClient";
 import { uid } from "../../lib/utils";
 import { StoredImg, fileRef } from "../../lib/storageFiles";
+import { confirmDialog } from "../../lib/confirmDialog";
 
 // Structured Writing — teacher side.
 // One assignment = one or two Parts:
@@ -121,9 +122,12 @@ export function TeacherWritingBuilder({ classId, teacherId, setScreen, showToast
       !task2.include && task2.sectionId ? "Task 2" : null,
     ].filter(Boolean);
     if (removed.length > 0) {
-      const ok = window.confirm(
-        `You unticked ${removed.join(" and ")}. Saving will remove ${removed.length > 1 ? "these parts" : "this part"} from the assignment, including anything students have already written for ${removed.length > 1 ? "them" : "it"}. Continue?`
-      );
+      const ok = await confirmDialog({
+        title: "Remove these tasks?",
+        message: `You unticked ${removed.join(" and ")}. Saving will remove ${removed.length > 1 ? "these parts" : "this part"} from the assignment, including anything students have already written for ${removed.length > 1 ? "them" : "it"}. Continue?`,
+        confirmLabel: "Remove and save",
+        danger: true,
+      });
       if (!ok) return;
     }
 
