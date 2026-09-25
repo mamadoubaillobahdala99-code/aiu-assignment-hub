@@ -5,6 +5,7 @@ import { supabase } from "../../supabaseClient";
 import { uid, makeCode, TYPES, fmtDate, daysUntil, wordCount, isPdfUrl } from "../../lib/utils";
 import { AttachmentPreview, PageHeader, EmptyState, CenterSpinner, Modal, StatusBadge } from "../../components/shared";
 import { AssignmentsTab } from "./AssignmentsTab";
+import { confirmDialog } from "../../lib/confirmDialog";
 
 export function ClassDetail({ classId, setScreen, showToast }) {
   const [cls, setCls] = useState(null);
@@ -292,7 +293,7 @@ function StudentInClassDetail({ student, classId, assignments, onBack, setScreen
   }, [student.studentId, assignments]);
 
   async function removeStudent() {
-    if (!window.confirm(`Remove ${student.name} from this class? They'll need the class code to rejoin.`)) return;
+    if (!(await confirmDialog({ title: "Remove this student?", message: `Remove ${student.name} from this class? They'll need the class code to rejoin.`, confirmLabel: "Remove", danger: true }))) return;
     setRemoving(true);
     const { error } = await supabase.from("roster").delete().eq("class_id", classId).eq("student_id", student.studentId);
     setRemoving(false);
