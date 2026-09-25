@@ -8,6 +8,7 @@ import { supabase } from "../../supabaseClient";
 import { PageHeader, CenterSpinner, EmptyState, Modal } from "../../components/shared";
 import { TYPES, fmtDate } from "../../lib/utils";
 import { ExamStateBadge } from "./ExamSessionsHome";
+import { confirmDialog } from "../../lib/confirmDialog";
 
 // The teacher's screen for one exam session: its code, its papers in
 // order, its settings, the other teachers, and the buttons that run the
@@ -192,7 +193,7 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
   }
 
   async function removeItem(item) {
-    if (!window.confirm(`Remove "${item.assignment?.title || "this paper"}" from the exam? The paper itself is deleted — it only existed inside this exam.`)) return;
+    if (!(await confirmDialog({ title: "Remove this paper?", message: `Remove "${item.assignment?.title || "this paper"}" from the exam? The paper itself is deleted — it only existed inside this exam.`, confirmLabel: "Remove", danger: true }))) return;
     await supabase.from("exam_session_items").delete().eq("id", item.id);
     await supabase.from("assignments").delete().eq("id", item.assignment_id);
     load();
@@ -333,8 +334,8 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
           </button>
         )}
         {!session.results_released_at && (session.closed_at || isLive) && (
-          <button className="btn-ghost" disabled={busy === "release"} onClick={() => {
-            if (window.confirm("Publish the results to every candidate? They will see their marks and their corrected papers.")) act("release");
+          <button className="btn-ghost" disabled={busy === "release"} onClick={async () => {
+            if (await confirmDialog({ title: "Publish the results?", message: "Publish the results to every candidate? They will see their marks and their corrected papers.", confirmLabel: "Publish" })) act("release");
           }}>
             <Send size={14} /> {busy === "release" ? "Publishing…" : "Publish the results"}
           </button>
