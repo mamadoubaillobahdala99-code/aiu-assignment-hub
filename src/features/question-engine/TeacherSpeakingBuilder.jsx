@@ -5,6 +5,7 @@ import { supabase } from "../../supabaseClient";
 import { uid } from "../../lib/utils";
 import { fileRef } from "../../lib/storageFiles";
 import { SPEAKING_PARTS, DOC_ACCEPT, MAX_DOC_MB, MAX_DOCS_PER_PART, docKindOf, extOf, fmtSize, cleanDocuments, deleteUnusedSpeakingFiles } from "./speaking";
+import { confirmDialog } from "../../lib/confirmDialog";
 
 // Structured Speaking — teacher side.
 // One assignment = Part 1 and/or Part 2 (cue card) and/or Part 3, each
@@ -116,7 +117,12 @@ export function TeacherSpeakingBuilder({ classId, teacherId, setScreen, showToas
 
     const unticked = [1, 2, 3].filter((n) => !parts[n].include && parts[n].sectionId);
     if (unticked.length > 0) {
-      const ok = window.confirm(`You unticked ${unticked.map((n) => `Part ${n}`).join(" and ")}. Saving will remove it from the assignment, with its documents. Continue?`);
+      const ok = await confirmDialog({
+        title: "Remove these parts?",
+        message: `You unticked ${unticked.map((n) => `Part ${n}`).join(" and ")}. Saving will remove it from the assignment, with its documents. Continue?`,
+        confirmLabel: "Remove and save",
+        danger: true,
+      });
       if (!ok) return;
     }
 
