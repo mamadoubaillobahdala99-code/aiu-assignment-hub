@@ -72,8 +72,14 @@ export function useInvigilation(assignmentId, active) {
   const returnModeRef = useRef("resume");
   returnModeRef.current = returnMode;
 
+  // Set while the page itself is going away (F5, closing the tab). The
+  // browser drops full screen and hides the tab on the way out; those are
+  // not escapes to report — the database notes the reopening itself, as
+  // "Refreshed or reopened the page" (the screen number, ExamTimer.jsx).
+  const leavingRef = useRef(false);
+
   const report = useCallback(async (kind) => {
-    if (!activeRef.current || stoppingRef.current || !assignmentId) return;
+    if (!activeRef.current || stoppingRef.current || leavingRef.current || !assignmentId) return;
     const { data, error } = await supabase.rpc("exam_report_incident", {
       p_assignment_id: assignmentId, p_kind: kind,
     });
@@ -135,6 +141,46 @@ export function useInvigilation(assignmentId, active) {
       document.removeEventListener("contextmenu", onContextMenu);
     };
   }, [active, assignmentId, report]);
+
+  // ---------- leaving the page (F5, closing the tab) ----------
+  // "pagehide" fires only once the page really goes (after the browser's
+  // "Leave site?" was accepted), and before it hides the tab or drops full
+  // screen. "pageshow" undoes it if the browser brings the page back.
+  useEffect(() => {
+    const onPageHide = () => { leavingRef.current = true; };
+    const onPageShow = () => { leavingRef.current = false; };
+    window.addEventListener("pagehide", onPageHide);
+    window.addEventListener("pageshow", onPageShow);
+    return () => {
+      window.removeEventListener("pagehide", onPageHide);
+      window.removeEventListener("pageshow", onPageShow);
+    };
+  }, []);
+
+  // While a watched paper is being sat: the browser asks "Leave site?" /
+  // "Reload site?" before a refresh or a closing tab (its own wording — a
+  // page cannot choose it; Safari on iPad and iPhone never shows it), and
+  // the tablet's pull-down-to-refresh is switched off, so a scroll at the
+  // top of the page can never reload the exam by accident.
+  useEffect(() => {
+    if (!active || !state.watched) return;
+    const onBeforeUnload = (e) => {
+      if (stoppingRef.current) return;
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    const html = document.documentElement;
+    const body = document.body;
+    const before = [html.style.overscrollBehaviorY, body.style.overscrollBehaviorY];
+    html.style.overscrollBehaviorY = "none";
+    body.style.overscrollBehaviorY = "none";
+    return () => {
+      window.removeEventListener("beforeunload", onBeforeUnload);
+      html.style.overscrollBehaviorY = before[0];
+      body.style.overscrollBehaviorY = before[1];
+    };
+  }, [active, state.watched]);
 
   // ---------- the state check: the safety net ----------
   // Paused while the candidate is frozen (nothing to add) and while he
