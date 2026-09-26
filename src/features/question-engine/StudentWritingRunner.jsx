@@ -19,8 +19,15 @@ import { StoredImg } from "../../lib/storageFiles";
 // Text is autosaved through save_writing_draft (server checks enrolment,
 // lock after submit and time limit); submit_writing sends everything.
 
+// Two clocks for the autosave (livraison 50):
+//  - 2.5 s after the student stops typing, as before;
+//  - and at the latest 5 s after the first change not yet saved, even
+//    if he never stops typing. Before, every key pressed pushed the save
+//    back again, so a student typing without a pause was never saved.
+// At worst 5 s of text can be lost, whatever happens to the computer.
 const AUTOSAVE_DELAY_MS = 2500;
-const RETRY_DELAY_MS = 10000;
+const AUTOSAVE_MAX_WAIT_MS = 5000;
+const RETRY_DELAY_MS = 5000;
 const ZOOM_MIN = 0.5;
 const ZOOM_MAX = 3;
 const ZOOM_STEP = 0.25;
@@ -62,6 +69,7 @@ export function StudentWritingRunner({ userId, assignmentId, setScreen, showToas
   const draftsRef = useRef({});
   const dirtyRef = useRef(new Set());
   const saveTimerRef = useRef(null);
+  const maxWaitTimerRef = useRef(null);   // the 5-second clock, null when not running
   const saveChainRef = useRef(Promise.resolve(true));
   const submittedRef = useRef(false);
   const lastPasteWarnRef = useRef(0);
@@ -120,6 +128,10 @@ export function StudentWritingRunner({ userId, assignmentId, setScreen, showToas
   // Resolves true when everything is saved.
   const flushSaves = useCallback(() => {
     clearTimeout(saveTimerRef.current);
+    // This save takes every change made so far: the 5-second clock
+    // starts again with the next key pressed.
+    clearTimeout(maxWaitTimerRef.current);
+    maxWaitTimerRef.current = null;
     saveChainRef.current = saveChainRef.current.then(async () => {
       const ids = [...dirtyRef.current];
       if (ids.length === 0) return true;
@@ -164,6 +176,12 @@ export function StudentWritingRunner({ userId, assignmentId, setScreen, showToas
     setSaveState("idle");
     clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => flushSaves(), AUTOSAVE_DELAY_MS);
+    if (maxWaitTimerRef.current === null) {
+      maxWaitTimerRef.current = setTimeout(() => {
+        maxWaitTimerRef.current = null;
+        flushSaves();
+      }, AUTOSAVE_MAX_WAIT_MS);
+    }
   }
 
   function onBlockedPaste() {
@@ -188,6 +206,8 @@ export function StudentWritingRunner({ userId, assignmentId, setScreen, showToas
     return () => {
       window.removeEventListener("beforeunload", onBeforeUnload);
       clearTimeout(saveTimerRef.current);
+      clearTimeout(maxWaitTimerRef.current);
+      maxWaitTimerRef.current = null;
       if (dirtyRef.current.size > 0 && !submittedRef.current) flushSaves();
     };
   }, [flushSaves]);
@@ -242,6 +262,8 @@ export function StudentWritingRunner({ userId, assignmentId, setScreen, showToas
     }
     submittedRef.current = true;
     clearTimeout(saveTimerRef.current);
+    clearTimeout(maxWaitTimerRef.current);
+    maxWaitTimerRef.current = null;
     setSubmitting(false);
     showToast?.(timeUp ? "Time is up — your writing was submitted" : "Submitted");
     onSubmitted?.();
