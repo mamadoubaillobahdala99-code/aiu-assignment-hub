@@ -492,7 +492,9 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
                     <div className="ex-frozen-main">
                       <div className="ex-item-title">{c.name}</div>
                       <div className="ex-item-sub">
-                        {c.kind === "fullscreen_exit" ? "Left full screen" : "Left the exam screen"}
+                        {c.kind === "fullscreen_exit" ? "Left full screen"
+                          : c.kind === "page_reload" ? "Refreshed or reopened the page"
+                          : "Left the exam screen"}
                         {c.since ? ` · ${fmtDate(c.since)}` : ""}
                         {c.incidents > 1 ? ` · ${c.incidents} incidents in all` : ""}
                       </div>
