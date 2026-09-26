@@ -53,7 +53,7 @@
 .qe-part-block:first-of-type { border-top: none; margin-top: 0; }
 
 .qe-numbered-question { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 22px; }
-.qe-question-badge { flex-shrink: 0; margin-top: 2px; }
+.qe-question-badge { flex-shrink: 0; margin-top: 2px; width: auto; min-width: 22px; white-space: nowrap; }  /* room for "21–22" */
 
 /* ---------- Full-screen exam layout (IELTS Computer-Delivered style) ---------- */
 
@@ -98,6 +98,19 @@
 .qe-question-nav-item { flex-shrink: 0; width: 28px; height: 28px; border-radius: 5px; border: 1px solid var(--line); background: #fff; font-size: 12px; font-weight: 600; cursor: pointer; }
 .qe-question-nav-item:hover { border-color: var(--teal); color: var(--teal); }
 .qe-question-nav-item.qe-nav-item-visible { border-color: var(--teal); background: var(--teal-soft); color: var(--teal); box-shadow: inset 0 0 0 1px var(--teal); }
+
+/* The open Part's numbers always stay inside their own Part (livraison 52).
+   The Parts keep their equal share of the bar; the numbers shrink to fit
+   (28 px down to 16 px). On a narrow computer screen with the black panel
+   open, where even 16 px would not fit, they go on a second line inside
+   the same Part rather than spilling onto the next one.
+   Computer only: on a phone or tablet the bar already scrolls sideways. */
+@media (min-width: 901px) {
+  .qe-nav-seg-numbers { padding: 8px 10px; }
+  .qe-nav-seg-numbers .qe-nav-part-label { margin-right: 8px; }
+  .qe-nav-seg-numbers .qe-nav-numbers { justify-content: flex-start; flex-wrap: wrap; gap: 3px 2px; }
+  .qe-nav-seg-numbers .qe-question-nav-item { flex: 1 1 16px; width: auto; min-width: 16px; max-width: 28px; height: 26px; padding: 0; font-size: 11px; }
+}
 
 /* Applied to <body> only while the divider is being dragged — stops
    text selection from firing during fast mouse movement. */
