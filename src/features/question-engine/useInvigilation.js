@@ -49,6 +49,9 @@ export function useInvigilation(assignmentId, active) {
   // refuses full screen:
   //   "resume"  — a teacher has just let the candidate back in. No full
   //               screen, no exam: he waits for the invigilator.
+  //   "resume-soft" — a teacher let the candidate back in after the page
+  //               was reopened (F5…): this page never had full screen, so,
+  //               as at Start, a refusal lets him carry on.
   //   "restart" — the paper was reopened without full screen (a refresh,
   //               a page restored from the browser's cache). A machine
   //               that simply cannot do full screen must not be stopped
@@ -71,6 +74,8 @@ export function useInvigilation(assignmentId, active) {
   const wasFrozenRef = useRef(false);
   const returnModeRef = useRef("resume");
   returnModeRef.current = returnMode;
+  // The "this exam runs in full screen" screen is asked at most once.
+  const restartAskedRef = useRef(false);
 
   // Set while the page itself is going away (F5, closing the tab). The
   // browser drops full screen and hides the tab on the way out; those are
@@ -210,24 +215,36 @@ export function useInvigilation(assignmentId, active) {
     const id = setInterval(async () => {
       const { data, error } = await supabase.rpc("exam_my_invigilation", { p_assignment_id: assignmentId });
       if (error || !data) return;
-      if (!data.frozen) setState((s) => ({ ...s, frozen: false, kind: null, reason: null }));
+      if (!data.frozen) {
+        // Covered in the SAME render as the unfreeze: the paper is never
+        // shown, not even for a moment, before the click for full screen.
+        coverAfterFreeze();
+        setState((s) => ({ ...s, frozen: false, kind: null, reason: null }));
+      }
       else if (data.reason && !state.reason) setState((s) => ({ ...s, reason: data.reason }));
     }, 5000);
     return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active, state.frozen, state.reason, assignmentId]);
 
   // Coming out of a freeze: the paper stays covered until the candidate
   // presses Continue, because that click is the only thing that can
-  // give full screen back.
+  // give full screen back. Every page that CAN do full screen is covered
+  // — also one reopened by F5, which never had full screen yet. A device
+  // with no full screen at all (iPad) has nothing to click: not covered.
+  function coverAfterFreeze() {
+    if (!document.documentElement.requestFullscreen || document.fullscreenElement) return;
+    restartAskedRef.current = true;          // not asked a second time
+    setReturnFailed(false);
+    setReturnMode(fsUsedRef.current ? "resume" : "resume-soft");
+    setNeedsReturn(true);
+  }
   useEffect(() => {
     if (state.frozen) { wasFrozenRef.current = true; return; }
     if (!wasFrozenRef.current) return;
     wasFrozenRef.current = false;
-    if (fsUsedRef.current && !document.fullscreenElement) {
-      setReturnFailed(false);
-      setReturnMode("resume");
-      setNeedsReturn(true);
-    }
+    coverAfterFreeze();   // already done by the poll; harmless if repeated
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.frozen]);
 
   // The paper is open, the exam is watched — and we are not in full
@@ -248,7 +265,6 @@ export function useInvigilation(assignmentId, active) {
   // that has never had full screen at all, which is what a reload leaves
   // behind. And it is asked once: a machine that refuses must not be
   // nagged for the rest of the paper.
-  const restartAskedRef = useRef(false);
   useEffect(() => {
     if (!active || !state.watched || !state.strict) return;
     if (state.frozen || needsReturn || restartAskedRef.current) return;
@@ -288,7 +304,7 @@ export function useInvigilation(assignmentId, active) {
       // See returnMode above: after a freeze he waits for a teacher;
       // on a plain reopening he carries on without the full-screen
       // guard, which is what this machine gave us anyway.
-      if (returnModeRef.current === "restart") {
+      if (returnModeRef.current === "restart" || returnModeRef.current === "resume-soft") {
         strikesRef.current = 0;
         setNeedsReturn(false);
         return true;
