@@ -155,10 +155,15 @@ export function Shell({ profile, setProfile, userId, onSignOut, screen: rawScree
           )}
         </nav>
 
-        <button className="nav-item" onClick={toggleFullscreen}>
-          {isFullscreen ? <Minimize size={16} /> : <Maximize size={16} />}
-          {isFullscreen ? "Exit full screen" : "Full screen"}
-        </button>
+        {/* Not offered to a student in the exam room: there, full screen
+            comes with the click that opens a paper, and leaving it is
+            what the invigilation reports. */}
+        {!(screen.name === "student-exam" && !isTeacher) && (
+          <button className="nav-item" onClick={toggleFullscreen}>
+            {isFullscreen ? <Minimize size={16} /> : <Maximize size={16} />}
+            {isFullscreen ? "Exit full screen" : "Full screen"}
+          </button>
+        )}
 
         <button className="nav-item logout" onClick={onSignOut}>
           <LogOut size={16} /> Sign out
@@ -205,7 +210,7 @@ export function Shell({ profile, setProfile, userId, onSignOut, screen: rawScree
         {screen.name === "student-classes" && !isTeacher && <StudentClasses userId={userId} setScreen={setScreen} />}
         {screen.name === "student-class-detail" && !isTeacher && <StudentClassDetail classId={screen.classId} userId={userId} setScreen={setScreen} showToast={showToast} />}
         {screen.name === "join" && !isTeacher && <JoinClass userId={userId} setScreen={setScreen} showToast={showToast} />}
-        {screen.name === "student-exam" && !isTeacher && <StudentExamSession userId={userId} setScreen={setScreen} showToast={showToast} />}
+        {screen.name === "student-exam" && !isTeacher && <StudentExamSession userId={userId} screen={screen} setScreen={setScreen} showToast={showToast} />}
         {screen.name === "class" && isTeacher && <ClassDetail classId={screen.classId} setScreen={setScreen} showToast={showToast} />}
         {screen.name === "assignment-teacher" && isTeacher && (
           <AssignmentTeacher classId={screen.classId} assignmentId={screen.assignmentId} teacherId={userId} setScreen={setScreen} showToast={showToast} returnTo={screen.returnTo} examLocked={screen.examLocked} />
