@@ -9,7 +9,7 @@ import { PassageView } from "./PassageImages";
 import { FormCompletion, FlowchartCompletion, WordBankCompletion } from "./CompletionExtras";
 import { MatchingGrid } from "./MatchingGrid";
 import { AudioPlayer } from "./AudioPlayer";
-import { parseCompletionPayload, numberQuestions } from "./bulkParse";
+import { parseCompletionPayload, numberQuestions, questionSlotCount } from "./bulkParse";
 import { GroupImage } from "./GroupImage";
 
 // Shown above a Part's questions on the review/feedback screens — lets
@@ -108,7 +108,8 @@ export function ReviewContent({ sections, answersByQ, resultsByQ, correctAnswers
                   const marksOptionsInline = ["true_false_not_given", "multiple_choice", "multiple_selection"].includes(q.type);
                   return (
                     <div key={q.id} id={`review-question-${num}`} className="qe-numbered-question qe-review-question">
-                      <span className="rf-answer-num qe-question-badge">{num}</span>
+                      {/* "choose TWO letters" holds two numbers: 21–22 */}
+                      <span className="rf-answer-num qe-question-badge">{questionSlotCount(q) > 1 ? `${num}–${num + questionSlotCount(q) - 1}` : num}</span>
                       <div style={{ flex: 1 }}>
                         <QuestionRenderer question={q} value={answersByQ[q.id] ?? null} onChange={() => {}} disabled assignmentId={assignmentId} userId={viewerUserId} correctAnswer={rawMap[q.id]} />
                         {/* answerKeyMode: nobody has sat this paper — the
