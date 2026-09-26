@@ -48,10 +48,10 @@ export function ExamExitButton({ invig, onExit }) {
 
 // Full screen, from inside the paper.
 //
-// During a watched exam it only goes one way. Leaving full screen is
-// what the invigilation reports as an escape, so a button offering to
-// leave would be a button that freezes the candidate and calls his
-// teacher — so once he is in full screen, it simply disappears. In an
+// During a watched exam there is no button at all: full screen is asked
+// for by the clicks that open and start the paper, and by "Continue the
+// exam" after a teacher lets the candidate back in. A button offering to
+// leave would freeze him; one offering to enter is never needed. In an
 // ordinary class assignment, with nobody watching, it is a normal
 // there-and-back switch.
 export function ExamFullscreenButton({ invig }) {
@@ -66,8 +66,7 @@ export function ExamFullscreenButton({ invig }) {
   // A browser that has no full screen at all (iPhone) gets no button.
   if (typeof document !== "undefined" && !document.documentElement.requestFullscreen) return null;
 
-  const guarded = Boolean(invig?.watched && invig?.strict);
-  if (isFs && guarded) return null;
+  if (invig?.watched) return null;
 
   function toggle() {
     // Always from a real click — browsers refuse full screen asked for
