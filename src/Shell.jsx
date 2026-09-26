@@ -155,15 +155,10 @@ export function Shell({ profile, setProfile, userId, onSignOut, screen: rawScree
           )}
         </nav>
 
-        {/* Not offered to a student in the exam room: there, full screen
-            comes with the click that opens a paper, and leaving it is
-            what the invigilation reports. */}
-        {!(screen.name === "student-exam" && !isTeacher) && (
-          <button className="nav-item" onClick={toggleFullscreen}>
-            {isFullscreen ? <Minimize size={16} /> : <Maximize size={16} />}
-            {isFullscreen ? "Exit full screen" : "Full screen"}
-          </button>
-        )}
+        <button className="nav-item" onClick={toggleFullscreen}>
+          {isFullscreen ? <Minimize size={16} /> : <Maximize size={16} />}
+          {isFullscreen ? "Exit full screen" : "Full screen"}
+        </button>
 
         <button className="nav-item logout" onClick={onSignOut}>
           <LogOut size={16} /> Sign out
