@@ -17,7 +17,7 @@ Il est dépassé : ne pas l'exécuter. Il est gardé tel quel pour l'histoire.
 
 | Fichier | À quoi il sert |
 |---|---|
-| `00_etat_actuel.sql` | **Photo de la base au 26/09/2026** (après 32) : tables, contraintes, index, RLS, 60 fonctions, déclencheurs, 65 règles, droits, stockage. Aucune donnée. Voir section 3. |
+| `00_etat_actuel.sql` | **Photo de la base au 26/09/2026** (après 32 — les droits ont changé depuis avec le 33) : tables, contraintes, index, RLS, 60 fonctions, déclencheurs, 65 règles, droits, stockage. Aucune donnée. Voir section 3. |
 | `09_rls_exam_content.sql` | Sécurité, étape 1 : le contenu des examens n'est plus lisible par tout compte ; la correction n'est plus visible avant publication. |
 | `10_rls_copies_classes.sql` | Sécurité, étape 2 : copies et notes privées, code de classe protégé, un étudiant ne peut plus se déclarer prof ni se noter. |
 | `11_rls_storage_profiles.sql` | Sécurité, étape 3 : dépôt de fichiers limité à ses dossiers, profils visibles seulement entre membres d'une classe. |
@@ -43,6 +43,7 @@ Il est dépassé : ne pas l'exécuter. Il est gardé tel quel pour l'histoire.
 | `31_lock_content_reads.sql` | Groupes, liens et questions lisibles seulement si le paper l'est ; `anon` ne lit plus le contenu. |
 | `31_controle_apres.sql` | Contrôle (lecture seule, tout annulé) à lancer après le 31. |
 | `32_exam_page_reload.sql` | F5 / 2e onglet pendant une épreuve : numéro d'écran, incident `page_reload`. |
+| `33_revoke_anon.sql` | Règle « jamais anon » : aucun droit pour un visiteur non connecté sur les tables et fonctions de `public` ; `authenticated` perd TRUNCATE, TRIGGER, REFERENCES, MAINTAIN ; mêmes règles **par défaut** pour les futures tables et fonctions. |
 
 **Ce qui manque :** les scripts d'avant le 09 (01 à 08) n'ont pas été retrouvés.
 Ce qu'ils ont créé est dans `00_etat_actuel.sql` (voir section 2, dernier point).
