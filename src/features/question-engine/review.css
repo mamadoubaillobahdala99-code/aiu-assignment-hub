@@ -3,6 +3,7 @@
 .qe-review-counts { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; font-size: 13.5px; flex-wrap: wrap; }
 .qe-review-nav { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 24px; }
 .qe-review-nav-pill { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 8px; font-size: 12.5px; font-weight: 600; text-decoration: none; border: 1px solid var(--line); color: var(--ink); }
+button.qe-review-nav-pill { font-family: inherit; padding: 0; cursor: pointer; }
 .qe-review-nav-pill.correct { background: var(--color-success-soft); color: var(--color-success); border-color: transparent; }
 .qe-review-nav-pill.incorrect { background: var(--color-error-soft); color: var(--color-error); border-color: transparent; }
 /* The questions are no longer inside a card: no frame, no tinted
