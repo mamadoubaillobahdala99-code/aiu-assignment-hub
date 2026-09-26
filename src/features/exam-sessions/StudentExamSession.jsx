@@ -26,7 +26,19 @@ import { isPhoneScreen } from "../question-engine/useInvigilation";
 // start screen is already full screen (Start keeps it). Only the papers
 // that are watched; never a phone, never a device without full screen.
 // A refusal changes nothing: the paper opens and Start asks again.
+// Full screen also comes with the click on "Enter the exam" (livraison
+// 49): the candidate walks into the exam room already in full screen.
+// The click on a paper still asks too — for the candidate who was
+// already in the exam (no code to type) or who left full screen on the
+// list, where nothing is watched.
 const FULLSCREEN_TYPES = ["Reading", "Listening", "Writing"];
+// Returns true when THIS call is the one that asked for full screen.
+function requestEnterFullscreen(onPhone) {
+  const el = document.documentElement;
+  if (onPhone || !el.requestFullscreen || document.fullscreenElement) return false;
+  el.requestFullscreen().catch(() => {});
+  return true;
+}
 function requestExamFullscreen(type, onPhone) {
   if (onPhone || !FULLSCREEN_TYPES.includes(type)) return;
   const el = document.documentElement;
@@ -172,10 +184,15 @@ export function StudentExamSession({ userId, screen, setScreen, showToast }) {
   async function join() {
     const c = code.trim();
     if (!c) return;
+    // Asked inside the click (or the Enter key), before anything is
+    // awaited: a browser only grants full screen to a gesture.
+    const askedFs = requestEnterFullscreen(onPhone);
     setErr(""); setJoining(true);
     const { data, error } = await supabase.rpc("join_exam", { p_code: c });
     setJoining(false);
     if (error) {
+      // Wrong code: back out of the full screen this click opened.
+      if (askedFs && document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
       const m = error.message || "";
       setErr(
         /No exam found/i.test(m) ? "No exam with that code. Check it with your teacher."
@@ -416,8 +433,12 @@ export function StudentExamSession({ userId, screen, setScreen, showToast }) {
           for a student who had more than one exam, which is precisely
           the student who did not need it. The one with a single finished
           exam was the one with no way out. It leads back to the code
-          box, so it is also how the next exam is entered. */}
-      {(closed || released) && (
+          box, so it is also how the next exam is entered.
+          Also once every paper is handed in, even before the teacher
+          closes the exam: such an exam still opens by itself, and without
+          this link the candidate could never reach the code box of the
+          next one (livraison 49). */}
+      {(closed || released || allDone) && (
         <button className="back-link" style={{ marginTop: 22 }} onClick={() => setActiveId(null)}>
           <ArrowLeft size={14} /> Enter another exam
         </button>
