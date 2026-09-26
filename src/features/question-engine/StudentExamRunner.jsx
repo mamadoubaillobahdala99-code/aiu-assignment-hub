@@ -59,6 +59,8 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
   const [answers, setAnswers] = useState({});
   const [results, setResults] = useState(null);
   const [loaded, setLoaded] = useState(false);
+  // "loading" | "ok" | "refused" (the database says no) | "error" (could not load)
+  const [loadState, setLoadState] = useState("loading");
   const [timeOver, setTimeOver] = useState(false);
   const [startError, setStartError] = useState("");
   const [starting, setStarting] = useState(false);
@@ -102,44 +104,26 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
   useEffect(() => { setSidebarOpen(!compact); }, [compact]);
 
   const load = useCallback(async () => {
-    const { data: a } = await supabase.from("assignments").select("*").eq("id", assignmentId).single();
-    setAssignment(a || null);
-
-    // Class name, for the exam sidebar. Fetched separately and
-    // best-effort: if it fails, the sidebar simply omits it rather than
-    // the whole assignment failing to open.
-    if (a?.class_id) {
-      const { data: cls } = await supabase.from("classes").select("name, teacher_id").eq("id", a.class_id).single();
-      if (cls?.name) setClassName(cls.name);
-      if (cls?.teacher_id) {
-        const { data: t } = await supabase.from("profiles").select("name").eq("id", cls.teacher_id).single();
-        if (t?.name) setTeacherName(t.name);
-      }
+    // Never touches the answers kept in this browser: they are only
+    // cleared by a submission (submitAll). Try again simply runs this again.
+    setLoadState("loading");
+    const paper = await loadExamPaper(assignmentId);
+    if (paper.status !== "ok") {
+      // "refused": the database says this student may not read the paper
+      // (locked, exam closed, already submitted…). "error": it could not be
+      // loaded. Either way the exam is NOT shown and nothing is started.
+      setLoadState(paper.status);
+      return;
     }
-
-    const { data: sectionRows } = await supabase
-      .from("exam_sections")
-      .select("id, title, passage_title, passage_text, audio_url, max_plays, order_index")
-      .eq("assignment_id", assignmentId)
-      .order("order_index");
+    const a = paper.assignment;
+    setAssignment(a);
 
     const built = [];
     let globalCounter = 0; // continues across every Part — never resets
-    for (const s of sectionRows || []) {
-      const { data: groupRows } = await supabase
-        .from("question_groups")
-        .select("id, instruction, passage_text, image_url, order_index")
-        .eq("section_id", s.id)
-        .order("order_index");
-
+    for (const s of paper.sections) {
       const groups = [];
-      for (const g of groupRows || []) {
-        const { data: links } = await supabase
-          .from("assignment_questions")
-          .select("order_index, questions(*)")
-          .eq("group_id", g.id)
-          .order("order_index");
-        const questions = (links || []).map((l) => l.questions);
+      for (const g of s.groups) {
+        const questions = g.questions;
         const { start: startNumber, end: endNumber, numbers: questionNumbers, nextStart } = numberQuestions(questions, globalCounter + 1);
         globalCounter = nextStart - 1;
         groups.push({ id: g.id, instruction: g.instruction, passageText: g.passage_text, imageUrl: g.image_url, questions, startNumber, endNumber, questionNumbers });
@@ -149,6 +133,20 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
     setSections(built);
 
     const allQuestionIds = built.flatMap((s) => s.groups.flatMap((g) => g.questions.map((q) => q.id)));
+
+    // Class and teacher name, for the exam sidebar. Best-effort: if they
+    // fail, the sidebar simply omits them. Fetched at the same time as the
+    // student's saved answers instead of one after the other.
+    const namesDone = (async () => {
+      if (!a?.class_id) return;
+      const { data: cls } = await supabase.from("classes").select("name, teacher_id").eq("id", a.class_id).single();
+      if (cls?.name) setClassName(cls.name);
+      if (cls?.teacher_id) {
+        const { data: t } = await supabase.from("profiles").select("name").eq("id", cls.teacher_id).single();
+        if (t?.name) setTeacherName(t.name);
+      }
+    })().catch(() => {});
+
     if (allQuestionIds.length > 0) {
       const { data: existing } = await supabase
         .from("student_answers")
@@ -174,6 +172,8 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
         if (local) setAnswers(local);
       }
     }
+    await namesDone;
+    setLoadState("ok");
     setLoaded(true);
   }, [assignmentId, userId]);
 
@@ -396,7 +396,13 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
 
   submitRef.current = submitAll;
 
-  if (!assignment || sections.length === 0) {
+  if (loadState === "refused") {
+    return <PaperUnavailable onBack={() => setScreen({ name: "home" })} />;
+  }
+  if (loadState === "error") {
+    return <PaperLoadError onBack={() => setScreen({ name: "home" })} onRetry={load} />;
+  }
+  if (loadState !== "ok" || !assignment || sections.length === 0) {
     return (
       <div className="page">
         <button className="back-link" onClick={() => setScreen({ name: "home" })}><ArrowLeft size={14} /> All assignments</button>
@@ -776,4 +782,113 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
       )}
     </div>
   );
+}
+
+// ---------------------------------------------------------------------------
+// Messages shown instead of the exam. Also used by AssignmentOpenBridge, so a
+// refused paper reads exactly the same wherever it is opened.
+// ---------------------------------------------------------------------------
+
+export function PaperUnavailable({ onBack }) {
+  return (
+    <div className="page">
+      <button className="back-link" onClick={onBack}><ArrowLeft size={14} /> All assignments</button>
+      <div className="qe-feedback-locked">
+        <p><strong>You can't open this paper right now.</strong></p>
+        <p>It may be locked until you finish the previous paper, the exam may be closed, or you may have already submitted it. If this looks wrong, ask your teacher.</p>
+      </div>
+    </div>
+  );
+}
+
+export function PaperLoadError({ onBack, onRetry }) {
+  return (
+    <div className="page">
+      <button className="back-link" onClick={onBack}><ArrowLeft size={14} /> All assignments</button>
+      <div className="qe-feedback-locked">
+        <p><strong>Connection problem.</strong></p>
+        <p>This paper could not be loaded. Check your internet connection and try again.</p>
+        <button className="btn-primary" onClick={onRetry}>Try again</button>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Loading the paper for the exam. Always WITHOUT the answer key.
+// Result: { status: "ok", assignment, sections } | { status: "refused" } | { status: "error" }
+//   sections = [{ ...section, groups: [{ ...group, questions: [...] }] }]
+// ---------------------------------------------------------------------------
+
+// One call (get_paper, sql/30). It runs with the student's own rights: the
+// answer is null exactly when the paper's own row is not readable — the row
+// that carries the exam locks. null = refused, and then there is NO fallback.
+// Only a real failure (network, server, function missing) falls back.
+async function loadExamPaper(assignmentId) {
+  try {
+    const { data, error } = await supabase.rpc("get_paper", { p_assignment_id: assignmentId, p_with_keys: false });
+    if (!error) {
+      if (data === null) return { status: "refused" };
+      if (data && data.assignment && Array.isArray(data.sections)) {
+        const sections = data.sections.map((s) => ({
+          ...s,
+          groups: (s.groups || []).map((g) => ({ ...g, questions: (g.questions || []).filter(Boolean) })),
+        }));
+        // Readable but no Part: it changed while loading. Not shown; Try again settles it.
+        if (sections.length === 0) return { status: "error" };
+        return { status: "ok", assignment: data.assignment, sections };
+      }
+      console.warn("get_paper returned an unexpected shape, falling back to step-by-step loading.");
+    } else {
+      console.warn("get_paper failed, falling back to step-by-step loading:", error.message);
+    }
+  } catch (e) {
+    console.warn("get_paper failed, falling back to step-by-step loading:", e?.message || e);
+  }
+  return loadExamPaperStepByStep(assignmentId);
+}
+
+// Safety net: the loading this screen has always used, one query at a time.
+// The paper's OWN row decides first. If it is not readable, we stop at once:
+// the parts and questions are never read (their tables do not check the
+// exam locks themselves). maybeSingle: no row = no error, so a refusal is
+// never mistaken for a connection problem.
+async function loadExamPaperStepByStep(assignmentId) {
+  try {
+    const { data: a, error: aError } = await supabase.from("assignments").select("*").eq("id", assignmentId).maybeSingle();
+    if (aError) return { status: "error" };
+    if (!a) return { status: "refused" };
+
+    const { data: sectionRows, error: sError } = await supabase
+      .from("exam_sections")
+      .select("id, title, passage_title, passage_text, audio_url, max_plays, order_index")
+      .eq("assignment_id", assignmentId)
+      .order("order_index");
+    if (sError || !sectionRows || sectionRows.length === 0) return { status: "error" };
+
+    const sections = [];
+    for (const s of sectionRows) {
+      const { data: groupRows, error: gError } = await supabase
+        .from("question_groups")
+        .select("id, instruction, passage_text, image_url, order_index")
+        .eq("section_id", s.id)
+        .order("order_index");
+      if (gError) return { status: "error" };
+
+      const groups = [];
+      for (const g of groupRows || []) {
+        const { data: links, error: lError } = await supabase
+          .from("assignment_questions")
+          .select("order_index, questions(*)")
+          .eq("group_id", g.id)
+          .order("order_index");
+        if (lError) return { status: "error" };
+        groups.push({ ...g, questions: (links || []).map((l) => l.questions).filter(Boolean) });
+      }
+      sections.push({ ...s, groups });
+    }
+    return { status: "ok", assignment: a, sections };
+  } catch {
+    return { status: "error" };
+  }
 }
