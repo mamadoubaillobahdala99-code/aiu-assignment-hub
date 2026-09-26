@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { ArrowLeft, Clock } from "lucide-react";
 import { supabase } from "../../supabaseClient";
-import { StudentExamRunner } from "./StudentExamRunner";
+import { StudentExamRunner, PaperUnavailable, PaperLoadError } from "./StudentExamRunner";
 import { StudentWritingRunner } from "./StudentWritingRunner";
 import { StudentWritingFeedback } from "./StudentWritingFeedback";
 import { StudentSpeakingViewer } from "./StudentSpeakingViewer";
@@ -30,14 +30,37 @@ export function AssignmentOpenBridge({ userId, classId, assignmentId, setScreen,
   // Bumped after a Reading/Listening submission so the routing below runs
   // again (results screen or "waiting for feedback" instead of the exam).
   const [recheck, setRecheck] = useState(0);
+  // "ok" | "refused" (the database says this student may not open it) | "error"
+  const [access, setAccess] = useState("ok");
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const { count } = await supabase
+      // 1. The paper's own row decides whether this student may open it
+      // (its RLS carries the exam locks). maybeSingle: no row = no error,
+      // so a refusal is never mistaken for a connection problem.
+      const { data: paperRow, error: paperError } = await supabase
+        .from("assignments")
+        .select("type")
+        .eq("id", assignmentId)
+        .maybeSingle();
+      if (paperError || !paperRow) {
+        if (!cancelled) {
+          setAccess(paperError ? "error" : "refused");
+          setChecking(false);
+        }
+        return;
+      }
+
+      const { count, error: countError } = await supabase
         .from("exam_sections")
         .select("id", { count: "exact", head: true })
         .eq("assignment_id", assignmentId);
+      if (countError) {
+        // Not "no content": we simply could not tell.
+        if (!cancelled) { setAccess("error"); setChecking(false); }
+        return;
+      }
       const structured = (count || 0) > 0;
 
       // Structured Writing stores its answers in writing_responses (not
@@ -46,7 +69,7 @@ export function AssignmentOpenBridge({ userId, classId, assignmentId, setScreen,
       let writingSubmitted = false;
       let speaking = false;
       if (structured) {
-        const { data: t } = await supabase.from("assignments").select("type").eq("id", assignmentId).single();
+        const t = paperRow;
         writing = t?.type === "Writing";
         speaking = t?.type === "Speaking";
         if (writing) {
@@ -111,6 +134,7 @@ export function AssignmentOpenBridge({ userId, classId, assignmentId, setScreen,
       }
 
       if (!cancelled) {
+        setAccess("ok");
         setIsStructured(structured);
         setIsWriting(writing);
         setIsSpeaking(speaking);
@@ -123,6 +147,17 @@ export function AssignmentOpenBridge({ userId, classId, assignmentId, setScreen,
   }, [assignmentId, userId, recheck]);
 
   if (checking) return <CenterSpinner />;
+
+  // Refused by the database, or could not be checked: never "no content yet".
+  if (access === "refused") return <PaperUnavailable onBack={() => setScreen({ name: "home" })} />;
+  if (access === "error") {
+    return (
+      <PaperLoadError
+        onBack={() => setScreen({ name: "home" })}
+        onRetry={() => { setChecking(true); setRecheck((n) => n + 1); }}
+      />
+    );
+  }
 
   // No Part at all. Every assignment is now built with a structured
   // builder or the importer, so this only happens when a builder was
