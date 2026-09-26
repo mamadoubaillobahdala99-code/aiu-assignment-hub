@@ -5,7 +5,7 @@ import { CenterSpinner } from "../../components/shared";
 import { ScoreRing } from "./ScoreRing";
 import { ReviewContent } from "./ReviewContent";
 import { formatAnswerValue } from "./answerFormat";
-import { numberQuestions } from "./bulkParse";
+import { numberQuestions, questionSlotCount } from "./bulkParse";
 import { computeIeltsBand } from "./bandConversion";
 
 export function TeacherQuestionEngineReview({ assignmentId, studentId, studentName, onBack, showToast }) {
@@ -146,6 +146,13 @@ export function TeacherQuestionEngineReview({ assignmentId, studentId, studentNa
     showToast?.(release ? "Score published to student" : "Feedback saved");
   }
 
+  // Choice questions carry "review-question-N", gap-fill and matching
+  // ones "question-N": whichever exists.
+  function goToQuestion(num) {
+    const el = document.getElementById(`review-question-${num}`) || document.getElementById(`question-${num}`);
+    el?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+
   if (loading || !assignment) return <CenterSpinner />;
 
   const needsManualRelease = !assignment.auto_release_score && !feedbackRow?.released_at;
@@ -169,12 +176,24 @@ export function TeacherQuestionEngineReview({ assignmentId, studentId, studentNa
         {autoBand != null && <span className="field-hint">Auto-estimated band — approximate, scaled to a 40-question test.</span>}
       </div>
 
+      {/* One pill per answer-sheet number. Buttons, not links: the site
+          keeps its screen in the address, so a "#…" link used to throw the
+          teacher out of the copy (livraison 53). A "choose TWO letters"
+          question has two pills (21 and 22), green for each letter right. */}
       <div className="qe-review-nav">
-        {allQuestions.map((q, i) => (
-          <a key={q.id} href={`#review-question-${allQuestionNumbers[i]}`} className={`qe-review-nav-pill ${resultsByQ[q.id]?.isCorrect ? "correct" : "incorrect"}`}>
-            {allQuestionNumbers[i]}
-          </a>
-        ))}
+        {allQuestions.flatMap((q, i) => {
+          const first = allQuestionNumbers[i];
+          const slots = questionSlotCount(q);
+          const r = resultsByQ[q.id];
+          return Array.from({ length: slots }, (_, k) => {
+            const right = slots > 1 ? k < (r?.earned ?? 0) : Boolean(r?.isCorrect);
+            return (
+              <button type="button" key={`${q.id}-${k}`} className={`qe-review-nav-pill ${right ? "correct" : "incorrect"}`} onClick={() => goToQuestion(first)}>
+                {first + k}
+              </button>
+            );
+          });
+        })}
       </div>
 
       <ReviewContent
