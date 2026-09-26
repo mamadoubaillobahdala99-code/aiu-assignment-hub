@@ -22,11 +22,35 @@ import { isPhoneScreen } from "../question-engine/useInvigilation";
 // A paper opens INSIDE this screen (the same bridge the classes use), so
 // finishing one brings the candidate straight back to the list without
 // ever passing through the normal app — which is what an exam room needs.
-export function StudentExamSession({ userId, setScreen, showToast }) {
+// A paper that opens full screen from the click that opens it, so the
+// start screen is already full screen (Start keeps it). Only the papers
+// that are watched; never a phone, never a device without full screen.
+// A refusal changes nothing: the paper opens and Start asks again.
+const FULLSCREEN_TYPES = ["Reading", "Listening", "Writing"];
+function requestExamFullscreen(type, onPhone) {
+  if (onPhone || !FULLSCREEN_TYPES.includes(type)) return;
+  const el = document.documentElement;
+  if (!el.requestFullscreen || document.fullscreenElement) return;
+  el.requestFullscreen().catch(() => {});
+}
+
+export function StudentExamSession({ userId, screen, setScreen, showToast }) {
   const [sessions, setSessions] = useState(null);   // the exams I am a candidate of
   const [activeId, setActiveId] = useState(null);
   const [status, setStatus] = useState(null);       // exam_session_status(activeId)
   const [openPaper, setOpenPaper] = useState(null); // { assignmentId } while a paper is being taken
+  // THE PAPER IN THE ADDRESS (#/student-exam?paper=…).
+  // The open paper is kept in the address so that after F5 the candidate
+  // lands straight back in it instead of on the list. The address is only
+  // a MIRROR of openPaper: writing it never opens or closes anything, so
+  // it can never reopen the paper's screen by itself (a reopened screen
+  // is a new screen number, which freezes — livraison 47).
+  // It is READ once, when the page loads; then only if the paper is an
+  // open paper of MY current exam, not handed in, not out of time.
+  // Anything else: the list, and the address is cleaned.
+  const pendingPaperRef = useRef(screen?.paper || null);
+  const [resolvingAddress, setResolvingAddress] = useState(Boolean(screen?.paper));
+  const urlPaper = screen?.paper || null;
   const [code, setCode] = useState("");
   const [joining, setJoining] = useState(false);
   const [err, setErr] = useState("");
@@ -80,6 +104,59 @@ export function StudentExamSession({ userId, setScreen, showToast }) {
 
   useEffect(() => { loadStatus(); }, [loadStatus]);
 
+  const openPaperScreen = useCallback((assignmentId) => {
+    setOpenPaper({ assignmentId });
+    setScreen({ name: "student-exam", paper: assignmentId });
+  }, [setScreen]);
+  const closePaperScreen = useCallback(() => {
+    setOpenPaper(null);
+    setScreen({ name: "student-exam" });
+  }, [setScreen]);
+
+  // The page has just loaded with a paper in the address (F5). Decide once.
+  useEffect(() => {
+    const pending = pendingPaperRef.current;
+    if (!pending || sessions === null) return;
+    const live = sessions.find((x) => x.id === activeId) || null;
+    if (live && status === null) return;               // still reading the exam
+    pendingPaperRef.current = null;                    // decided only once
+    const it = live && status && status.items ? status.items.find((i) => i.assignment_id === pending) : null;
+    const waitingForRoom = Boolean(it && status.listening_start === "grouped" && it.type === "Listening" && !it.audio_started_at);
+    let ok = Boolean(it && it.readable && !it.submitted && !status.results_released_at && !status.closed_at && !onPhone && !waitingForRoom);
+    (async () => {
+      // Out of time? Read the start time in exam_attempts — NEVER the clock
+      // function (exam_timer_status), which belongs to the paper's screen
+      // only. A wrong computer clock can only lead to the list: harmless.
+      if (ok && it.started && it.minutes) {
+        const { data } = await supabase
+          .from("exam_attempts")
+          .select("started_at")
+          .eq("assignment_id", pending)
+          .eq("student_id", userId)
+          .maybeSingle();
+        if (data?.started_at && Date.now() > new Date(data.started_at).getTime() + it.minutes * 60000) ok = false;
+      }
+      if (ok) setOpenPaper({ assignmentId: pending });
+      else setScreen({ name: "student-exam" });
+      setResolvingAddress(false);
+    })();
+  }, [sessions, activeId, status, onPhone, userId, setScreen]);
+
+  // Back / Forward in the browser. The paper leaving the address (Back) closes it,
+  // exactly as before — reopening it is then a new screen, which freezes.
+  // A paper appearing in the address (Forward, typed by hand) never opens
+  // anything: the address is simply cleaned.
+  // Watches the screen itself, not just the paper: Forward raises popstate
+  // AND hashchange, and the second one writes the paper back into the
+  // screen after it was cleaned — same paper, new object, so this runs
+  // again and cleans it for good.
+  useEffect(() => {
+    if (pendingPaperRef.current || resolvingAddress) return;
+    if (openPaper && !urlPaper) { setOpenPaper(null); loadStatus(); return; }
+    if (!openPaper && urlPaper) setScreen({ name: "student-exam" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [screen]);
+
   // While the list is showing, ask the server again every 10 seconds:
   // the teacher may have opened the exam, started the recording for the
   // whole room, closed it, or published the results. Never while a paper
@@ -130,20 +207,20 @@ export function StudentExamSession({ userId, setScreen, showToast }) {
         // reading of what is unlocked now. No "waiting for feedback"
         // screen in between — that belongs to a class assignment, not to
         // an exam room where the next paper is waiting.
-        onSubmitted={() => { setOpenPaper(null); loadStatus(); }}
+        onSubmitted={() => { closePaperScreen(); loadStatus(); }}
         setScreen={(next) => {
           if (next?.name === "assignment-student" && next.assignmentId) {
-            setOpenPaper({ assignmentId: next.assignmentId });
+            openPaperScreen(next.assignmentId);
             return;
           }
-          setOpenPaper(null);
+          closePaperScreen();
           loadStatus();
         }}
       />
     );
   }
 
-  if (sessions === null) return <CenterSpinner />;
+  if (sessions === null || resolvingAddress) return <CenterSpinner />;
 
   const session = sessions.find((s) => s.id === activeId) || null;
 
@@ -298,7 +375,7 @@ export function StudentExamSession({ userId, setScreen, showToast }) {
                 {(released || closed) && !it.submitted ? (
                   <span className="exs-state"><MinusCircle size={14} /> Not handed in</span>
                 ) : released ? (
-                  <button className="btn-ghost" onClick={() => setOpenPaper({ assignmentId: it.assignment_id })}>
+                  <button className="btn-ghost" onClick={() => openPaperScreen(it.assignment_id)}>
                     See my result
                   </button>
                 ) : it.submitted ? (
@@ -310,7 +387,11 @@ export function StudentExamSession({ userId, setScreen, showToast }) {
                 ) : it.readable ? (
                   <button
                     className={isNext ? "btn-primary" : "btn-ghost"}
-                    onClick={() => setOpenPaper({ assignmentId: it.assignment_id })}
+                    onClick={() => {
+                      // Inside the click, or the browser refuses full screen.
+                      requestExamFullscreen(it.type, onPhone);
+                      openPaperScreen(it.assignment_id);
+                    }}
                   >
                     <Play size={14} /> {it.started ? "Continue" : "Start"}
                   </button>
