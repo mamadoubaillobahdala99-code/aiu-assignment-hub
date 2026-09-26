@@ -75,8 +75,18 @@ export default function App() {
     setTimeout(() => setToast(null), 2400);
   }, []);
 
+  // The profile is read again at every sign-in event, including the silent
+  // renewal of the connection (about once an hour). If that re-reading
+  // FAILS (a network blip), the profile already shown for this same person
+  // is kept: dropping it sent a student to the sign-in screen in the middle
+  // of an exam. A real sign-out still clears it (onAuthStateChange below),
+  // and another account never inherits the previous one's profile.
   const loadProfile = useCallback(async (userId) => {
-    const { data } = await supabase.from("profiles").select("*").eq("id", userId).single();
+    const { data, error } = await supabase.from("profiles").select("*").eq("id", userId).single();
+    if (error) {
+      setProfile((prev) => (prev && prev.id === userId ? prev : null));
+      return;
+    }
     setProfile(data || null);
   }, []);
 
