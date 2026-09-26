@@ -250,6 +250,22 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
   }, [activeIndex, sections, assignment, started, mobileTab, compact]);
 
   const allQuestions = sections.flatMap((s) => s.groups.flatMap((g) => g.questions));
+
+  // A "choose TWO letters" question holds two answer-sheet numbers (21 and
+  // 22): both appear in the bottom bar, and both lead to the question,
+  // whose element carries the first number only (livraison 53).
+  const slotOwner = {};
+  const slotsOf = (g, q, i) => {
+    const first = g.questionNumbers[i];
+    return Array.from({ length: questionSlotCount(q) }, (_, k) => first + k);
+  };
+  sections.forEach((s) => s.groups.forEach((g) => g.questions.forEach((q, i) => {
+    slotsOf(g, q, i).forEach((n) => { slotOwner[n] = g.questionNumbers[i]; });
+  })));
+  const questionLabel = (first, q) => {
+    const n = questionSlotCount(q);
+    return n > 1 ? `${first}–${first + n - 1}` : String(first);
+  };
   const allAnswered = allQuestions.length > 0 && allQuestions.every((q) => answers[q.id] !== undefined);
 
   // Every answer-sheet number still empty, with the Part it lives in —
@@ -282,14 +298,14 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
     // On a small screen the questions live behind their own tab.
     if (compact) setMobileTab("questions");
     // Wait for that Part to render before scrolling to it.
-    setTimeout(() => document.getElementById(`question-${num}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 60);
+    setTimeout(() => document.getElementById(`question-${slotOwner[num] ?? num}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 60);
   }
 
   // A number in the bottom bar: on a small screen it also brings the
   // questions column to the front.
   function goToNumber(num) {
     if (compact) setMobileTab("questions");
-    setTimeout(() => document.getElementById(`question-${num}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), compact ? 60 : 0);
+    setTimeout(() => document.getElementById(`question-${slotOwner[num] ?? num}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), compact ? 60 : 0);
   }
 
   // The time-up auto-submit calls submitAll directly (no dialog); only
@@ -520,7 +536,7 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
           ) : (
             group.questions.map((q, i) => (
               <div key={q.id} id={`question-${group.questionNumbers[i]}`} className="qe-numbered-question">
-                <span className="rf-answer-num qe-question-badge">{group.questionNumbers[i]}</span>
+                <span className="rf-answer-num qe-question-badge">{questionLabel(group.questionNumbers[i], q)}</span>
                 <div style={{ flex: 1 }}>
                   <QuestionRenderer
                     question={q}
@@ -717,7 +733,8 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
 
       <div className="qe-nav-bar">
         {sections.map((s, i) => {
-          const total = s.groups.reduce((sum, g) => sum + g.questions.length, 0);
+          // Counted in answer-sheet numbers: a "choose TWO" question is two.
+          const total = s.groups.reduce((sum, g) => sum + g.questions.reduce((n, q) => n + questionSlotCount(q), 0), 0);
           if (i !== activeIndex) {
             return (
               <div key={s.id} className="qe-nav-part-segment inactive-part" onClick={() => { setActiveIndex(i); if (compact) setMobileTab("text"); }}>
@@ -726,14 +743,14 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
             );
           }
           return (
-            <div key={s.id} className="qe-nav-part-segment">
+            <div key={s.id} className="qe-nav-part-segment qe-nav-seg-numbers">
               <div className="qe-nav-active-part">
                 <span className="qe-nav-part-label">{s.title}</span>
                 <div className="qe-nav-numbers">
-                  {s.groups.flatMap((group) => group.questionNumbers).map((num) => (
+                  {s.groups.flatMap((group) => group.questions.flatMap((q, qi) => slotsOf(group, q, qi))).map((num) => (
                     <button
                       key={num}
-                      className={`qe-question-nav-item ${num === visibleNum ? "qe-nav-item-visible" : ""}`}
+                      className={`qe-question-nav-item ${slotOwner[num] === visibleNum ? "qe-nav-item-visible" : ""}`}
                       onClick={() => goToNumber(num)}
                     >
                       {num}
