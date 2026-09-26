@@ -13,6 +13,7 @@ import { ShieldAlert, Loader2, Send, Maximize } from "lucide-react";
 const WHY = {
   fullscreen_exit: "You left full screen.",
   tab_switch: "You left the exam screen.",
+  page_reload: "You refreshed or reopened the page.",
 };
 
 export function InvigilationOverlay({ invig }) {
