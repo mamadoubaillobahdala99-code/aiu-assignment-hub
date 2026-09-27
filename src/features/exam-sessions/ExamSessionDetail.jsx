@@ -146,13 +146,17 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
 
   async function act(action, itemId) {
     setBusy(action);
-    const { error } = await supabase.rpc("exam_session_action", { p_session_id: sessionId, p_action: action, p_item_id: itemId || null });
+    const { data, error } = await supabase.rpc("exam_session_action", { p_session_id: sessionId, p_action: action, p_item_id: itemId || null });
     setBusy("");
     if (error) { showToast?.("Could not do that: " + error.message); return; }
     await load();
+    // Closing (or publishing) hands in every paper still being written —
+    // the server does it, from the copies it keeps (livraison 56).
+    const n = Number(data?.collected || 0);
+    const handed = n > 0 ? ` — ${n} paper${n > 1 ? "s" : ""} handed in` : "";
     if (action === "open") showToast?.("Exam open — give the code to your students");
-    if (action === "close") showToast?.("Exam closed");
-    if (action === "release") showToast?.("Results published");
+    if (action === "close") showToast?.("Exam closed" + handed);
+    if (action === "release") showToast?.("Results published" + handed);
     if (action === "start_audio") showToast?.("Recording started for everyone");
   }
 
@@ -335,7 +339,9 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
         )}
         {!session.results_released_at && (session.closed_at || isLive) && (
           <button className="btn-ghost" disabled={busy === "release"} onClick={async () => {
-            if (await confirmDialog({ title: "Publish the results?", message: "Publish the results to every candidate? They will see their marks and their corrected papers.", confirmLabel: "Publish" })) act("release");
+            const message = "Publish the results to every candidate? They will see their marks and their corrected papers."
+              + (isLive ? " The exam is still open: every paper still being written will be handed in now, as it is." : "");
+            if (await confirmDialog({ title: "Publish the results?", message, confirmLabel: "Publish" })) act("release");
           }}>
             <Send size={14} /> {busy === "release" ? "Publishing…" : "Publish the results"}
           </button>
@@ -649,8 +655,9 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
         <Modal title="Close the exam?" onClose={() => setCloseAsk(null)}>
           {closeAsk.working === null ? (
             <p className="muted-p" style={{ marginTop: 0 }}>
-              The number of candidates still writing could not be counted. Close only if
-              you are sure the room has finished.
+              The number of candidates still writing could not be counted.{" "}
+              <strong>Every paper still being written will be handed in now, as it is.</strong>{" "}
+              This cannot be undone, even if you reopen the exam.
             </p>
           ) : closeAsk.working === 0 ? (
             <p className="muted-p" style={{ marginTop: 0 }}>
@@ -663,9 +670,10 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
                 <strong>
                   {closeAsk.working} candidate{closeAsk.working > 1 ? "s are" : " is"} still writing.
                 </strong>{" "}
-                If you close now, {closeAsk.working > 1 ? "they" : "he or she"} can still hand
-                in the paper already started — nothing is lost — but nobody will be able to
-                open a new one.
+                <strong>Every paper still being written will be handed in now, as it is</strong>{" "}
+                — pens down, like at the end of a real exam. Their screens will say so within
+                a few seconds, and nobody will be able to open a new paper.
+                This cannot be undone, even if you reopen the exam.
               </p>
               {closeAsk.names.length > 0 && (
                 <div className="ex-people" style={{ marginTop: 4 }}>
