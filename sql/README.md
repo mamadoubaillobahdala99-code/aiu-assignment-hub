@@ -48,6 +48,9 @@ Il est dépassé : ne pas l'exécuter. Il est gardé tel quel pour l'histoire.
 | `35_pens_down.sql` | « Posez les stylos » : brouillons Reading/Listening gardés sur le serveur (`exam_answer_drafts`, sans aucun droit direct) ; *Close* et *Release* ramassent toutes les copies en cours ; les copies dont le temps est fini sont ramassées au passage (battement de cœur, tableau du prof). |
 | `36_collect_safety.sql` | `submit_writing` verrouille la copie en premier (même ordre que le ramassage : plus de « deadlock » si l'étudiant remet pile au moment du ramassage) ; `exam_uncollected_papers` : nombre de copies pas encore ramassées alors qu'elles devraient l'être (staff seulement), affiché au prof. |
 | `37_teacher_signup.sql` | Inscription = toujours étudiant (le rôle envoyé par la page est ignoré) ; `is_teacher()` ; il faut être prof pour créer une classe ou une question ; plus d'ajout ni de suppression de profil par les comptes connectés. |
+| `38_exam_timer_rule.sql` | (29/09) Dans un paper d'examen, un appel au chrono sans numéro d'écran est refusé (« Please reload the page ») ; `exam_start_item` supprimée (plus utilisée) ; `exam_my_invigilation` ne répond qu'aux candidats et au staff de l'examen. |
+| `39_admin_overview.sql` | Écran « Admin » (lecture seule) : table `app_admins` (aucun droit direct), `is_app_admin()`, `admin_overview()` réservée à l'administrateur — chiffres des profs, étudiants (chiffres seulement) et classes, liste des profs. |
+| `nommer_admin.sql` | **Outil, pas une étape.** Donne l'accès à l'écran Admin à un compte (remplacer `<EMAIL>`), sans changer son rôle. Lancé par Mamadou seulement, une fois, après le 39. |
 | `nommer_prof.sql` | **Outil, pas une étape.** Donne le rôle prof à un compte existant (remplacer `<EMAIL>`). Lancé par Mamadou seulement ; ne jamais enregistrer une vraie adresse dans le dépôt. |
 | `reinitialiser_mot_de_passe.sql` | **Outil, pas une étape.** Donne un mot de passe provisoire (règle : 8+ caractères, une lettre, un chiffre) à un compte qui a oublié le sien ; ne change rien d'autre. Option commentée : déconnecter les autres appareils (compte volé). Lancé par Mamadou seulement ; ne jamais enregistrer une vraie adresse ni un vrai mot de passe dans le dépôt. |
 
@@ -130,7 +133,7 @@ Une recherche automatique de clés, jetons, mots de passe, e-mails et identifian
 
 ## 4. Règles pour les prochains scripts
 
-1. Un nouveau script prend le numéro suivant (`38_…`) et s'ajoute ici avec une ligne dans le tableau.
+1. Un nouveau script prend le numéro suivant (`40_…`) et s'ajoute ici avec une ligne dans le tableau.
 2. Il est complet et ré-exécutable, avec un retour arrière dans un bloc `/* … */`.
 3. Il est d'abord testé dans une transaction annulée, puis exécuté par Mamadou dans Supabase.
 4. Nouvelles tables : droits pour `authenticated` seulement, jamais `anon`. La RLS n'est jamais affaiblie.
