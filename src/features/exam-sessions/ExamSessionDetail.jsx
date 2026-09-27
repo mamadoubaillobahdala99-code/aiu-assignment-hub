@@ -43,6 +43,10 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
   // (practice settings). Shown with a badge, and asked about before Open.
   const [replayIds, setReplayIds] = useState(new Set());
   const [openAsk, setOpenAsk] = useState(false);
+  // Livraison 60: "Close" waits until the papers and candidates are loaded.
+  // Clicked earlier, its count said "Nobody is writing right now" even
+  // while candidates were writing.
+  const [loaded, setLoaded] = useState(false);
 
   const load = useCallback(async () => {
     const { data: s } = await supabase.from("exam_sessions").select("*").eq("id", sessionId).maybeSingle();
@@ -95,6 +99,7 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
     ]);
     setRoster((r || []).map((x) => ({ id: x.student_id, name: x.profiles?.name || "Student", joined_at: x.joined_at })));
     setStaff((st || []).map((x) => ({ id: x.teacher_id, role: x.role, name: x.profiles?.name || "Teacher" })));
+    setLoaded(true);
 
     // Who has handed in what. One query for the whole room.
     const paperIds = (rows || []).map((x) => x.assignment_id);
@@ -345,8 +350,8 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
           </button>
         )}
         {isLive && (
-          <button className="btn-ghost" disabled={busy === "close" || closeAsk === "counting"} onClick={askToClose}>
-            <Square size={14} /> {busy === "close" ? "Closing…" : "Close the exam"}
+          <button className="btn-ghost" disabled={!loaded || busy === "close" || closeAsk === "counting"} onClick={askToClose}>
+            <Square size={14} /> {busy === "close" ? "Closing…" : !loaded ? "Loading…" : "Close the exam"}
           </button>
         )}
         {!session.results_released_at && (session.closed_at || isLive) && (
