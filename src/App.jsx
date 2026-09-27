@@ -3,7 +3,8 @@ import { Loader2 } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import { CSS } from "./styles";
 import { AuthScreen } from "./features/auth/AuthScreen";
-import { Shell, SCREEN_ROLES } from "./Shell";import "./features/question-engine/question-engine.css";
+import { Shell, SCREEN_ROLES } from "./Shell";
+import { AdminConsole } from "./features/admin/AdminConsole";import "./features/question-engine/question-engine.css";
 import "./features/question-engine/multiple-choice.css";
 import "./features/question-engine/bulk-paste.css";
 import "./features/question-engine/summary-completion.css";
@@ -160,6 +161,10 @@ export default function App() {
         <div className="boot"><Loader2 className="spin" size={22} /></div>
       ) : !session || !profile ? (
         <AuthScreen showToast={showToast} />
+      ) : screen.name === "admin" ? (
+        // The administrator's screen is separate from the teacher space
+        // (livraison 60). The database decides who may read it.
+        <AdminConsole profile={profile} setScreen={setScreen} />
       ) : (
         <Shell profile={profile} setProfile={setProfile} userId={session.user.id} onSignOut={handleSignOut} screen={screen} setScreen={setScreen} showToast={showToast} />
       )}
