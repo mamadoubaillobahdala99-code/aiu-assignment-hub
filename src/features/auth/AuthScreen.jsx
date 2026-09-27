@@ -6,6 +6,9 @@ import { PasswordField, passwordProblem, PASSWORD_RULE_TEXT } from "../../compon
 export function AuthScreen({ showToast }) {
   const [mode, setMode] = useState("signup"); // signup | login
   const [name, setName] = useState("");
+  // Livraison 61: only a REQUEST — the account is always created as a
+  // student, and the administrator approves teacher access.
+  const [teacherRequest, setTeacherRequest] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -32,10 +35,10 @@ export function AuthScreen({ showToast }) {
         password,
         // Every new account is a student (livraison 58): the database ignores
         // any role sent from here. The administrator gives teacher access.
-        options: { data: { name: name.trim() } },
+        options: { data: teacherRequest ? { name: name.trim(), teacher_request: true } : { name: name.trim() } },
       });
       if (error) setErr(error.message);
-      else showToast("Account created");
+      else showToast(teacherRequest ? "Account created — teacher access requested" : "Account created");
     } else {
       // No password rule at login: an older, shorter password must still
       // work. When Supabase finds it weaker than the new rule it still logs
@@ -79,9 +82,20 @@ export function AuthScreen({ showToast }) {
             <>
               <label className="field-label">Your name</label>
               <input className="field-input" placeholder="e.g. Mamadou Bailo" value={name} onChange={(e) => setName(e.target.value)} />
-              <p className="auth-note" style={{ marginTop: 8 }}>
-                Teachers: create your account, then ask the administrator to give you teacher access.
-              </p>
+              <label className="auth-teacher-request" style={{
+                display: "flex", gap: 10, alignItems: "flex-start", marginTop: 14, padding: "11px 12px",
+                border: `1px solid ${teacherRequest ? "var(--teal)" : "var(--line)"}`, borderRadius: 10,
+                background: teacherRequest ? "var(--teal-soft)" : "#fff", cursor: "pointer", fontSize: 13.5,
+              }}>
+                <input type="checkbox" checked={teacherRequest} onChange={(e) => setTeacherRequest(e.target.checked)}
+                       style={{ marginTop: 2, width: 16, height: 16, accentColor: "var(--teal)" }} />
+                <span>
+                  <strong>I'm a teacher — request teacher access</strong>
+                  <span style={{ display: "block", color: "var(--ink-soft)", fontSize: 12, marginTop: 3 }}>
+                    You start as a student. The administrator approves teacher access.
+                  </span>
+                </span>
+              </label>
             </>
           )}
 
