@@ -47,6 +47,8 @@ Il est dépassé : ne pas l'exécuter. Il est gardé tel quel pour l'histoire.
 | `34_exam_heartbeat.sql` | Battement de cœur toutes les 5 s : `exam_my_invigilation` dit aussi au candidat si l'examen est fermé, libéré, ou sa copie rendue. |
 | `35_pens_down.sql` | « Posez les stylos » : brouillons Reading/Listening gardés sur le serveur (`exam_answer_drafts`, sans aucun droit direct) ; *Close* et *Release* ramassent toutes les copies en cours ; les copies dont le temps est fini sont ramassées au passage (battement de cœur, tableau du prof). |
 | `36_collect_safety.sql` | `submit_writing` verrouille la copie en premier (même ordre que le ramassage : plus de « deadlock » si l'étudiant remet pile au moment du ramassage) ; `exam_uncollected_papers` : nombre de copies pas encore ramassées alors qu'elles devraient l'être (staff seulement), affiché au prof. |
+| `37_teacher_signup.sql` | Inscription = toujours étudiant (le rôle envoyé par la page est ignoré) ; `is_teacher()` ; il faut être prof pour créer une classe ou une question ; plus d'ajout ni de suppression de profil par les comptes connectés. |
+| `nommer_prof.sql` | **Outil, pas une étape.** Donne le rôle prof à un compte existant (remplacer `<EMAIL>`). Lancé par Mamadou seulement ; ne jamais enregistrer une vraie adresse dans le dépôt. |
 
 **Ce qui manque :** les scripts d'avant le 09 (01 à 08) n'ont pas été retrouvés.
 Ce qu'ils ont créé est dans `00_etat_actuel.sql` (voir section 2, dernier point).
@@ -127,7 +129,7 @@ Une recherche automatique de clés, jetons, mots de passe, e-mails et identifian
 
 ## 4. Règles pour les prochains scripts
 
-1. Un nouveau script prend le numéro suivant (`37_…`) et s'ajoute ici avec une ligne dans le tableau.
+1. Un nouveau script prend le numéro suivant (`38_…`) et s'ajoute ici avec une ligne dans le tableau.
 2. Il est complet et ré-exécutable, avec un retour arrière dans un bloc `/* … */`.
 3. Il est d'abord testé dans une transaction annulée, puis exécuté par Mamadou dans Supabase.
 4. Nouvelles tables : droits pour `authenticated` seulement, jamais `anon`. La RLS n'est jamais affaiblie.
