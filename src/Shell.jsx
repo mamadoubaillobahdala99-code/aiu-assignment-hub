@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
-import { BookOpen, Users, Plus, Check, Clock, AlertTriangle, LogOut, GraduationCap, FileText, ChevronRight, X, Copy, CheckCircle2, Headphones, PenLine, Mic, ListChecks, ArrowLeft, Loader2, Timer, Highlighter, Maximize, Minimize, User, Menu, ShieldCheck } from "lucide-react";
+import { BookOpen, Users, Plus, Check, Clock, AlertTriangle, LogOut, GraduationCap, FileText, ChevronRight, X, Copy, CheckCircle2, Headphones, PenLine, Mic, ListChecks, ArrowLeft, Loader2, Timer, Highlighter, Maximize, Minimize, User, Menu, ShieldCheck, Settings } from "lucide-react";
+import { supabase } from "./supabaseClient";
 import { TeacherHome } from "./features/assignment-hub/TeacherHome";
 import { TeacherDashboard } from "./features/assignment-hub/TeacherDashboard";
 import { ClassDetail } from "./features/assignment-hub/ClassDetail";
@@ -57,6 +58,9 @@ export const SCREEN_ROLES = {
   "student-class-detail": "student",
   "assignment-student": "student",
   "student-exam": "student",
+  // The administrator's screen, open to either role: the DATABASE
+  // refuses its content to anyone who is not an administrator.
+  admin: "both",
 };
 
 export function Shell({ profile, setProfile, userId, onSignOut, screen: rawScreen, setScreen, showToast }) {
@@ -66,6 +70,18 @@ export function Shell({ profile, setProfile, userId, onSignOut, screen: rawScree
   const allowed = role === "both" || (role === "teacher") === isTeacher;
   const screen = role && allowed ? rawScreen : { name: "home" };
   const [isFullscreen, setIsFullscreen] = useState(false);
+
+  // Show the "Admin" entry only to the site administrator (livraison 60).
+  // A convenience only: the admin screen's content is refused by the
+  // database to everyone else.
+  const [isAdmin, setIsAdmin] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    supabase.rpc("is_app_admin").then(({ data, error }) => {
+      if (!cancelled) setIsAdmin(!error && data === true);
+    });
+    return () => { cancelled = true; };
+  }, [userId]);
 
   // On a phone the blue menu no longer fits across the top: it needed
   // 558px on a 390px screen, so "Join a class", "Full screen" and
@@ -116,7 +132,7 @@ export function Shell({ profile, setProfile, userId, onSignOut, screen: rawScree
           <div className="avatar">{profile.name.slice(0, 1).toUpperCase()}</div>
           <div>
             <div className="profile-name">{profile.name}</div>
-            <div className="profile-role">{isTeacher ? "Teacher" : "Student"}</div>
+            <div className="profile-role">{isTeacher ? "Teacher" : "Student"}{isAdmin ? " · Admin" : ""}</div>
           </div>
         </button>
 
@@ -154,6 +170,12 @@ export function Shell({ profile, setProfile, userId, onSignOut, screen: rawScree
             </button>
           )}
         </nav>
+
+        {isAdmin && (
+          <button className="nav-item" onClick={() => setScreen({ name: "admin" })}>
+            <Settings size={16} /> Admin
+          </button>
+        )}
 
         <button className="nav-item" onClick={toggleFullscreen}>
           {isFullscreen ? <Minimize size={16} /> : <Maximize size={16} />}
