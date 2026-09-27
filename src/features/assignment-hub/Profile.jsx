@@ -4,6 +4,7 @@ import { User, ArrowLeft } from "lucide-react";
 import { supabase } from "../../supabaseClient";
 import { fmtDate } from "../../lib/utils";
 import { PageHeader, CenterSpinner } from "../../components/shared";
+import { PasswordField, passwordProblem, PASSWORD_RULE_TEXT } from "../../components/PasswordField";
 
 export function Profile({ profile, userId, setProfile, setScreen, showToast }) {
   const [email, setEmail] = useState("");
@@ -43,8 +44,10 @@ export function Profile({ profile, userId, setProfile, setScreen, showToast }) {
 
   async function savePassword() {
     setPasswordError("");
-    if (newPassword.length < 6) {
-      setPasswordError("Password must be at least 6 characters.");
+    // The new password rule (livraison 59).
+    const problem = passwordProblem(newPassword);
+    if (problem) {
+      setPasswordError(problem + " " + PASSWORD_RULE_TEXT);
       return;
     }
     if (newPassword !== confirmPassword) {
@@ -92,9 +95,9 @@ export function Profile({ profile, userId, setProfile, setScreen, showToast }) {
       <div className="feedback-panel" style={{ maxWidth: 460 }}>
         <div className="field-label" style={{ marginBottom: 10 }}>Change password</div>
         <label className="field-label">New password</label>
-        <input type="password" className="field-input" placeholder="At least 6 characters" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
+        <PasswordField placeholder="8+ characters, a letter, a number" autoComplete="new-password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
         <label className="field-label" style={{ marginTop: 12 }}>Confirm new password</label>
-        <input type="password" className="field-input" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
+        <PasswordField autoComplete="new-password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
         {passwordError && <div className="field-error">{passwordError}</div>}
         <button className="btn-primary" style={{ marginTop: 12 }} disabled={savingPassword || !newPassword || !confirmPassword} onClick={savePassword}>
           {savingPassword ? "Saving…" : "Update password"}
