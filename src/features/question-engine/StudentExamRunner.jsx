@@ -17,7 +17,7 @@ import { GroupImage } from "./GroupImage";
 import { useIsCompact, useVisualViewportHeight, useKeepFocusVisible } from "./useViewport";
 import { useInvigilation } from "./useInvigilation";
 import { ExamStripButtons, ExamFullscreenButton, ExamExitButton } from "./ExamSidebarButtons";
-import { InvigilationOverlay } from "./InvigilationOverlay";
+import { InvigilationOverlay, ExamHandedIn } from "./InvigilationOverlay";
 
 // The countdown comes from useExamTimer: the start time is written once
 // by the server (when the student presses Start) and the remaining time
@@ -87,6 +87,8 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
   const [audioOpen, setAudioOpen] = useState(false);
   const [teacherName, setTeacherName] = useState("");
   const [confirmOpen, setConfirmOpen] = useState(false);
+  // Handed in by the SERVER (livraison 56): "closed" | "time" | "handed".
+  const [handedIn, setHandedIn] = useState(null);
 
   // Phone / small tablet. Anything wider keeps the computer layout
   // exactly as it is — every rule below is inside this flag or inside a
@@ -184,6 +186,48 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
     if (!loaded || !started || results !== null || timeOver) return;
     writeLocalAnswers(userId, assignmentId, answers);
   }, [answers, loaded, started, results, timeOver, userId, assignmentId]);
+
+  // ---------- the answers also kept on the server (livraison 56) ----------
+  // In a watched exam, the answers are sent to the server every 5 seconds
+  // when they changed. They stay unreadable there — even for the student —
+  // and serve one purpose: when the teacher closes the exam (or the time
+  // runs out while this page is offline), the SERVER hands the paper in
+  // with them. The browser copy above stays, for a refresh.
+  const draftSentRef = useRef("");
+  const draftBusyRef = useRef(false);
+  const answersRef = useRef(answers);
+  answersRef.current = answers;
+  useEffect(() => {
+    if (!loaded || !started || results !== null || timeOver || handedIn || !invig.watched) return;
+    const send = async () => {
+      if (draftBusyRef.current || submitting) return;
+      const now = JSON.stringify(answersRef.current || {});
+      if (now === draftSentRef.current) return;
+      draftBusyRef.current = true;
+      try {
+        const { data, error } = await supabase.rpc("save_answer_drafts", {
+          p_assignment_id: assignmentId, p_answers: answersRef.current || {},
+        });
+        if (!error && data?.saved) draftSentRef.current = now;
+      } finally {
+        draftBusyRef.current = false;
+      }
+    };
+    const id = setInterval(send, 5000);
+    return () => clearInterval(id);
+  }, [loaded, started, results, timeOver, handedIn, invig.watched, assignmentId, submitting]);
+
+  // The server says this paper is handed in (it collected it), or the exam
+  // is over: pens down. Never in the middle of the student's own submit —
+  // that one ends by itself.
+  useEffect(() => {
+    if (handedIn || submitting || !started || results !== null || timeOver || !invig.watched) return;
+    if (!(invig.closed === true || invig.released === true || invig.submitted === true)) return;
+    invig.stopWatching();
+    clearLocalAnswers(userId, assignmentId);
+    setHandedIn(invig.closed || invig.released ? "closed" : timer.status === "expired" ? "time" : "handed");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [invig.closed, invig.released, invig.submitted, invig.watched, handedIn, submitting, started, results, timeOver]);
 
   // Already started earlier (refresh, other device): go straight back to
   // the exam — the start screen would wrongly suggest the time hasn't begun.
@@ -337,9 +381,26 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
 
     if (error) {
       const msg = error.message || "";
+      if (/Time is over|This exam is over|This exam is closed/i.test(msg) && invig.watched) {
+        // Too late for this page — but in an exam the server may have
+        // handed the paper in from its own copy (livraison 56). Asking it
+        // where this paper stands also makes it collect it now if due.
+        const { data } = await supabase.rpc("exam_my_invigilation", { p_assignment_id: assignmentId });
+        if (data?.submitted) {
+          clearLocalAnswers(userId, assignmentId);
+          setHandedIn(data.closed || data.released ? "closed" : "time");
+          return;
+        }
+      }
       if (/Time is over|Exam not started/i.test(msg)) {
         clearLocalAnswers(userId, assignmentId);
         setTimeOver(true);
+        return;
+      }
+      if (/Already submitted/i.test(msg) && invig.watched) {
+        // Handed in by the server meanwhile (closed exam, time over).
+        clearLocalAnswers(userId, assignmentId);
+        setHandedIn(invig.closed || invig.released ? "closed" : timeUp ? "time" : "handed");
         return;
       }
       if (/Already submitted/i.test(msg)) {
@@ -396,6 +457,10 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
     window.addEventListener("pointercancel", onUp);
+  }
+
+  if (handedIn) {
+    return <ExamHandedIn reason={handedIn} onDone={() => (onSubmitted ? onSubmitted() : setScreen({ name: "home" }))} />;
   }
 
   if (timeOver) {
