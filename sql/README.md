@@ -51,6 +51,7 @@ Il est dépassé : ne pas l'exécuter. Il est gardé tel quel pour l'histoire.
 | `38_exam_timer_rule.sql` | (29/09) Dans un paper d'examen, un appel au chrono sans numéro d'écran est refusé (« Please reload the page ») ; `exam_start_item` supprimée (plus utilisée) ; `exam_my_invigilation` ne répond qu'aux candidats et au staff de l'examen. |
 | `39_admin_overview.sql` | Écran « Admin » (lecture seule) : table `app_admins` (aucun droit direct), `is_app_admin()`, `admin_overview()` réservée à l'administrateur — chiffres des profs, étudiants (chiffres seulement) et classes, liste des profs. |
 | `nommer_admin.sql` | **Outil, pas une étape.** Donne l'accès à l'écran Admin à un compte (remplacer `<EMAIL>`), sans changer son rôle. Lancé par Mamadou seulement, une fois, après le 39. |
+| `40_teacher_requests.sql` | Demande d'accès prof : table `teacher_requests` (aucun droit direct) ; case à l'inscription (`handle_new_user`, ne peut jamais faire échouer une inscription) ; `request_teacher_access()` (nouvelle demande 7 jours après un refus) ; `my_teacher_request()` ; `admin_decide_teacher_request()` réservée à l'admin (seulement une demande en attente ; « Approve » seulement si le compte est encore étudiant) ; `admin_overview()` liste les demandes en attente. |
 | `nommer_prof.sql` | **Outil, pas une étape.** Donne le rôle prof à un compte existant (remplacer `<EMAIL>`). Lancé par Mamadou seulement ; ne jamais enregistrer une vraie adresse dans le dépôt. |
 | `reinitialiser_mot_de_passe.sql` | **Outil, pas une étape.** Donne un mot de passe provisoire (règle : 8+ caractères, une lettre, un chiffre) à un compte qui a oublié le sien ; ne change rien d'autre. Option commentée : déconnecter les autres appareils (compte volé). Lancé par Mamadou seulement ; ne jamais enregistrer une vraie adresse ni un vrai mot de passe dans le dépôt. |
 
@@ -133,7 +134,7 @@ Une recherche automatique de clés, jetons, mots de passe, e-mails et identifian
 
 ## 4. Règles pour les prochains scripts
 
-1. Un nouveau script prend le numéro suivant (`40_…`) et s'ajoute ici avec une ligne dans le tableau.
+1. Un nouveau script prend le numéro suivant (`41_…`) et s'ajoute ici avec une ligne dans le tableau.
 2. Il est complet et ré-exécutable, avec un retour arrière dans un bloc `/* … */`.
 3. Il est d'abord testé dans une transaction annulée, puis exécuté par Mamadou dans Supabase.
 4. Nouvelles tables : droits pour `authenticated` seulement, jamais `anon`. La RLS n'est jamais affaiblie.
