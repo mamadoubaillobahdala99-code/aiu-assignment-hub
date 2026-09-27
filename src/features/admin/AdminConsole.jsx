@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { ArrowLeft, Loader2, RefreshCw } from "lucide-react";
 import { supabase } from "../../supabaseClient";
 import "./admin.css";
@@ -46,8 +46,47 @@ export function AdminConsole({ profile, setScreen }) {
 
   useEffect(() => { load(); }, [load]);
 
+  // Livraison 61: Approve / Decline a teacher-access request. The row's
+  // buttons are disabled while its decision is on its way, and the
+  // DATABASE ignores a second decision on the same request (double click,
+  // two tabs): it only acts on a request that is still waiting.
+  const [deciding, setDeciding] = useState("");   // user_id being decided
+  const [notice, setNotice] = useState("");
+  const [decided, setDecided] = useState(new Set());   // decided in this screen
+  // A ref, not only the state: a second click can arrive before React has
+  // re-rendered the disabled button.
+  const decidingRef = useRef(false);
+  async function decide(req, approve) {
+    if (decidingRef.current) return;
+    decidingRef.current = true;
+    setDeciding(req.user_id);
+    setNotice("");
+    const { data: d, error: e } = await supabase.rpc("admin_decide_teacher_request", { p_user_id: req.user_id, p_approve: approve });
+    if (e) {
+      setDeciding("");
+      decidingRef.current = false;
+      setNotice("Could not save this decision: " + e.message);
+      return;
+    }
+    // Decided: the row leaves the list at once, and the buttons stay
+    // locked until the list has been read again from the database.
+    setDecided((prev) => new Set(prev).add(req.user_id));
+    const result = d?.result;
+    setNotice(
+      result === "approved" ? `${req.name} now has teacher access. They see it after reloading the page.`
+      : result === "declined" ? `${req.name}'s request was declined. They can ask again in 7 days.`
+      : result === "not_student" ? `${req.name} already had teacher access. The request is closed.`
+      : `This request had already been decided.`
+    );
+    await load();
+    setDecided(new Set());      // the fresh list from the database is the truth again
+    setDeciding("");
+    decidingRef.current = false;
+  }
+
   const back = () => setScreen({ name: "home" });
   const teachers = data?.teacher_list || [];
+  const requests = (data?.requests || []).filter((r) => !decided.has(r.user_id));
 
   return (
     <div className="adm-root">
@@ -116,7 +155,38 @@ export function AdminConsole({ profile, setScreen }) {
                 <div className="adm-tile-label">Classes</div>
                 <div className="adm-tile-num">{data.classes}</div>
               </div>
+              <div className={`adm-tile ${requests.length > 0 ? "adm-tile-warn" : ""}`}>
+                <div className="adm-tile-label">Teacher access requests</div>
+                <div className="adm-tile-num">{requests.length}</div>
+              </div>
             </div>
+
+            <h2 className="adm-section">Teacher access requests</h2>
+            {notice && <div className="adm-notice" role="status">{notice}</div>}
+            {requests.length === 0 ? (
+              <p className="adm-sub">No request waiting.</p>
+            ) : (
+              <div className="adm-reqs">
+                {requests.map((r) => (
+                  <div key={r.user_id} className="adm-req">
+                    <div className="adm-req-avatar">{(r.name || "?").slice(0, 1).toUpperCase()}</div>
+                    <div className="adm-req-main">
+                      <strong>{r.name}</strong>
+                      <span className="adm-muted">{r.email} · asked {lastLogin(r.requested_at)}</span>
+                    </div>
+                    <div className="adm-req-tools">
+                      <button className="btn-ghost" disabled={!!deciding} onClick={() => decide(r, false)}>
+                        {deciding === r.user_id ? "…" : "Decline"}
+                      </button>
+                      <button className="btn-primary" disabled={!!deciding} onClick={() => decide(r, true)}>
+                        {deciding === r.user_id ? "Saving…" : "Approve"}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            <p className="adm-foot" style={{ marginBottom: 26 }}>Approve gives teacher access. The person reloads the page and sees the teacher space.</p>
 
             <h2 className="adm-section">Teachers</h2>
             {teachers.length === 0 ? (
