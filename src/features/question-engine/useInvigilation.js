@@ -35,10 +35,15 @@ const BLUR_GRACE_MS = 1200;
 // Two consecutive failed checks before freezing, so the half-second in
 // which full screen is engaging or releasing never counts.
 const STRIKES = 2;
+// How often a watched paper asks the server where it stands (livraison 55).
+const HEARTBEAT_MS = 5000;
 
 export function useInvigilation(assignmentId, active) {
   const [state, setState] = useState({
     watched: false, frozen: false, strict: false, kind: null, reason: null,
+    // What the server says about the exam itself (livraison 55; used by
+    // livraison 56). null = not said (not a candidate, or older server).
+    closed: null, released: null, submitted: null,
   });
   // Let back in by a teacher, but the page is not in full screen any
   // more and only a click can restore it. The paper stays covered until
@@ -104,10 +109,59 @@ export function useInvigilation(assignmentId, active) {
       setState({
         watched: Boolean(data.watched), frozen: Boolean(data.frozen),
         strict: Boolean(data.strict), kind: data.kind || null, reason: data.reason || null,
+        closed: data.closed ?? null, released: data.released ?? null, submitted: data.submitted ?? null,
       });
     })();
     return () => { cancelled = true; };
   }, [active, assignmentId]);
+
+  // ---------- the heartbeat: what changed on the server? ----------
+  // Before, a watched page only heard from the server when it reported
+  // something itself, or once already frozen. A freeze decided elsewhere
+  // — the same paper reopened in a second tab or on another device —
+  // stayed invisible here, and the candidate kept writing in a copy the
+  // server had frozen. So, while a watched paper is open and not frozen
+  // (the frozen state has its own poll below), the page asks every 5
+  // seconds, and AT ONCE when the candidate comes back to this tab: a
+  // browser slows down the timers of a tab left in the background, so
+  // the interval alone could be minutes late there.
+  // One question at a time; a failed one is simply asked again next time.
+  const beatBusyRef = useRef(false);
+  const heartbeat = useCallback(async () => {
+    if (!activeRef.current || stoppingRef.current || leavingRef.current || !assignmentId) return;
+    if (beatBusyRef.current) return;
+    beatBusyRef.current = true;
+    try {
+      const { data, error } = await supabase.rpc("exam_my_invigilation", { p_assignment_id: assignmentId });
+      if (error || !data || !activeRef.current || stoppingRef.current) return;
+      setState((s) => {
+        const next = {
+          ...s,
+          closed: data.closed ?? null, released: data.released ?? null, submitted: data.submitted ?? null,
+        };
+        if (data.watched === false) return { ...next, watched: false };
+        if (data.frozen && !s.frozen) {
+          return { ...next, frozen: true, kind: data.kind || s.kind, reason: data.reason || null };
+        }
+        return next;
+      });
+    } finally {
+      beatBusyRef.current = false;
+    }
+  }, [assignmentId]);
+
+  useEffect(() => {
+    if (!active || !assignmentId || !state.watched || state.frozen) return;
+    const id = setInterval(heartbeat, HEARTBEAT_MS);
+    const onBack = () => { if (!document.hidden) heartbeat(); };
+    document.addEventListener("visibilitychange", onBack);
+    window.addEventListener("focus", onBack);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onBack);
+      window.removeEventListener("focus", onBack);
+    };
+  }, [active, assignmentId, state.watched, state.frozen, heartbeat]);
 
   // ---------- events: they react at once ----------
   useEffect(() => {
