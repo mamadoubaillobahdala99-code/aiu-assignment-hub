@@ -5,7 +5,6 @@ import { supabase } from "../../supabaseClient";
 export function AuthScreen({ showToast }) {
   const [mode, setMode] = useState("signup"); // signup | login
   const [name, setName] = useState("");
-  const [role, setRole] = useState(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -15,7 +14,7 @@ export function AuthScreen({ showToast }) {
     setErr("");
     setBusy(true);
     if (mode === "signup") {
-      if (!name.trim() || !role || !email.trim() || password.length < 6) {
+      if (!name.trim() || !email.trim() || password.length < 6) {
         setErr("Fill in every field. Password must be at least 6 characters.");
         setBusy(false);
         return;
@@ -23,7 +22,9 @@ export function AuthScreen({ showToast }) {
       const { error } = await supabase.auth.signUp({
         email: email.trim(),
         password,
-        options: { data: { name: name.trim(), role } },
+        // Every new account is a student (livraison 58): the database ignores
+        // any role sent from here. The administrator gives teacher access.
+        options: { data: { name: name.trim() } },
       });
       if (error) setErr(error.message);
       else showToast("Account created");
@@ -66,16 +67,9 @@ export function AuthScreen({ showToast }) {
             <>
               <label className="field-label">Your name</label>
               <input className="field-input" placeholder="e.g. Mamadou Bailo" value={name} onChange={(e) => setName(e.target.value)} />
-
-              <label className="field-label" style={{ marginTop: 14 }}>I am a…</label>
-              <div className="role-row">
-                <button className={`role-btn ${role === "teacher" ? "active" : ""}`} onClick={() => setRole("teacher")}>
-                  <GraduationCap size={20} /><span>Teacher</span>
-                </button>
-                <button className={`role-btn ${role === "student" ? "active" : ""}`} onClick={() => setRole("student")}>
-                  <Users size={20} /><span>Student</span>
-                </button>
-              </div>
+              <p className="auth-note" style={{ marginTop: 8 }}>
+                Teachers: create your account, then ask the administrator to give you teacher access.
+              </p>
             </>
           )}
 
