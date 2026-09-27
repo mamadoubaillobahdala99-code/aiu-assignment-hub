@@ -1,0 +1,47 @@
+/* The administrator's screen (livraison 60): its own dark bar, so it is
+   never mistaken for the teacher space. Colours come from the app tokens. */
+.adm-root { min-height: 100vh; background: var(--paper); color: var(--ink); }
+
+.adm-bar { display: flex; align-items: center; gap: 24px; padding: 0 24px; min-height: 56px; background: #111827; color: #E5E7EB; flex-wrap: wrap; }
+.adm-brand { display: flex; align-items: center; gap: 10px; }
+.adm-mark { background: #fff; color: #111827; font: 700 10.5px 'IBM Plex Mono', monospace; padding: 6px 7px; border-radius: 6px; }
+.adm-name { font-family: 'Fraunces', serif; font-weight: 600; font-size: 17px; color: #fff; }
+.adm-badge { font: 600 10.5px 'IBM Plex Mono', monospace; background: #F59E0B; color: #111; padding: 3px 8px; border-radius: 999px; letter-spacing: .04em; }
+.adm-tabs { display: flex; gap: 20px; }
+.adm-tab { font-size: 13.5px; padding: 18px 0 16px; border-bottom: 2px solid transparent; opacity: .75; }
+.adm-tab.active { opacity: 1; font-weight: 700; border-color: #F59E0B; }
+.adm-right { margin-left: auto; display: flex; align-items: center; gap: 14px; font-size: 12.5px; }
+.adm-who { opacity: .8; }
+.adm-back { display: inline-flex; align-items: center; gap: 6px; background: transparent; color: #E5E7EB; border: 1px solid rgba(255,255,255,.25); border-radius: 8px; padding: 7px 11px; font: inherit; cursor: pointer; }
+.adm-back:hover { background: rgba(255,255,255,.08); }
+
+.adm-main { max-width: 1100px; margin: 0 auto; padding: 28px 24px 48px; }
+.adm-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.adm-title { font-family: 'Fraunces', serif; font-size: 28px; font-weight: 600; margin: 0 0 4px; }
+.adm-sub { color: var(--ink-soft); font-size: 13.5px; margin: 0 0 20px; }
+.adm-center { display: flex; justify-content: center; padding: 40px 0; color: var(--ink-soft); }
+.adm-note { background: var(--paper-raised); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; font-size: 14px; }
+
+.adm-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-bottom: 26px; }
+.adm-tile { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 14px 18px; }
+.adm-tile-label { font-size: 11.5px; color: var(--ink-soft); font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.adm-tile-num { font-family: 'Fraunces', serif; font-size: 30px; font-weight: 600; margin-top: 4px; }
+.adm-tile-sub { font-size: 12.5px; color: var(--ink-soft); margin-top: 4px; }
+
+.adm-section { font-family: 'Fraunces', serif; font-size: 19px; font-weight: 600; margin: 0 0 10px; }
+.adm-table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+.adm-table { width: 100%; border-collapse: collapse; font-size: 13.5px; min-width: 560px; }
+.adm-table th { text-align: left; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-soft); background: var(--paper-raised); padding: 10px 14px; border-bottom: 1px solid var(--line); }
+.adm-table td { padding: 11px 14px; border-bottom: 1px solid #EEEAE0; }
+.adm-table tr:last-child td { border-bottom: none; }
+.adm-muted { color: var(--ink-soft); }
+.adm-pill { margin-left: 8px; font: 600 10.5px 'IBM Plex Mono', monospace; background: #1B3A5C; color: #fff; padding: 2px 8px; border-radius: 999px; }
+.adm-foot { color: var(--ink-soft); font-size: 12px; margin-top: 10px; }
+
+@media (max-width: 720px) {
+  .adm-bar { gap: 10px; padding: 8px 16px; }
+  .adm-tabs { display: none; }
+  .adm-who { display: none; }
+  .adm-main { padding: 20px 16px 40px; }
+  .adm-tiles { grid-template-columns: 1fr; }
+}
