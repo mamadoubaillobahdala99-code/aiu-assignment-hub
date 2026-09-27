@@ -5,7 +5,7 @@ import { supabase } from "../../supabaseClient";
 import { WritingEditor } from "./WritingEditor";
 import { useExamTimer, ExamTimerDisplay } from "./ExamTimer";
 import { useInvigilation } from "./useInvigilation";
-import { InvigilationOverlay } from "./InvigilationOverlay";
+import { InvigilationOverlay, ExamHandedIn } from "./InvigilationOverlay";
 import { ExamStripButtons, ExamFullscreenButton, ExamExitButton } from "./ExamSidebarButtons";
 import { useIsCompact, useVisualViewportHeight } from "./useViewport";
 import { StoredImg } from "../../lib/storageFiles";
@@ -41,6 +41,8 @@ export function StudentWritingRunner({ userId, assignmentId, setScreen, showToas
   // Invigilation — see useInvigilation.js. Silent outside an exam.
   const [submittedNow, setSubmittedNow] = useState(false);
   const invig = useInvigilation(assignmentId, started && !submittedNow);
+  // Handed in by the SERVER (livraison 56): "closed" | "time" | "handed".
+  const [handedIn, setHandedIn] = useState(null);
   const [startError, setStartError] = useState("");
   const [starting, setStarting] = useState(false);
   const autoSubmittedRef = useRef(false);
@@ -240,6 +242,21 @@ export function StudentWritingRunner({ userId, assignmentId, setScreen, showToas
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sections, timer.status]);
 
+  // The server says this paper is handed in (it collected the saved texts:
+  // exam closed, results published, or time over while offline): pens
+  // down. Nothing typed from now on could be saved anyway.
+  useEffect(() => {
+    if (handedIn || submittedNow || !started || !invig.watched) return;
+    if (!(invig.closed === true || invig.released === true || invig.submitted === true)) return;
+    submittedRef.current = true;
+    clearTimeout(saveTimerRef.current);
+    clearTimeout(maxWaitTimerRef.current);
+    maxWaitTimerRef.current = null;
+    invig.stopWatching();
+    setHandedIn(invig.closed || invig.released ? "closed" : timer.status === "expired" ? "time" : "handed");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [invig.closed, invig.released, invig.submitted, invig.watched, handedIn, submittedNow, started]);
+
   // ---------- Submit ----------
 
   async function submitAll(timeUp = false) {
@@ -255,6 +272,19 @@ export function StudentWritingRunner({ userId, assignmentId, setScreen, showToas
     setSubmittedNow(true);
     invig.stopWatching();   // leaving the paper on purpose
     const { error } = await supabase.rpc("submit_writing", { p_assignment_id: assignmentId });
+    if (error && invig.watched && /Already submitted|This exam is over|This exam is closed/i.test(error.message || "")) {
+      // In an exam the server may have handed it in already (livraison 56).
+      const { data } = await supabase.rpc("exam_my_invigilation", { p_assignment_id: assignmentId });
+      if (data?.submitted) {
+        submittedRef.current = true;
+        clearTimeout(saveTimerRef.current);
+        clearTimeout(maxWaitTimerRef.current);
+        maxWaitTimerRef.current = null;
+        setSubmitting(false);
+        setHandedIn(data.closed || data.released ? "closed" : timeUp ? "time" : "handed");
+        return;
+      }
+    }
     if (error) {
       setSubmitting(false);
       showToast?.("Could not submit: " + error.message);
@@ -321,6 +351,10 @@ export function StudentWritingRunner({ userId, assignmentId, setScreen, showToas
   }
 
   // ---------- Render ----------
+
+  if (handedIn) {
+    return <ExamHandedIn reason={handedIn} onDone={() => (onSubmitted ? onSubmitted() : setScreen({ name: "home" }))} />;
+  }
 
   if (loadError) {
     return (
