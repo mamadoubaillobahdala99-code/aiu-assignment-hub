@@ -269,6 +269,10 @@ export function useInvigilation(assignmentId, active) {
     const id = setInterval(async () => {
       const { data, error } = await supabase.rpc("exam_my_invigilation", { p_assignment_id: assignmentId });
       if (error || !data) return;
+      // Frozen when the exam closes: the server collects this copy like the
+      // others, and the page must learn it here — no other question is
+      // asked during a freeze (livraison 56).
+      setState((s) => ({ ...s, closed: data.closed ?? null, released: data.released ?? null, submitted: data.submitted ?? null }));
       if (!data.frozen) {
         // Covered in the SAME render as the unfreeze: the paper is never
         // shown, not even for a moment, before the click for full screen.
