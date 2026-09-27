@@ -105,3 +105,26 @@ export function InvigilationOverlay({ invig }) {
     </div>
   );
 }
+
+// "Pens down" (livraison 56). The server has handed this paper in by
+// itself — the teacher closed the exam, the results were published, or
+// the time ran out while this page could not hand it in (offline). The
+// copy that counts is the one the server collected; nothing typed here
+// afterwards can change it, so the paper is simply replaced by this.
+const HANDED_IN = {
+  closed: ["Your teacher closed the exam.", "Your answers were handed in as they were."],
+  time: ["The time is over.", "Your answers were handed in as they were."],
+  handed: ["This paper has been handed in.", "Nothing more can be changed in it."],
+};
+export function ExamHandedIn({ reason, onDone }) {
+  const [title, text] = HANDED_IN[reason] || HANDED_IN.handed;
+  return (
+    <div className="page narrow">
+      <div className="qe-feedback-locked" role="status">
+        <p><strong>{title}</strong></p>
+        <p>{text}</p>
+        <button className="btn-primary" style={{ marginTop: 12 }} onClick={onDone}>Back to the exam</button>
+      </div>
+    </div>
+  );
+}
