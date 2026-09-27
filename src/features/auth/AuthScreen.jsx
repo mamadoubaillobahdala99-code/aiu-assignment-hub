@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { BookOpen, Users, Plus, Check, Clock, AlertTriangle, LogOut, GraduationCap, FileText, ChevronRight, X, Copy, CheckCircle2, Headphones, PenLine, Mic, ListChecks, ArrowLeft, Loader2, Timer, Highlighter } from "lucide-react";
 import { supabase } from "../../supabaseClient";
+import { PasswordField, passwordProblem, PASSWORD_RULE_TEXT } from "../../components/PasswordField";
 
 export function AuthScreen({ showToast }) {
   const [mode, setMode] = useState("signup"); // signup | login
@@ -14,8 +15,15 @@ export function AuthScreen({ showToast }) {
     setErr("");
     setBusy(true);
     if (mode === "signup") {
-      if (!name.trim() || !email.trim() || password.length < 6) {
-        setErr("Fill in every field. Password must be at least 6 characters.");
+      if (!name.trim() || !email.trim() || !password) {
+        setErr("Fill in every field.");
+        setBusy(false);
+        return;
+      }
+      // The new password rule (livraison 59) — for NEW passwords only.
+      const problem = passwordProblem(password);
+      if (problem) {
+        setErr(problem + " " + PASSWORD_RULE_TEXT);
         setBusy(false);
         return;
       }
@@ -29,6 +37,10 @@ export function AuthScreen({ showToast }) {
       if (error) setErr(error.message);
       else showToast("Account created");
     } else {
+      // No password rule at login: an older, shorter password must still
+      // work. When Supabase finds it weaker than the new rule it still logs
+      // in and only adds a "weakPassword" note to the answer (not an error),
+      // which is deliberately ignored here.
       const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
       if (error) setErr(error.message);
     }
@@ -77,7 +89,12 @@ export function AuthScreen({ showToast }) {
           <input className="field-input" type="email" placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} />
 
           <label className="field-label" style={{ marginTop: 14 }}>Password</label>
-          <input className="field-input" type="password" placeholder="At least 6 characters" value={password} onChange={(e) => setPassword(e.target.value)} />
+          <PasswordField
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder={mode === "signup" ? "8+ characters, a letter, a number" : "Your password"}
+            autoComplete={mode === "signup" ? "new-password" : "current-password"}
+          />
 
           {err && <div className="field-error">{err}</div>}
 
