@@ -36,6 +36,8 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
   const [progress, setProgress] = useState({});     // student_id -> Set(assignment_id)
   // Invigilation: who has left the exam screen, and who is frozen.
   const [board, setBoard] = useState([]);
+  // Papers the server should have handed in but could not yet (livraison 57).
+  const [uncollected, setUncollected] = useState(0);
   const [resuming, setResuming] = useState("");
   // Listening papers on which candidates could pause / replay the sound
   // (practice settings). Shown with a badge, and asked about before Open.
@@ -120,14 +122,21 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
   const loadBoard = useCallback(async () => {
     const { data, error } = await supabase.rpc("exam_invigilation_board", { p_session_id: sessionId });
     if (!error) setBoard(data || []);
+    // The board has just tried to hand in every paper that is due; what
+    // is still left is shown to the teacher (livraison 57).
+    const left = await supabase.rpc("exam_uncollected_papers", { p_session_id: sessionId });
+    if (!left.error) setUncollected(Number(left.data) || 0);
   }, [sessionId]);
 
   useEffect(() => { loadBoard(); }, [loadBoard]);
+  // Also keeps refreshing after Close while some papers are still left:
+  // every refresh tries to hand them in again.
+  const keepRefreshing = (Boolean(session?.opened_at) && !session?.closed_at) || uncollected > 0;
   useEffect(() => {
-    if (!session?.opened_at || session?.closed_at) return;
+    if (!keepRefreshing) return;
     const id = setInterval(loadBoard, 8000);
     return () => clearInterval(id);
-  }, [session?.opened_at, session?.closed_at, loadBoard]);
+  }, [keepRefreshing, loadBoard]);
 
   async function allowResume(studentId) {
     setResuming(studentId);
@@ -153,7 +162,10 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
     // Closing (or publishing) hands in every paper still being written —
     // the server does it, from the copies it keeps (livraison 56).
     const n = Number(data?.collected || 0);
-    const handed = n > 0 ? ` — ${n} paper${n > 1 ? "s" : ""} handed in` : "";
+    const left = Number(data?.uncollected || 0);
+    const handed = (n > 0 ? ` — ${n} paper${n > 1 ? "s" : ""} handed in` : "")
+      + (left > 0 ? `${n > 0 ? "," : " —"} ${left} could not be collected` : "");
+    if (action === "close" || action === "release") setUncollected(left);
     if (action === "open") showToast?.("Exam open — give the code to your students");
     if (action === "close") showToast?.("Exam closed" + handed);
     if (action === "release") showToast?.("Results published" + handed);
@@ -347,6 +359,20 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
           </button>
         )}
       </div>
+
+      {uncollected > 0 && (
+        <div className="ex-frozen-row" role="alert" style={{ marginTop: 14 }}>
+          <ShieldAlert size={17} className="ex-frozen-icon" />
+          <div className="ex-frozen-main">
+            <div className="ex-item-title">
+              {uncollected} paper{uncollected > 1 ? "s" : ""} could not be collected
+            </div>
+            <div className="ex-item-sub">
+              We try again at every refresh (every 8 seconds). Keep this page open.
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ---------- managing the exam itself ---------- */}
       <div className="ex-actions ex-manage">
