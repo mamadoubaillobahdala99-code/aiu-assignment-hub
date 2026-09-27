@@ -49,6 +49,7 @@ Il est dépassé : ne pas l'exécuter. Il est gardé tel quel pour l'histoire.
 | `36_collect_safety.sql` | `submit_writing` verrouille la copie en premier (même ordre que le ramassage : plus de « deadlock » si l'étudiant remet pile au moment du ramassage) ; `exam_uncollected_papers` : nombre de copies pas encore ramassées alors qu'elles devraient l'être (staff seulement), affiché au prof. |
 | `37_teacher_signup.sql` | Inscription = toujours étudiant (le rôle envoyé par la page est ignoré) ; `is_teacher()` ; il faut être prof pour créer une classe ou une question ; plus d'ajout ni de suppression de profil par les comptes connectés. |
 | `nommer_prof.sql` | **Outil, pas une étape.** Donne le rôle prof à un compte existant (remplacer `<EMAIL>`). Lancé par Mamadou seulement ; ne jamais enregistrer une vraie adresse dans le dépôt. |
+| `reinitialiser_mot_de_passe.sql` | **Outil, pas une étape.** Donne un mot de passe provisoire (règle : 8+ caractères, une lettre, un chiffre) à un compte qui a oublié le sien ; ne change rien d'autre. Option commentée : déconnecter les autres appareils (compte volé). Lancé par Mamadou seulement ; ne jamais enregistrer une vraie adresse ni un vrai mot de passe dans le dépôt. |
 
 **Ce qui manque :** les scripts d'avant le 09 (01 à 08) n'ont pas été retrouvés.
 Ce qu'ils ont créé est dans `00_etat_actuel.sql` (voir section 2, dernier point).
