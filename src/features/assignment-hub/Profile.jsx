@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { User, ArrowLeft } from "lucide-react";
 import { supabase } from "../../supabaseClient";
 import { fmtDate } from "../../lib/utils";
@@ -18,6 +18,33 @@ export function Profile({ profile, userId, setProfile, setScreen, showToast }) {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [passwordError, setPasswordError] = useState("");
   const [savingPassword, setSavingPassword] = useState(false);
+
+  // Livraison 61: a student can ask for teacher access. The database
+  // decides everything (one request at a time, 7 days after a refusal).
+  const isStudent = profile?.role === "student";
+  const [teacherReq, setTeacherReq] = useState(null);   // null = not loaded / not available
+  const [askingTeacher, setAskingTeacher] = useState(false);
+  useEffect(() => {
+    if (!isStudent) return;
+    let cancelled = false;
+    supabase.rpc("my_teacher_request").then(({ data, error }) => {
+      if (!cancelled && !error && data) setTeacherReq(data);
+    });
+    return () => { cancelled = true; };
+  }, [isStudent, userId]);
+
+  const askingRef = useRef(false);   // a second click before the re-render
+  async function askTeacherAccess() {
+    if (askingRef.current) return;
+    askingRef.current = true;
+    setAskingTeacher(true);
+    const { data, error } = await supabase.rpc("request_teacher_access");
+    askingRef.current = false;
+    setAskingTeacher(false);
+    if (error) { showToast?.("Could not send the request: " + error.message); return; }
+    setTeacherReq(data);
+    if (data?.status === "pending") showToast?.("Request sent");
+  }
 
   useEffect(() => {
     (async () => {
@@ -103,6 +130,36 @@ export function Profile({ profile, userId, setProfile, setScreen, showToast }) {
           {savingPassword ? "Saving…" : "Update password"}
         </button>
       </div>
+
+      {isStudent && teacherReq && (() => {
+        const again = teacherReq.again_at ? new Date(teacherReq.again_at) : null;
+        const tooSoon = teacherReq.status === "declined" && again && again > new Date();
+        return (
+          <div className="feedback-panel" style={{ maxWidth: 460 }}>
+            <div className="field-label" style={{ marginBottom: 8 }}>Teacher access</div>
+            {teacherReq.status === "pending" ? (
+              <p style={{ margin: 0 }}>
+                <span style={{ display: "inline-block", background: "var(--amber-soft)", color: "var(--amber)", fontWeight: 600, fontSize: 13, padding: "6px 12px", borderRadius: 999 }}>
+                  Request sent — waiting for approval
+                </span>
+              </p>
+            ) : tooSoon ? (
+              <p style={{ margin: 0, fontSize: 14 }}>
+                Your request was declined on {fmtDate(teacherReq.decided_at)}. You can ask again from {fmtDate(teacherReq.again_at)}.
+              </p>
+            ) : (
+              <>
+                <p style={{ margin: "0 0 10px", fontSize: 14, color: "var(--ink-soft)" }}>
+                  Are you a teacher? Ask the administrator for teacher access.
+                </p>
+                <button className="btn-ghost" disabled={askingTeacher} onClick={askTeacherAccess}>
+                  {askingTeacher ? "Sending…" : "Request teacher access"}
+                </button>
+              </>
+            )}
+          </div>
+        );
+      })()}
     </div>
   );
 }
