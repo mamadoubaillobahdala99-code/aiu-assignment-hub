@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { BookOpen, Users, Plus, Check, Clock, AlertTriangle, LogOut, GraduationCap, FileText, ChevronRight, X, Copy, CheckCircle2, Headphones, PenLine, Mic, ListChecks, ArrowLeft, Loader2, Timer, Highlighter, Maximize, Minimize, User, Menu, ShieldCheck, Home } from "lucide-react";
+import { BookOpen, Users, Plus, Check, Clock, AlertTriangle, LogOut, GraduationCap, FileText, ChevronRight, X, Copy, CheckCircle2, Headphones, PenLine, Mic, ListChecks, ArrowLeft, Loader2, Timer, Highlighter, Maximize, Minimize, User, Menu, ShieldCheck, Home, LayoutDashboard } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import { TeacherHome } from "./features/assignment-hub/TeacherHome";
 import { TeacherDashboard } from "./features/assignment-hub/TeacherDashboard";
@@ -135,7 +135,7 @@ export function Shell({ profile, setProfile, userId, onSignOut, screen: rawScree
         <nav className="nav">
           {isTeacher && (
             <button className={`nav-item ${screen.name === "dashboard" ? "active" : ""}`} onClick={() => setScreen({ name: "dashboard" })}>
-              <Timer size={17} /> Dashboard
+              <LayoutDashboard size={17} /> Dashboard
             </button>
           )}
           {isTeacher ? (
@@ -201,7 +201,7 @@ export function Shell({ profile, setProfile, userId, onSignOut, screen: rawScree
             Assignment Hub
           </div>
         )}
-        {screen.name === "dashboard" && isTeacher && <TeacherDashboard userId={userId} setScreen={setScreen} />}
+        {screen.name === "dashboard" && isTeacher && <TeacherDashboard userId={userId} profile={profile} setScreen={setScreen} showToast={showToast} />}
         {screen.name === "reading-builder" && isTeacher && (
           <TeacherReadingBuilder classId={screen.classId} teacherId={userId} setScreen={setScreen} showToast={showToast} editAssignmentId={screen.editAssignmentId} returnTo={screen.returnTo} />
         )}
