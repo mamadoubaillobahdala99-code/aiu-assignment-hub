@@ -500,4 +500,51 @@ button.pill:hover { filter: brightness(0.97); }
   .ph-actions .dm { position: static; }
   .ph-actions .dm-list, .ph-actions .dm-list.dm-wide { left: 0; right: 0; width: auto; max-width: none; min-width: 0; }
 }
+
+/* ---------- Livraison 70: figures and tables ---------- */
+.stat-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 22px; }
+.stat { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 13px 15px; min-width: 0; }
+.stat-l { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; color: var(--ink-soft); text-transform: uppercase; }
+.stat-v { font-family: 'Fraunces', serif; font-size: 26px; font-weight: 600; margin-top: 3px; line-height: 1.2; }
+.stat-d { font-size: 12px; color: var(--ink-soft); }
+.pill-rose { background: var(--rose-soft); color: var(--rose); }
+.pill-amber { background: var(--amber-soft); color: #8A5414; }
+.pill-plain { background: transparent; color: var(--ink-soft); padding-left: 0; padding-right: 0; font-weight: 500; }
+.dt-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.dt-search { display: flex; align-items: center; gap: 8px; border: 1px solid var(--line); background: #fff; border-radius: 9px; padding: 0 12px; color: var(--ink-soft); min-width: 0; flex: 1 1 220px; max-width: 320px; }
+.dt-search input { border: none; outline: none; background: transparent; padding: 9px 0; font: inherit; font-size: 13.5px; color: var(--ink); width: 100%; min-width: 0; }
+.dt-search:focus-within { border-color: var(--teal); }
+.dt-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.dt-chip { font-family: inherit; font-size: 12.5px; padding: 6px 11px; border-radius: 999px; border: 1px solid var(--line); background: #fff; color: var(--ink-soft); font-weight: 600; cursor: pointer; }
+.dt-chip.on { background: var(--ink); color: #fff; border-color: var(--ink); }
+.dt-reset { background: none; border: none; padding: 0; font: inherit; font-weight: 700; color: var(--teal); cursor: pointer; text-decoration: underline; }
+.dt-wrap { background: #fff; border: 1px solid var(--line); border-radius: 12px; overflow: visible; }
+.dt { width: 100%; border-collapse: separate; border-spacing: 0; table-layout: auto; }
+.dt th { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-soft); text-align: left; padding: 10px 14px; background: #F6F4EE; border-bottom: 1px solid var(--line); font-weight: 700; white-space: nowrap; }
+.dt th:first-child { border-top-left-radius: 12px; } .dt th:last-child { border-top-right-radius: 12px; }
+.dt td { padding: 11px 14px; font-size: 14px; border-bottom: 1px solid #EFECE3; vertical-align: middle; }
+.dt tbody tr:last-child td { border-bottom: none; }
+.dt-row { cursor: pointer; }
+.dt-row:hover td { background: #FBFAF6; }
+.dt-title { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.dt-title-text { display: flex; flex-direction: column; min-width: 0; }
+.dt-open { background: none; border: none; padding: 0; font: inherit; font-weight: 600; color: var(--ink); text-align: left; cursor: pointer; overflow-wrap: anywhere; }
+.dt-open:hover { text-decoration: underline; text-underline-offset: 3px; }
+.dt-sub { font-size: 12px; color: var(--ink-soft); }
+.dt-muted { color: #9AA39D; }
+.dt .pill, .dt-nowrap { white-space: nowrap; }
+.dt-progress { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
+.dt-bar { width: 80px; height: 6px; background: #EFECE3; border-radius: 9px; overflow: hidden; display: inline-block; }
+.dt-bar i { display: block; height: 100%; background: var(--teal); border-radius: 9px; }
+.dt-actions { width: 44px; text-align: right; }
+.btn-row { padding: 5px 10px; font-weight: 800; }
+.show-sm { display: none; }
+@media (max-width: 760px) {
+  .stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .hide-sm { display: none; }
+  .show-sm { display: inline; }
+  .dt td, .dt th { padding: 10px 10px; }
+  .dt-search { max-width: none; }
+  .dt .dm-list { left: auto; right: 0; min-width: 220px; }
+}
 `;
