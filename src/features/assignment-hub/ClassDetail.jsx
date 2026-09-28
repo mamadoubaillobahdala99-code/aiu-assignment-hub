@@ -1,11 +1,12 @@
 
 import React, { useState, useEffect, useCallback } from "react";
-import { BookOpen, Users, Plus, Check, Clock, AlertTriangle, LogOut, GraduationCap, FileText, ChevronRight, X, Copy, CheckCircle2, Headphones, PenLine, Mic, ListChecks, ArrowLeft, Loader2, Timer, Highlighter, Trash2, UserMinus } from "lucide-react";
+import { BookOpen, Users, Plus, Check, Clock, AlertTriangle, LogOut, GraduationCap, FileText, ChevronRight, X, Copy, CheckCircle2, Headphones, PenLine, Mic, ListChecks, ArrowLeft, Loader2, Timer, Highlighter, Trash2, UserMinus, ChevronDown } from "lucide-react";
 import { supabase } from "../../supabaseClient";
 import { uid, makeCode, TYPES, fmtDate, daysUntil, wordCount, isPdfUrl } from "../../lib/utils";
 import { AttachmentPreview, PageHeader, EmptyState, CenterSpinner, Modal, StatusBadge } from "../../components/shared";
 import { AssignmentsTab } from "./AssignmentsTab";
 import { confirmDialog } from "../../lib/confirmDialog";
+import { DropMenu, DropMenuItem, DropMenuSeparator, Breadcrumb } from "../../components/DropMenu";
 
 export function ClassDetail({ classId, setScreen, showToast }) {
   const [cls, setCls] = useState(null);
@@ -25,12 +26,20 @@ export function ClassDetail({ classId, setScreen, showToast }) {
 
   const load = useCallback(async () => {
     const { data: c } = await supabase.from("classes").select("*").eq("id", classId).single();
+    // Livraison 69: an exam keeps its papers in a private box that is a
+    // class underneath. It is never shown as a class: whoever lands here
+    // (an old link, a refresh) is taken to the exam itself.
+    if (c?.kind === "exam") {
+      const { data: ses } = await supabase.from("exam_sessions").select("id").eq("container_class_id", classId).maybeSingle();
+      setScreen(ses?.id ? { name: "exam-session", sessionId: ses.id } : { name: "exams" });
+      return;
+    }
     setCls(c || null);
     const { data: r } = await supabase.from("roster").select("student_id, joined_at, profiles(name)").eq("class_id", classId);
     setRoster((r || []).map((x) => ({ studentId: x.student_id, name: x.profiles?.name || "Unknown", joined_at: x.joined_at })));
     const { data: a } = await supabase.from("assignments").select("*").eq("class_id", classId).order("created_at", { ascending: false });
     setAssignments(a || []);
-  }, [classId]);
+  }, [classId, setScreen]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -108,12 +117,7 @@ export function ClassDetail({ classId, setScreen, showToast }) {
 
   return (
     <div className="page page-wide">
-      <div className="row-right" style={{ justifyContent: "space-between", marginBottom: 4 }}>
-        <button className="back-link" onClick={() => setScreen({ name: "home" })}><ArrowLeft size={14} /> All classes</button>
-        <button className="btn-ghost delete-assignment-btn" disabled={deletingClass} onClick={openDeleteDialog}>
-          <Trash2 size={13} /> {deletingClass ? "Deleting…" : "Delete class"}
-        </button>
-      </div>
+      <Breadcrumb items={[{ label: "My classes", onClick: () => setScreen({ name: "home" }) }, { label: cls.name }]} />
 
       {deleteOpen && (() => {
         const work = deleteStats ? deleteStats.copies + deleteStats.answers + deleteStats.writings : 0;
@@ -168,11 +172,29 @@ export function ClassDetail({ classId, setScreen, showToast }) {
         );
       })()}
 
-      <PageHeader eyebrow="Class" title={cls.name} action={
-        <button className="btn-ghost" onClick={copyCode}>
-          {copied ? <CheckCircle2 size={15} /> : <Copy size={15} />} Code: {cls.code}
-        </button>
-      } />
+      <div className="ph">
+        <div className="ph-main">
+          <div>
+            <div className="eyebrow">Class</div>
+            <h1 className="ph-title">{cls.name}</h1>
+            <div className="ph-meta">
+              <button className="pill pill-teal" onClick={copyCode} title="Copy the join code">
+                {copied ? <CheckCircle2 size={14} /> : <Copy size={14} />} {copied ? "Copied" : `Code: ${cls.code || "—"}`}
+              </button>
+              <span className="pill">{roster.length} student{roster.length === 1 ? "" : "s"}</span>
+              <span className="pill">{assignments.length} assignment{assignments.length === 1 ? "" : "s"}</span>
+            </div>
+          </div>
+        </div>
+        <div className="ph-actions">
+          <DropMenu label="•••" className="btn-ghost btn-dots" title="More actions">
+            <DropMenuItem icon={<Copy size={16} />} title="Copy the join code" onClick={copyCode} />
+            <DropMenuSeparator />
+            <DropMenuItem icon={<Trash2 size={16} />} title={deletingClass ? "Deleting…" : "Delete class…"} danger disabled={deletingClass} onClick={openDeleteDialog} />
+          </DropMenu>
+          <NewAssignmentMenu onPick={(screen) => setScreen({ ...screen, classId })} />
+        </div>
+      </div>
 
       <div className="tabs">
         <button className={`tab ${tab === "assignments" ? "active" : ""}`} onClick={() => setTab("assignments")}>Assignments ({assignments.length})</button>
@@ -181,23 +203,6 @@ export function ClassDetail({ classId, setScreen, showToast }) {
 
       {tab === "assignments" && (
         <>
-          <div className="row-right" style={{ flexWrap: "wrap", gap: 8 }}>
-            <button className="btn-primary" style={{ whiteSpace: "nowrap" }} onClick={() => setScreen({ name: "test-importer", classId, skill: "reading" })}>
-              <FileText size={13} /> Import a test
-            </button>
-            <button className="btn-ghost" onClick={() => setScreen({ name: "reading-builder", classId })}>
-              <Plus size={13} /> Structured Reading
-            </button>
-            <button className="btn-ghost" onClick={() => setScreen({ name: "listening-builder", classId })}>
-              <Plus size={13} /> Structured Listening
-            </button>
-            <button className="btn-ghost" onClick={() => setScreen({ name: "writing-builder", classId })}>
-              <Plus size={13} /> Structured Writing
-            </button>
-            <button className="btn-ghost" onClick={() => setScreen({ name: "speaking-builder", classId })}>
-              <Plus size={13} /> Structured Speaking
-            </button>
-          </div>
           <AssignmentsTab assignments={assignments} onOpen={(a) => setScreen({ name: "assignment-teacher", classId, assignmentId: a.id })} />
         </>
       )}
@@ -342,5 +347,29 @@ function StudentInClassDetail({ student, classId, assignments, onBack, setScreen
         </div>
       )}
     </div>
+  );
+}
+
+
+// ---------- "New assignment ▾" (livraison 69) ----------
+// One button instead of five: first the quickest way (import a Word or
+// PDF test), then the four builders. Each choice opens exactly the
+// screen the old buttons opened.
+export function NewAssignmentMenu({ onPick, label = "New assignment" }) {
+  return (
+    <DropMenu wide className="btn-teal" title={label} label={<><Plus size={16} /> {label} <ChevronDown size={15} /></>}>
+      <DropMenuItem icon={<span className="type-ic ic-dark"><FileText size={17} /></span>} title="Import a test"
+                    hint="A Word or PDF file — the whole paper at once. Reading and Listening."
+                    onClick={() => onPick({ name: "test-importer", skill: "reading" })} />
+      <DropMenuSeparator label="Or build it question by question" />
+      <DropMenuItem icon={<span className="type-ic ic-reading"><BookOpen size={17} /></span>} title="Reading" hint="Passages and questions."
+                    onClick={() => onPick({ name: "reading-builder" })} />
+      <DropMenuItem icon={<span className="type-ic ic-listening"><Headphones size={17} /></span>} title="Listening" hint="With its recording."
+                    onClick={() => onPick({ name: "listening-builder" })} />
+      <DropMenuItem icon={<span className="type-ic ic-writing"><PenLine size={17} /></span>} title="Writing" hint="Task 1 and Task 2."
+                    onClick={() => onPick({ name: "writing-builder" })} />
+      <DropMenuItem icon={<span className="type-ic ic-speaking"><Mic size={17} /></span>} title="Speaking" hint="Topics and cue cards to consult."
+                    onClick={() => onPick({ name: "speaking-builder" })} />
+    </DropMenu>
   );
 }
