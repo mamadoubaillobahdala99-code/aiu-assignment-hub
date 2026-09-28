@@ -612,6 +612,15 @@ div.c-card:focus-visible, .act-row:focus-visible { outline: 2px solid var(--teal
 .act-av { flex: none; width: 30px; height: 30px; border-radius: 50%; background: var(--amber); color: #fff; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px; }
 .act-text { font-size: 13.5px; overflow-wrap: anywhere; }
 .mini-card .ex-badge { flex: none; }
+/* Livraison 73 — one assignment, teacher side */
+.stat-grid.stat-grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.pill-blue { background: #E3ECF5; color: #2B5A85; }
+.dt-row.dt-row-static { cursor: default; }
+.dt-row.dt-row-static:hover td { background: transparent; }
+.dt-name { font-weight: 600; }
+.dt-result { font-weight: 700; }
+.dt-q { display: block; font-size: 13.5px; color: var(--ink); overflow-wrap: anywhere; }
+.dt-row-hard td { background: #FDF6EC; }
 @media (max-width: 900px) { .dash-grid { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 760px) {
   .next-up { flex-wrap: wrap; padding: 16px; }
