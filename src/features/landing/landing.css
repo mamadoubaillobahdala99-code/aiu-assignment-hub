@@ -9,8 +9,6 @@
 .lp-btn { border-radius: 999px; padding: 10px 22px; font-family: inherit; font-size: 14px; font-weight: 600; cursor: pointer; border: 1.5px solid rgba(255,255,255,0.55); background: transparent; color: #fff; transition: transform .15s, background .15s, opacity .15s; }
 .lp-btn:hover { transform: translateY(-1px); }
 .lp-btn:focus-visible { outline: 3px solid #7FD1BE; outline-offset: 2px; }
-.lp-btn-line:hover { background: rgba(255,255,255,0.08); }
-.lp-btn-white { background: #fff; color: var(--sidebar); border-color: #fff; }
 .lp-btn-orange { background: var(--amber); border-color: var(--amber); color: #fff; }
 .lp-btn-orange:hover { opacity: 0.92; }
 .lp-big { padding: 15px 30px; font-size: 15.5px; }
@@ -21,8 +19,19 @@
 .lp-title em { font-style: normal; color: #7FD1BE; }
 .lp-lead { font-size: 19px; line-height: 1.5; color: #fff; margin: 0 0 8px; max-width: 520px; }
 .lp-sub { font-size: 16px; line-height: 1.55; color: #C9D8E6; margin: 0 0 28px; max-width: 520px; }
-.lp-ctas { display: flex; gap: 12px; margin-bottom: 18px; flex-wrap: wrap; }
+.lp-ctas { display: flex; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
 .lp-small { font-size: 13px; color: #9FB6CC; margin: 0; }
+/* Livraison 68: one call to action; logging in is a quiet link. */
+.lp-toplink { background: none; border: none; padding: 8px 4px; font-family: inherit; font-size: 14px; font-weight: 600; color: #C9D8E6; cursor: pointer; border-radius: 6px; }
+.lp-toplink:hover { color: #fff; text-decoration: underline; text-underline-offset: 4px; }
+.lp-toplink:focus-visible, .lp-inline-link:focus-visible { outline: 3px solid #7FD1BE; outline-offset: 2px; }
+.lp-already { font-size: 14.5px; color: #C9D8E6; margin: 0 0 14px; }
+.lp-inline-link { background: none; border: none; padding: 0; font: inherit; font-weight: 700; color: #7FD1BE; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+.lp-inline-link:hover { color: #fff; }
+/* In the window: switch between log in and sign up. */
+.auth-switch { font-size: 13.5px; color: var(--ink-soft); text-align: center; margin: 18px 0 0; }
+.auth-switch-link { background: none; border: none; padding: 0; font: inherit; font-weight: 700; color: var(--teal); cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+.auth-switch-link:focus-visible { outline: 3px solid var(--teal); outline-offset: 2px; border-radius: 3px; }
 
 .lp-globe { position: relative; height: 540px; }
 .lp-globe svg { width: 100%; height: 100%; }
@@ -67,7 +76,6 @@
 @media (max-width: 560px) {
   .lp-top { padding: 16px 18px; }
   .lp-descr { font-size: 11.5px; letter-spacing: 0.16em; }
-  .lp-hide-phone { display: none; }
   .lp-btn { padding: 9px 16px; font-size: 13px; }
   .lp-main { padding: 0 18px; }
   .lp-globe { height: 290px; margin: 0 -8px; }
