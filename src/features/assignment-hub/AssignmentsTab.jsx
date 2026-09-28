@@ -16,7 +16,7 @@ export function AssignmentsTab({ assignments, onOpen }) {
       <EmptyState
         icon={<FileText size={26} />}
         title="No assignments yet"
-        body="Use Import a test, or one of the Structured buttons above, to build your first one."
+        body="Use New assignment, at the top of the page, to import a test or build your first one."
       />
     );
   }
