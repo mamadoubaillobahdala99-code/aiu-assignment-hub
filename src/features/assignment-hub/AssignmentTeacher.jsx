@@ -8,6 +8,7 @@ import { TeacherWritingReview } from "../question-engine/TeacherWritingReview";
 import { TeacherPaperPreview } from "../question-engine/TeacherPaperPreview";
 import { deleteUnusedSpeakingFiles } from "../question-engine/speaking";
 import { confirmDialog } from "../../lib/confirmDialog";
+import { DropMenu, DropMenuItem, DropMenuSeparator, Breadcrumb } from "../../components/DropMenu";
 
 const CRITERIA = [
   { key: "score_task_achievement", label: "Task Achievement" },
@@ -17,6 +18,12 @@ const CRITERIA = [
 ];
 
 
+// Livraison 69: whether this paper belongs to an exam, and whether that
+// exam is running, is read from the DATABASE — not from the address,
+// which a refresh or the browser's Back/Forward could have emptied. So
+// "Back" and the breadcrumb always lead to the exam for an exam paper,
+// and to the class for a class paper, whatever the way in.
+//
 // returnTo / examLocked: this screen is now also reached from an exam.
 //   returnTo  — where "Back" goes. Without it, Back would open the exam's
 //               private container as if it were a class.
@@ -45,10 +52,39 @@ export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen,
   const [duplicating, setDuplicating] = useState(false);
   // Reading the paper itself, with its answer key — no student needed.
   const [previewing, setPreviewing] = useState(false);
+  // Livraison 69: where this paper lives. undefined = not read yet;
+  // null = a class paper; otherwise its exam and that exam's state.
+  const [exam, setExam] = useState(undefined);
+  const [homeName, setHomeName] = useState("");
+  // After "Duplicate": we stay here, with a link to the copy.
+  const [lastCopy, setLastCopy] = useState(null);
 
   const load = useCallback(async () => {
     const { data: a } = await supabase.from("assignments").select("*").eq("id", assignmentId).single();
     setAssignment(a || null);
+    // Livraison 69: its exam, if any, and the names for the breadcrumb.
+    const { data: item } = await supabase
+      .from("exam_session_items")
+      .select("session_id, exam_sessions(name, opened_at, closed_at, opens_at, closes_at, results_released_at)")
+      .eq("assignment_id", assignmentId)
+      .maybeSingle();
+    if (item?.session_id) {
+      const e = item.exam_sessions || {};
+      const now = Date.now();
+      const opensMs = e.opens_at ? new Date(e.opens_at).getTime() : null;
+      const closesMs = e.closes_at ? new Date(e.closes_at).getTime() : null;
+      // The same rules as the database (exam_not_started / exam_running).
+      const started = Boolean(e.opened_at || e.closed_at || e.results_released_at || (opensMs !== null && now >= opensMs));
+      const running = started && !e.closed_at && !e.results_released_at && (closesMs === null || now < closesMs);
+      setExam({ sessionId: item.session_id, name: e.name || "Exam", started, running });
+      setHomeName(e.name || "Exam");
+    } else {
+      setExam(null);
+      if (a?.class_id) {
+        const { data: c } = await supabase.from("classes").select("name").eq("id", a.class_id).maybeSingle();
+        setHomeName(c?.name || "Class");
+      }
+    }
     const { data: r } = await supabase.from("roster").select("student_id, profiles(name)").eq("class_id", classId);
     setRoster((r || []).map((x) => ({ id: x.student_id, name: x.profiles?.name || "Unknown" })));
 
@@ -143,7 +179,7 @@ export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen,
       return;
     }
     showToast("Assignment deleted");
-    setScreen(returnTo || { name: "class", classId });
+    setScreen(exam ? { name: "exam-session", sessionId: exam.sessionId } : (returnTo || { name: "class", classId: assignment?.class_id || classId }));
   }
 
   // The whole copy is made by the database in ONE step
@@ -166,18 +202,16 @@ export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen,
     }
     setShowDuplicate(false);
     setDuplicateTargetClass("");
-    if (data.session_id) {
-      showToast(`Copied into the exam "${target?.name || ""}"`);
-      setScreen({
-        name: "assignment-teacher",
-        classId: data.class_id,
-        assignmentId: data.assignment_id,
-        returnTo: { name: "exam-session", sessionId: data.session_id },
-      });
-    } else {
-      showToast("Duplicated — set a due date in the new class when you're ready");
-      setScreen({ name: "assignment-teacher", classId: data.class_id, assignmentId: data.assignment_id });
-    }
+    // Livraison 69: we stay on this paper; a link opens the copy. Before,
+    // the screen jumped to the copy, and "Back" then led to the copy's
+    // class or exam instead of where the teacher came from.
+    setLastCopy({
+      name: target?.name || "",
+      toExam: Boolean(data.session_id),
+      screen: data.session_id
+        ? { name: "assignment-teacher", classId: data.class_id, assignmentId: data.assignment_id, returnTo: { name: "exam-session", sessionId: data.session_id } }
+        : { name: "assignment-teacher", classId: data.class_id, assignmentId: data.assignment_id },
+    });
   }
 
 
@@ -213,6 +247,29 @@ export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen,
 
   const meta = TYPES[assignment.type] || TYPES.Other;
   const Icon = meta.icon;
+
+  // Livraison 69: read from the database once known (see above).
+  const examHome = exam ? { name: "exam-session", sessionId: exam.sessionId } : null;
+  const backScreen = examHome || returnTo || { name: "class", classId: assignment.class_id || classId };
+  const locked = exam === undefined ? examLocked === true : Boolean(exam?.running);
+  const examStarted = Boolean(exam?.started);
+  const typeKey = String(assignment.type || "").toLowerCase().startsWith("listening") ? "listening"
+    : String(assignment.type || "").toLowerCase().startsWith("writing") ? "writing"
+    : String(assignment.type || "").toLowerCase().startsWith("speaking") ? "speaking" : "reading";
+  function openEdit() {
+    setScreen(
+      // Reading and Listening open the paper itself, in place
+      // (PaperEditor): nothing is rebuilt, the answers stay.
+      assignment.type === "Reading" || assignment.type === "Listening"
+        ? { name: "paper-editor", classId, assignmentId, returnTo: examHome || returnTo }
+        : {
+            name: assignment.type === "Writing" ? "writing-builder" : assignment.type === "Speaking" ? "speaking-builder" : "reading-builder",
+            classId,
+            editAssignmentId: assignmentId,
+            returnTo: examHome || returnTo,
+          }
+    );
+  }
 
   // Two groups, per Phase 25 — submitted students first, not-submitted
   // after, instead of one flat list.
@@ -254,55 +311,64 @@ export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen,
 
   return (
     <div className="page page-wide">
-      <div className="row-right" style={{ justifyContent: "space-between", marginBottom: 4 }}>
-        <button className="back-link" onClick={() => setScreen(returnTo || { name: "class", classId })}>
-          <ArrowLeft size={14} /> {returnTo ? "Back to the exam" : "Back to class"}
-        </button>
-        <div style={{ display: "flex", gap: 8 }}>
+      <Breadcrumb items={exam
+        ? [{ label: "Exams", onClick: () => setScreen({ name: "exams" }) }, { label: homeName || "Exam", onClick: () => setScreen(backScreen) }, { label: assignment.title }]
+        : [{ label: "My classes", onClick: () => setScreen({ name: "home" }) }, { label: homeName || "Class", onClick: () => setScreen(backScreen) }, { label: assignment.title }]} />
+
+      <div className="ph">
+        <div className="ph-main">
+          <span className={`ph-icon type-ic ic-${typeKey}`}><Icon size={21} /></span>
+          <div>
+            <div className="eyebrow">
+              {assignment.type}
+              {assignment.time_limit_minutes ? ` · ${assignment.time_limit_minutes} min` : ""}
+              {assignment.due_date ? ` · due ${fmtDueDateTime(assignment.due_date, assignment.due_time)}` : ""}
+            </div>
+            <h1 className="ph-title">{assignment.title}</h1>
+            {exam && (
+              <div className="ph-meta">
+                <span className={`pill ${exam.running ? "pill-teal" : ""}`}>
+                  {exam.running ? "Exam running — the paper is locked" : exam.started ? "Paper of an exam that has started" : "Paper of an exam"}
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="ph-actions">
           {isStructured && (
             <button className="btn-ghost" onClick={() => setPreviewing(true)}>
-              <Eye size={13} /> Preview
+              <Eye size={15} /> Preview
             </button>
           )}
-          {isStructured && !examLocked && (
-            <button
-              className="btn-ghost"
-              onClick={() =>
-                setScreen(
-                  // Reading and Listening open the paper itself, in place
-                  // (PaperEditor): nothing is rebuilt, the answers stay.
-                  assignment.type === "Reading" || assignment.type === "Listening"
-                    ? { name: "paper-editor", classId, assignmentId, returnTo }
-                    : {
-                  name:
-                    assignment.type === "Listening"
-                      ? "listening-builder"
-                      : assignment.type === "Writing"
-                      ? "writing-builder"
-                      : assignment.type === "Speaking"
-                      ? "speaking-builder"
-                      : "reading-builder",
-                  classId,
-                  editAssignmentId: assignmentId,
-                  returnTo,
-                })
-              }
-            >
-              <Pencil size={13} /> Edit assignment
+          {isStructured && !locked && (
+            <button className="btn-ghost" onClick={openEdit}>
+              <Pencil size={15} /> Edit
             </button>
           )}
-          {isStructured && (
-            <button className="btn-ghost" onClick={() => setShowDuplicate((v) => !v)}>
-              <Copy size={13} /> Duplicate
-            </button>
-          )}
-          {!examLocked && (
-            <button className="btn-ghost delete-assignment-btn" disabled={deleting} onClick={handleDelete}>
-              <Trash2 size={13} /> {deleting ? "Checking…" : "Delete assignment"}
-            </button>
+          {(isStructured || !(locked || examStarted)) && (
+            <DropMenu label="•••" className="btn-ghost btn-dots" title="More actions">
+              {isStructured && (
+                <DropMenuItem icon={<Copy size={16} />} title="Duplicate to a class or an exam…" onClick={() => setShowDuplicate(true)} />
+              )}
+              {!(locked || examStarted) && (
+                <>
+                  {isStructured && <DropMenuSeparator />}
+                  <DropMenuItem icon={<Trash2 size={16} />} title={deleting ? "Checking…" : "Delete assignment…"} danger disabled={deleting} onClick={handleDelete} />
+                </>
+              )}
+            </DropMenu>
           )}
         </div>
       </div>
+
+      {lastCopy && (
+        <div className="copy-done" role="status">
+          <CheckCircle2 size={17} color="var(--teal)" />
+          <span>Copied {lastCopy.toExam ? "into the exam" : "to"} “{lastCopy.name}”.{lastCopy.toExam ? "" : " Set a due date there when you're ready."}</span>
+          <button className="btn-link" onClick={() => setScreen(lastCopy.screen)}>Open the copy →</button>
+          <button className="copy-x" aria-label="Dismiss" onClick={() => setLastCopy(null)}>×</button>
+        </div>
+      )}
 
       {showDuplicate && (
         <div className="feedback-panel" style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
@@ -327,6 +393,9 @@ export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen,
           <button className="btn-primary" disabled={!duplicateTargetClass || duplicating} onClick={duplicateToClass}>
             {duplicating ? "Duplicating…" : "Duplicate"}
           </button>
+          <button className="btn-ghost" disabled={duplicating} onClick={() => { setShowDuplicate(false); setDuplicateTargetClass(""); }}>
+            Cancel
+          </button>
           <span className="field-hint" style={{ margin: 0, flexBasis: "100%" }}>
             Creates a completely independent copy — editing or deleting one afterwards never affects the other.
             Students' answers and marks are never copied. Only exams that have not started are listed;
@@ -334,15 +403,6 @@ export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen,
           </span>
         </div>
       )}
-
-      <div className="asg-header">
-        <div className="asg-icon" style={{ color: meta.color }}><Icon size={22} /></div>
-        <div>
-          <div className="asg-type">{assignment.type}</div>
-          <h1 className="asg-title">{assignment.title}</h1>
-          <div className="asg-due"><Clock size={13} /> Due {fmtDueDateTime(assignment.due_date, assignment.due_time)}</div>
-        </div>
-      </div>
 
       {roster.length === 0 ? (
         <EmptyState icon={<Users size={24} />} title="No students in this class yet" />
