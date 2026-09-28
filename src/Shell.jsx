@@ -130,9 +130,6 @@ export function Shell({ profile, setProfile, userId, onSignOut, screen: rawScree
         </button>
 
         <nav className="nav">
-          <button className={`nav-item ${screen.name === "profile" ? "active" : ""}`} onClick={() => setScreen({ name: "profile" })}>
-            <User size={17} /> Profile
-          </button>
           {isTeacher && (
             <button className={`nav-item ${screen.name === "dashboard" ? "active" : ""}`} onClick={() => setScreen({ name: "dashboard" })}>
               <Timer size={17} /> Dashboard
@@ -164,6 +161,11 @@ export function Shell({ profile, setProfile, userId, onSignOut, screen: rawScree
           )}
         </nav>
 
+        {/* Livraison 69: Profile joins the account buttons at the bottom. */}
+        <button className={`nav-item ${screen.name === "profile" ? "active" : ""}`} onClick={() => setScreen({ name: "profile" })}>
+          <User size={16} /> Profile
+        </button>
+
         <button className="nav-item" onClick={toggleFullscreen}>
           {isFullscreen ? <Minimize size={16} /> : <Maximize size={16} />}
           {isFullscreen ? "Exit full screen" : "Full screen"}
@@ -175,14 +177,16 @@ export function Shell({ profile, setProfile, userId, onSignOut, screen: rawScree
       </aside>
 
       <main className="main">
-        <div className="app-topbar">
-          {compactMenu && (
+        {/* Livraison 69: the band across the top only stays on a phone,
+            where it carries the menu button. */}
+        {compactMenu && (
+          <div className="app-topbar">
             <button className="app-menu-btn" onClick={() => setMenuOpen(true)} title="Menu" aria-label="Open the menu">
               <Menu size={18} />
             </button>
-          )}
-          Assignment Hub
-        </div>
+            Assignment Hub
+          </div>
+        )}
         {screen.name === "dashboard" && isTeacher && <TeacherDashboard userId={userId} setScreen={setScreen} />}
         {screen.name === "reading-builder" && isTeacher && (
           <TeacherReadingBuilder classId={screen.classId} teacherId={userId} setScreen={setScreen} showToast={showToast} editAssignmentId={screen.editAssignmentId} returnTo={screen.returnTo} />
