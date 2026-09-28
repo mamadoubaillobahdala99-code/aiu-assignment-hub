@@ -416,7 +416,10 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
           <Files size={13} /> Duplicate for another class
         </button>
         {isOwner && (
-          <button className="btn-ghost ex-delete-btn" disabled={isLive} title={isLive ? "Close the exam first" : ""}
+          // Livraison 64 — the same rule as the database (exam_running): locked while the
+          // exam runs, whether it was opened by the button or by its opening time.
+          <button className="btn-ghost ex-delete-btn" disabled={examOpen && !session.results_released_at}
+                  title={examOpen && !session.results_released_at ? "Close the exam first" : ""}
                   onClick={() => { setDelTyped(""); setDelOpen(true); }}>
             <Trash2 size={13} /> Delete this exam
           </button>
