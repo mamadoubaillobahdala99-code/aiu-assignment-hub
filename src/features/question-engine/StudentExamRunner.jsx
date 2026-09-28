@@ -266,31 +266,120 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
     else setStartError("The exam could not be started. Check your connection and try again.");
   }
 
-  // Highlights the question the student is currently reading, in the
-  // bottom nav bar — recomputed whenever the active Part changes.
+  // Highlights the question the student is on, in the bottom nav bar
+  // (livraison 65). Three rules, strongest first:
+  //   1. a number clicked in the bar, or an answer clicked / typed in:
+  //      that question — kept while the page scrolls there by itself,
+  //      until the student scrolls on their own (wheel, finger, keys,
+  //      scroll bar). At the very bottom of the page, where nothing can
+  //      scroll any more, the clicked number still lights up;
+  //   2. otherwise, while reading: the last question whose top has passed
+  //      a "reading line" a third of the way down the visible area — out
+  //      of ALL the questions on screen, not only those that just moved.
+  //      Over the last screen of scrolling the line slides to the bottom,
+  //      so the last questions light up in turn;
+  //   3. scrolled right to the top: the first question on screen.
+  // Nothing here touches the answers: it only chooses a number to light.
+  const holdRef = useRef(false);
+  function holdHighlight(num) {
+    holdRef.current = true;
+    if (num != null && !isNaN(num)) setVisibleNum(num);
+  }
+  const navBarRef = useRef(null);
   useEffect(() => {
     const panel = questionsPanelRef.current;
-    if (!panel) return;
-    // The element that actually scrolls: in Reading it's the questions
-    // panel itself; in Listening the whole page (bodyRef) scrolls and the
-    // panel just grows with its content, so observing the panel there
-    // would always report the first question as "visible".
-    const scrollRoot = assignment?.type === "Listening" ? bodyRef.current : panel;
-    const targets = panel.querySelectorAll('[id^="question-"]');
-    if (targets.length === 0) return;
+    const body = bodyRef.current;
+    if (!panel || !body) return;
 
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const visible = entries.filter((e) => e.isIntersecting);
-        if (visible.length === 0) return;
-        const topMost = visible.reduce((a, b) => (a.boundingClientRect.top < b.boundingClientRect.top ? a : b));
-        const num = parseInt(topMost.target.id.replace("question-", ""), 10);
-        if (!isNaN(num)) setVisibleNum(num);
-      },
-      { root: scrollRoot, threshold: 0.4 }
-    );
-    targets.forEach((el) => observer.observe(el));
-    return () => observer.disconnect();
+    const numOf = (el) => {
+      const m = /^question-(\d+)$/.exec(el?.id || "");
+      return m ? parseInt(m[1], 10) : null;
+    };
+    const questionOf = (node) => {
+      for (let el = node; el && el !== panel; el = el.parentElement) {
+        if (numOf(el) !== null) return el;
+      }
+      return null;
+    };
+
+    let frame = 0;
+    const recompute = () => {
+      frame = 0;
+      if (holdRef.current) return;
+      const targets = [...panel.querySelectorAll('[id^="question-"]')].filter((el) => numOf(el) !== null);
+      if (targets.length === 0) return;
+      // The visible area: what the page, the scrolling panel and the
+      // window all show, above the nav bar.
+      const b = body.getBoundingClientRect();
+      const p = panel.getBoundingClientRect();
+      const navTop = navBarRef.current ? navBarRef.current.getBoundingClientRect().top : window.innerHeight;
+      const top = Math.max(b.top, p.top, 0);
+      const bottom = Math.min(b.bottom, p.bottom, window.innerHeight, navTop);
+      if (bottom - top < 20) return;              // questions hidden (phone "Text" tab)
+      const onScreen = targets
+        .map((el) => ({ el, r: el.getBoundingClientRect() }))
+        .filter(({ r }) => r.height > 0 && r.bottom > top + 1 && r.top < bottom - 1);
+      if (onScreen.length === 0) return;
+      const atTop = body.scrollTop <= 2 && panel.scrollTop <= 2 && (window.scrollY || 0) <= 2;
+      let chosen = onScreen[0];
+      if (!atTop) {
+        // Near the end of the page the last questions can never climb up to
+        // the line, so over the last screen of scrolling the line slides
+        // down to the bottom edge: they light up one after the other.
+        const height = bottom - top;
+        const scroller = [panel, body].find((el) => el.scrollHeight > el.clientHeight + 2);
+        const left = scroller ? scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop : height;
+        const slide = Math.max(0, Math.min(1, 1 - left / ((2 * height) / 3)));
+        const line = top + height / 3 + slide * ((2 * height) / 3 - 2);
+        const passed = onScreen.filter(({ r }) => r.top <= line);
+        if (passed.length) chosen = passed[passed.length - 1];
+      }
+      const num = numOf(chosen.el);
+      if (num !== null) setVisibleNum(num);
+    };
+    const schedule = () => { if (!frame) frame = requestAnimationFrame(recompute); };
+    // Only the questions moving counts — not the Reading passage scrolling
+    // beside them.
+    const moves = (t) => t === document || t === body || t === panel || panel.contains(t)
+      || (assignment?.type === "Listening" && body.contains(t));
+    const onScroll = (e) => { if (moves(e.target)) schedule(); };
+
+    // The student moves the questions themselves: rule 1 no longer holds.
+    const release = (e) => { if (!e || moves(e.target)) holdRef.current = false; };
+    const onKey = (e) => {
+      if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target?.tagName || "") || e.target?.isContentEditable) return;
+      if (["PageDown", "PageUp", "Home", "End", "ArrowDown", "ArrowUp", " "].includes(e.key)) release();
+    };
+    // A click or focus inside a question: that question (rule 1). A press
+    // on the panel or page itself is the scroll bar being grabbed.
+    const onPointer = (e) => {
+      const q = questionOf(e.target);
+      if (q) holdHighlight(numOf(q));
+      else if (e.target === panel || e.target === body) release(e);
+    };
+    const onFocus = (e) => {
+      const q = questionOf(e.target);
+      if (q) holdHighlight(numOf(q));
+    };
+
+    document.addEventListener("scroll", onScroll, true);
+    window.addEventListener("resize", schedule);
+    body.addEventListener("wheel", release, { passive: true });
+    body.addEventListener("touchmove", release, { passive: true });
+    body.addEventListener("pointerdown", onPointer, true);
+    panel.addEventListener("focusin", onFocus);
+    window.addEventListener("keydown", onKey, true);
+    schedule();
+    return () => {
+      if (frame) cancelAnimationFrame(frame);
+      document.removeEventListener("scroll", onScroll, true);
+      window.removeEventListener("resize", schedule);
+      body.removeEventListener("wheel", release);
+      body.removeEventListener("touchmove", release);
+      body.removeEventListener("pointerdown", onPointer, true);
+      panel.removeEventListener("focusin", onFocus);
+      window.removeEventListener("keydown", onKey, true);
+    };
   }, [activeIndex, sections, assignment, started, mobileTab, compact]);
 
   const allQuestions = sections.flatMap((s) => s.groups.flatMap((g) => g.questions));
@@ -341,6 +430,7 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
     setActiveIndex(partIndex);
     // On a small screen the questions live behind their own tab.
     if (compact) setMobileTab("questions");
+    holdHighlight(slotOwner[num] ?? num);
     // Wait for that Part to render before scrolling to it.
     setTimeout(() => document.getElementById(`question-${slotOwner[num] ?? num}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 60);
   }
@@ -349,6 +439,7 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
   // questions column to the front.
   function goToNumber(num) {
     if (compact) setMobileTab("questions");
+    holdHighlight(slotOwner[num] ?? num);
     setTimeout(() => document.getElementById(`question-${slotOwner[num] ?? num}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), compact ? 60 : 0);
   }
 
@@ -796,13 +887,13 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
         </div>
       )}
 
-      <div className="qe-nav-bar">
+      <div className="qe-nav-bar" ref={navBarRef}>
         {sections.map((s, i) => {
           // Counted in answer-sheet numbers: a "choose TWO" question is two.
           const total = s.groups.reduce((sum, g) => sum + g.questions.reduce((n, q) => n + questionSlotCount(q), 0), 0);
           if (i !== activeIndex) {
             return (
-              <div key={s.id} className="qe-nav-part-segment inactive-part" onClick={() => { setActiveIndex(i); if (compact) setMobileTab("text"); }}>
+              <div key={s.id} className="qe-nav-part-segment inactive-part" onClick={() => { holdRef.current = false; setActiveIndex(i); if (compact) setMobileTab("text"); }}>
                 <button className="qe-nav-part-pill">{s.title}: {total} question{total !== 1 ? "s" : ""}</button>
               </div>
             );
