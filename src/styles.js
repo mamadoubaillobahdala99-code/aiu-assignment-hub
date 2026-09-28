@@ -599,6 +599,19 @@ button.pill:hover { filter: brightness(0.97); }
 .mini-card { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; margin-bottom: 8px; background: #fff; font-family: inherit; color: var(--ink); text-align: left; cursor: pointer; }
 .mini-card:hover { border-color: var(--teal); }
 .mini-card b { font-size: 14px; }
+/* Livraison 72 — teacher cards and dashboard */
+div.c-card:focus-visible, .act-row:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+.code-pill { cursor: pointer; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.04em; }
+.code-pill:hover { filter: brightness(0.96); }
+.c-card-num { color: var(--ink); }
+.c-card-dot { margin: 0 2px; }
+.c-card-quiet { font-size: 12.5px; color: var(--ink-soft); white-space: nowrap; }
+.act-row { display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 0; border: none; border-bottom: 1px solid #EFECE3; background: none; font-family: inherit; color: var(--ink); text-align: left; cursor: pointer; }
+.act-row:last-child { border-bottom: none; }
+.act-row:hover .act-text b { text-decoration: underline; text-underline-offset: 3px; }
+.act-av { flex: none; width: 30px; height: 30px; border-radius: 50%; background: var(--amber); color: #fff; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px; }
+.act-text { font-size: 13.5px; overflow-wrap: anywhere; }
+.mini-card .ex-badge { flex: none; }
 @media (max-width: 900px) { .dash-grid { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 760px) {
   .next-up { flex-wrap: wrap; padding: 16px; }
