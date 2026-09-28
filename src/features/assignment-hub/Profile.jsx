@@ -19,6 +19,19 @@ export function Profile({ profile, userId, setProfile, setScreen, showToast }) {
   const [passwordError, setPasswordError] = useState("");
   const [savingPassword, setSavingPassword] = useState(false);
 
+  // Livraison 66: the way into the administrator's screen lives here, at
+  // the bottom of the administrator's own Profile, instead of in the
+  // menu. A convenience only: the database refuses the admin screen's
+  // content to everyone else.
+  const [isAdmin, setIsAdmin] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    supabase.rpc("is_app_admin").then(({ data, error }) => {
+      if (!cancelled) setIsAdmin(!error && data === true);
+    });
+    return () => { cancelled = true; };
+  }, [userId]);
+
   // Livraison 61: a student can ask for teacher access. The database
   // decides everything (one request at a time, 7 days after a refusal).
   const isStudent = profile?.role === "student";
@@ -160,6 +173,17 @@ export function Profile({ profile, userId, setProfile, setScreen, showToast }) {
           </div>
         );
       })()}
+
+      {isAdmin && (
+        <div className="feedback-panel" style={{ maxWidth: 460, marginTop: 20, background: "#fff", border: "1.2px dashed var(--sidebar)",
+                                                  display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14 }}>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 14.5, color: "var(--sidebar)" }}>Administration</div>
+            <div style={{ fontSize: 12.5, color: "var(--ink-soft)", marginTop: 3 }}>Teachers, students, teacher access requests.</div>
+          </div>
+          <button className="btn-ghost" style={{ whiteSpace: "nowrap" }} onClick={() => setScreen({ name: "admin" })}>Open →</button>
+        </div>
+      )}
     </div>
   );
 }
