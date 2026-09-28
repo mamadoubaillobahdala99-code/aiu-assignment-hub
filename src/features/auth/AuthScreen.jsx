@@ -3,8 +3,11 @@ import { BookOpen, Users, Plus, Check, Clock, AlertTriangle, LogOut, GraduationC
 import { supabase } from "../../supabaseClient";
 import { PasswordField, passwordProblem, PASSWORD_RULE_TEXT } from "../../components/PasswordField";
 
-export function AuthScreen({ showToast }) {
-  const [mode, setMode] = useState("signup"); // signup | login
+// Livraison 67: the sign-up / log-in form now opens in a window over the
+// public home page (LandingPage). Only its frame changed: what it asks,
+// checks and sends is exactly what it was before.
+export function AuthForm({ showToast, initialMode = "signup" }) {
+  const [mode, setMode] = useState(initialMode === "login" ? "login" : "signup"); // signup | login
   const [name, setName] = useState("");
   // Livraison 61: only a REQUEST — the account is always created as a
   // student, and the administrator approves teacher access.
@@ -51,75 +54,54 @@ export function AuthScreen({ showToast }) {
   }
 
   return (
-    <div className="auth-split">
-      <div className="auth-brand-panel">
-        <svg className="auth-brand-pattern" aria-hidden="true" viewBox="0 0 400 400" preserveAspectRatio="xMidYMid slice">
-          <defs>
-            <pattern id="auth-dots" width="28" height="28" patternUnits="userSpaceOnUse">
-              <circle cx="2" cy="2" r="1.6" fill="currentColor" />
-            </pattern>
-          </defs>
-          <rect width="400" height="400" fill="url(#auth-dots)" />
-        </svg>
-        <div className="auth-brand-content">
-          <div className="auth-eyebrow">ALBUKHARY INTERNATIONAL UNIVERSITY</div>
-          <h1 className="auth-title">Assignment Hub</h1>
-          <p className="auth-sub">One place for IELTS prep coursework — no more chasing links across WhatsApp, Drive, and Classroom.</p>
-        </div>
+    <div className="auth-card">
+      <h2 className="auth-form-title">{mode === "signup" ? "Create your account" : "Welcome back"}</h2>
+
+      <div className="auth-tabs">
+        <button className={`auth-tab ${mode === "signup" ? "active" : ""}`} onClick={() => setMode("signup")}>Create account</button>
+        <button className={`auth-tab ${mode === "login" ? "active" : ""}`} onClick={() => setMode("login")}>Log in</button>
       </div>
 
-      <div className="auth-form-panel">
-        <div className="auth-card">
-          <div className="auth-eyebrow auth-eyebrow-compact">ALBUKHARY INTERNATIONAL UNIVERSITY</div>
-          <h2 className="auth-form-title">{mode === "signup" ? "Create your account" : "Welcome back"}</h2>
+      {mode === "signup" && (
+        <>
+          <label className="field-label">Your name</label>
+          <input className="field-input" placeholder="e.g. Mamadou Bailo" value={name} onChange={(e) => setName(e.target.value)} />
+          <label className="auth-teacher-request" style={{
+            display: "flex", gap: 10, alignItems: "flex-start", marginTop: 14, padding: "11px 12px",
+            border: `1px solid ${teacherRequest ? "var(--teal)" : "var(--line)"}`, borderRadius: 10,
+            background: teacherRequest ? "var(--teal-soft)" : "#fff", cursor: "pointer", fontSize: 13.5,
+          }}>
+            <input type="checkbox" checked={teacherRequest} onChange={(e) => setTeacherRequest(e.target.checked)}
+                   style={{ marginTop: 2, width: 16, height: 16, accentColor: "var(--teal)" }} />
+            <span>
+              <strong>I'm a teacher — request teacher access</strong>
+              <span style={{ display: "block", color: "var(--ink-soft)", fontSize: 12, marginTop: 3 }}>
+                You start as a student. The administrator approves teacher access.
+              </span>
+            </span>
+          </label>
+        </>
+      )}
 
-          <div className="auth-tabs">
-            <button className={`auth-tab ${mode === "signup" ? "active" : ""}`} onClick={() => setMode("signup")}>Create account</button>
-            <button className={`auth-tab ${mode === "login" ? "active" : ""}`} onClick={() => setMode("login")}>Log in</button>
-          </div>
+      <label className="field-label" style={{ marginTop: 14 }}>Email</label>
+      <input className="field-input" type="email" placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} />
 
-          {mode === "signup" && (
-            <>
-              <label className="field-label">Your name</label>
-              <input className="field-input" placeholder="e.g. Mamadou Bailo" value={name} onChange={(e) => setName(e.target.value)} />
-              <label className="auth-teacher-request" style={{
-                display: "flex", gap: 10, alignItems: "flex-start", marginTop: 14, padding: "11px 12px",
-                border: `1px solid ${teacherRequest ? "var(--teal)" : "var(--line)"}`, borderRadius: 10,
-                background: teacherRequest ? "var(--teal-soft)" : "#fff", cursor: "pointer", fontSize: 13.5,
-              }}>
-                <input type="checkbox" checked={teacherRequest} onChange={(e) => setTeacherRequest(e.target.checked)}
-                       style={{ marginTop: 2, width: 16, height: 16, accentColor: "var(--teal)" }} />
-                <span>
-                  <strong>I'm a teacher — request teacher access</strong>
-                  <span style={{ display: "block", color: "var(--ink-soft)", fontSize: 12, marginTop: 3 }}>
-                    You start as a student. The administrator approves teacher access.
-                  </span>
-                </span>
-              </label>
-            </>
-          )}
+      <label className="field-label" style={{ marginTop: 14 }}>Password</label>
+      <PasswordField
+        value={password}
+        onChange={(e) => setPassword(e.target.value)}
+        placeholder={mode === "signup" ? "8+ characters, a letter, a number" : "Your password"}
+        autoComplete={mode === "signup" ? "new-password" : "current-password"}
+      />
 
-          <label className="field-label" style={{ marginTop: 14 }}>Email</label>
-          <input className="field-input" type="email" placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} />
+      {err && <div className="field-error">{err}</div>}
 
-          <label className="field-label" style={{ marginTop: 14 }}>Password</label>
-          <PasswordField
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder={mode === "signup" ? "8+ characters, a letter, a number" : "Your password"}
-            autoComplete={mode === "signup" ? "new-password" : "current-password"}
-          />
-
-          {err && <div className="field-error">{err}</div>}
-
-          <button className="btn-primary auth-submit" disabled={busy} onClick={submit}>
-            {busy ? "Please wait…" : mode === "signup" ? "Create account" : "Log in"} <ChevronRight size={16} />
-          </button>
-          {mode === "signup" && (
-            <p className="auth-note">A confirmation email may be sent depending on your project settings — check your inbox if login doesn't work right away.</p>
-          )}
-        </div>
-      </div>
+      <button className="btn-primary auth-submit" disabled={busy} onClick={submit}>
+        {busy ? "Please wait…" : mode === "signup" ? "Create account" : "Log in"} <ChevronRight size={16} />
+      </button>
+      {mode === "signup" && (
+        <p className="auth-note">A confirmation email may be sent depending on your project settings — check your inbox if login doesn't work right away.</p>
+      )}
     </div>
   );
 }
