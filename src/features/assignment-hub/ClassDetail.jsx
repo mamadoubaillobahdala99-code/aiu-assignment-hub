@@ -6,6 +6,7 @@ import { uid, makeCode, TYPES, fmtDate, daysUntil, wordCount, isPdfUrl } from ".
 import { AttachmentPreview, PageHeader, EmptyState, CenterSpinner, Modal, StatusBadge } from "../../components/shared";
 import { AssignmentsTab } from "./AssignmentsTab";
 import { confirmDialog } from "../../lib/confirmDialog";
+import { dueInfo } from "../../lib/due";
 import { DropMenu, DropMenuItem, DropMenuSeparator, Breadcrumb } from "../../components/DropMenu";
 
 export function ClassDetail({ classId, setScreen, showToast }) {
@@ -23,6 +24,8 @@ export function ClassDetail({ classId, setScreen, showToast }) {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteStats, setDeleteStats] = useState(null);
   const [confirmName, setConfirmName] = useState("");
+  // Livraison 70: the class's figures (script 44). null = not available.
+  const [overview, setOverview] = useState(null);
 
   const load = useCallback(async () => {
     const { data: c } = await supabase.from("classes").select("*").eq("id", classId).single();
@@ -39,6 +42,8 @@ export function ClassDetail({ classId, setScreen, showToast }) {
     setRoster((r || []).map((x) => ({ studentId: x.student_id, name: x.profiles?.name || "Unknown", joined_at: x.joined_at })));
     const { data: a } = await supabase.from("assignments").select("*").eq("class_id", classId).order("created_at", { ascending: false });
     setAssignments(a || []);
+    const { data: ov, error: ovErr } = await supabase.rpc("class_overview", { p_class_id: classId });
+    setOverview(ovErr ? null : ov || null);
   }, [classId, setScreen]);
 
   useEffect(() => { load(); }, [load]);
@@ -196,32 +201,79 @@ export function ClassDetail({ classId, setScreen, showToast }) {
         </div>
       </div>
 
+      {(() => {
+        // Livraison 70: four figures at the top of the class.
+        const counts = Object.fromEntries((overview?.assignments || []).map((x) => [x.id, x]));
+        const toMark = (overview?.assignments || []).reduce((n, x) => n + (x.to_mark || 0), 0);
+        const now = new Date();
+        const dueWeek = assignments.filter((a) => { const d = dueInfo(a.due_date, a.due_time, now); return d.end && d.end >= now && d.days <= 7; }).length;
+        const recent = assignments.filter((a) => counts[a.id]?.structured && a.type !== "Speaking").slice(0, 3);
+        const handed = recent.reduce((n, a) => n + (counts[a.id]?.handed_in || 0), 0);
+        const rate = recent.length && roster.length ? Math.round((handed / (recent.length * roster.length)) * 100) : null;
+        const joinedWeek = roster.filter((r) => r.joined_at && now - new Date(r.joined_at) < 7 * 86400000).length;
+        return (
+          <div className="stat-grid">
+            <div className="stat"><div className="stat-l">To mark</div><div className="stat-v">{overview ? toMark : "—"}</div><div className="stat-d">Writing copies waiting</div></div>
+            <div className="stat"><div className="stat-l">Due this week</div><div className="stat-v">{dueWeek}</div><div className="stat-d">assignment{dueWeek === 1 ? "" : "s"}</div></div>
+            <div className="stat"><div className="stat-l">Handed in</div><div className="stat-v">{rate === null ? "—" : `${rate}%`}</div><div className="stat-d">{recent.length ? `on the last ${recent.length === 1 ? "assignment" : `${recent.length} assignments`}` : "nothing to count yet"}</div></div>
+            <div className="stat"><div className="stat-l">Students</div><div className="stat-v">{roster.length}</div><div className="stat-d">{joinedWeek ? `${joinedWeek} joined this week` : "in this class"}</div></div>
+          </div>
+        );
+      })()}
+
       <div className="tabs">
         <button className={`tab ${tab === "assignments" ? "active" : ""}`} onClick={() => setTab("assignments")}>Assignments ({assignments.length})</button>
         <button className={`tab ${tab === "roster" ? "active" : ""}`} onClick={() => setTab("roster")}>Students ({roster.length})</button>
       </div>
 
       {tab === "assignments" && (
-        <>
-          <AssignmentsTab assignments={assignments} onOpen={(a) => setScreen({ name: "assignment-teacher", classId, assignmentId: a.id })} />
-        </>
+        <AssignmentsTab
+          assignments={assignments}
+          counts={Object.fromEntries((overview?.assignments || []).map((x) => [x.id, x]))}
+          studentsCount={roster.length}
+          onOpen={(a) => setScreen({ name: "assignment-teacher", classId, assignmentId: a.id })}
+          onDuplicate={(a) => setScreen({ name: "assignment-teacher", classId, assignmentId: a.id, dup: "1" })}
+        />
       )}
 
       {tab === "roster" && (
         roster.length === 0 ? (
           <EmptyState icon={<Users size={26} />} title="No students yet" body={`Share the join code "${cls.code}" with your students.`} />
-        ) : (
-          <div className="roster-list">
-            {roster.map((s, i) => (
-              <div key={i} className="roster-row" style={{ cursor: "pointer" }} onClick={() => setActiveStudent(s)}>
-                <div className="avatar small">{s.name.slice(0, 1).toUpperCase()}</div>
-                <div className="roster-name">{s.name}</div>
-                <div className="roster-date">Joined {fmtDate(s.joined_at)}</div>
-                <ChevronRight size={15} className="chev" />
-              </div>
-            ))}
-          </div>
-        )
+        ) : (() => {
+          // Livraison 70: a table — who, since when, how much handed in.
+          const doneBy = Object.fromEntries((overview?.students_done || []).map((x) => [x.student_id, x.done]));
+          const total = (overview?.assignments || []).filter((x) => x.structured).length;
+          return (
+            <div className="dt-wrap">
+              <table className="dt">
+                <thead><tr><th>Student</th><th className="hide-sm">Joined</th><th>Handed in</th><th aria-label="Open" /></tr></thead>
+                <tbody>
+                  {roster.map((st, i) => {
+                    const done = doneBy[st.studentId];
+                    const pct = total && done !== undefined ? Math.round((done / total) * 100) : 0;
+                    return (
+                      <tr key={i} className="dt-row" onClick={() => setActiveStudent(st)}>
+                        <td>
+                          <div className="dt-title">
+                            <div className="avatar small">{st.name.slice(0, 1).toUpperCase()}</div>
+                            <button type="button" className="dt-open" onClick={(e) => { e.stopPropagation(); setActiveStudent(st); }}>{st.name}</button>
+                          </div>
+                        </td>
+                        <td className="hide-sm dt-muted">{fmtDate(st.joined_at)}</td>
+                        <td>
+                          {done === undefined ? <span className="dt-muted">—</span> : (
+                            <span className="dt-progress"><span className="dt-bar"><i style={{ width: `${pct}%` }} /></span>{done}/{total}</span>
+                          )}
+                        </td>
+                        <td className="dt-actions"><ChevronRight size={16} className="chev" /></td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          );
+        })()
       )}
     </div>
   );
