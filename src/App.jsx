@@ -31,9 +31,14 @@ function screenToHash(s) {
   if (!s || !s.name) return "#/home";
   const params = new URLSearchParams();
   for (const [k, v] of Object.entries(s)) {
-    if (k === "name" || v === undefined || v === null || typeof v === "object") continue;
+    // examLocked is never kept in the address: the screen reads it from
+    // the database itself (livraison 69) — as text, "false" looked true.
+    if (k === "name" || k === "examLocked" || v === undefined || v === null || typeof v === "object") continue;
     params.set(k, String(v));
   }
+  // Livraison 69: "where Back goes" travels in the address too, so a
+  // refresh or the browser's Back/Forward keeps "Back to the exam".
+  if (s.returnTo?.name === "exam-session" && s.returnTo.sessionId) params.set("fromExam", String(s.returnTo.sessionId));
   const q = params.toString();
   return `#/${s.name}${q ? `?${q}` : ""}`;
 }
@@ -48,6 +53,11 @@ function hashToScreen(hash) {
   const s = { name };
   for (const [k, v] of new URLSearchParams(query || "")) {
     if (/^[a-zA-Z]{1,24}$/.test(k) && v.length <= 200) s[k] = v;
+  }
+  delete s.examLocked;
+  if (s.fromExam) {
+    if (/^[0-9a-f-]{36}$/i.test(s.fromExam)) s.returnTo = { name: "exam-session", sessionId: s.fromExam };
+    delete s.fromExam;
   }
   return s;
 }
