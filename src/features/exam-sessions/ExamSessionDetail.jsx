@@ -197,7 +197,23 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
 
   async function setSetting(patch) {
     const { error } = await supabase.from("exam_sessions").update(patch).eq("id", sessionId);
-    if (error) { showToast?.("Could not save that setting"); return; }
+    if (error) {
+      showToast?.(/settings are locked/i.test(error.message || "") ? "The exam is running: its settings are locked" : "Could not save that setting");
+      return;
+    }
+    load();
+  }
+
+  // Livraison 62: during the exam the end time can only move LATER, through
+  // the database (exam_extend_end). To end earlier, the teacher uses Close.
+  const [extending, setExtending] = useState(false);
+  async function extendEnd(minutes) {
+    if (extending) return;
+    setExtending(true);
+    const { error } = await supabase.rpc("exam_extend_end", { p_session_id: sessionId, p_minutes: minutes });
+    setExtending(false);
+    if (error) { showToast?.("Could not extend: " + error.message); return; }
+    showToast?.(`End time moved ${minutes} minutes later`);
     load();
   }
 
@@ -318,6 +334,18 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
   const watched = board.reduce((n, c) => n + (c.incidents || 0), 0);
   const isOwner = session.created_by === userId;
   const isLive = Boolean(session.opened_at) && !session.closed_at;
+  // Livraison 62 — the same rules as the database:
+  //   examOpen   = the exam is running (Open button, or its opening time has come);
+  //   notStarted = never opened, not closed, not published, opening time not reached.
+  // Papers can only be added, removed or reordered before the start, and the
+  // settings are locked while the exam is running.
+  const nowMs = Date.now();
+  const opensMs = session.opens_at ? new Date(session.opens_at).getTime() : null;
+  const closesMs = session.closes_at ? new Date(session.closes_at).getTime() : null;
+  const examOpen = !session.closed_at && (closesMs === null || nowMs < closesMs)
+    && (Boolean(session.opened_at) || (opensMs !== null && nowMs >= opensMs));
+  const notStarted = !session.opened_at && !session.closed_at && !session.results_released_at
+    && (opensMs === null || nowMs < opensMs);
   const sorted = [...items].sort((a, b) => a.order_index - b.order_index);
 
   return (
@@ -440,7 +468,7 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
                   </button>
                 )}
 
-                {!isLive && !session.closed_at && (
+                {notStarted && (
                   <div className="ex-item-tools">
                     <button className="ex-icon-btn" title="Move up" disabled={i === 0} onClick={() => move(it, -1)}><ChevronUp size={15} /></button>
                     <button className="ex-icon-btn" title="Move down" disabled={i === sorted.length - 1} onClick={() => move(it, 1)}><ChevronDown size={15} /></button>
@@ -453,7 +481,7 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
         </div>
       )}
 
-      {!isLive && !session.closed_at && (
+      {notStarted && (
         <button className="btn-ghost" style={{ marginTop: 12 }} onClick={() => setAddOpen(true)}>
           <Plus size={15} /> Add a paper
         </button>
@@ -463,7 +491,7 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
       <div className="section-title" style={{ marginTop: 30 }}>Settings</div>
       <div className="ex-settings">
         <label className="ex-setting">
-          <input type="checkbox" checked={session.strict_mode} disabled={isLive}
+          <input type="checkbox" checked={session.strict_mode} disabled={examOpen}
                  onChange={(e) => setSetting({ strict_mode: e.target.checked })} />
           <span>
             <strong>Strict — a teacher must authorise a restart</strong>
@@ -472,9 +500,9 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
         </label>
         <div className="ex-setting ex-setting-radio">
           <span><strong>The Listening recording starts…</strong></span>
-          <label><input type="radio" name="ls" checked={session.listening_start === "individual"} disabled={isLive}
+          <label><input type="radio" name="ls" checked={session.listening_start === "individual"} disabled={examOpen}
                         onChange={() => setSetting({ listening_start: "individual" })} /> individually — each candidate with headphones</label>
-          <label><input type="radio" name="ls" checked={session.listening_start === "grouped"} disabled={isLive}
+          <label><input type="radio" name="ls" checked={session.listening_start === "grouped"} disabled={examOpen}
                         onChange={() => setSetting({ listening_start: "grouped" })} /> together — you press play for the whole room</label>
         </div>
         <div className="ex-setting ex-setting-times">
@@ -482,12 +510,21 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
             <em>A safety net around the Open button: outside it, nobody can join or start.</em></span>
           <div className="ex-time-row">
             <label className="field-label">Opens</label>
-            <input type="datetime-local" className="field-input" disabled={isLive}
+            <input type="datetime-local" className="field-input" disabled={examOpen}
                    value={toLocal(session.opens_at)} onChange={(e) => setSetting({ opens_at: fromLocal(e.target.value) })} />
             <label className="field-label">Closes</label>
-            <input type="datetime-local" className="field-input"
+            <input type="datetime-local" className="field-input" disabled={examOpen}
                    value={toLocal(session.closes_at)} onChange={(e) => setSetting({ closes_at: fromLocal(e.target.value) })} />
           </div>
+          {examOpen && session.closes_at && (
+            <div className="ex-time-row ex-extend" style={{ marginTop: 10 }}>
+              <span className="field-label">Need more time?</span>
+              {[5, 15, 30].map((m) => (
+                <button key={m} className="btn-ghost" disabled={extending} onClick={() => extendEnd(m)}>+{m} min</button>
+              ))}
+              <em style={{ fontSize: 12, color: "var(--ink-soft)" }}>The end time can only move later. To end now, use Close.</em>
+            </div>
+          )}
         </div>
       </div>
 
