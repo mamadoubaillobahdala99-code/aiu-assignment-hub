@@ -126,8 +126,7 @@ export function LandingPage({ showToast }) {
         <header className="lp-top">
           <div className="lp-descr">IELTS preparation</div>
           <nav className="lp-nav">
-            <button className="lp-btn lp-btn-line lp-hide-phone" onClick={(e) => openAuth("login", e)}>Log in</button>
-            <button className="lp-btn lp-btn-white" onClick={(e) => openAuth("signup", e)}>Create account</button>
+            <button className="lp-toplink" onClick={(e) => openAuth("login", e)}>Log in</button>
           </nav>
         </header>
 
@@ -139,8 +138,11 @@ export function LandingPage({ showToast }) {
             <p className="lp-sub">Your teachers mark your work — you see exactly where to improve.</p>
             <div className="lp-ctas">
               <button className="lp-btn lp-btn-orange lp-big" onClick={(e) => openAuth("signup", e)}>Create an account</button>
-              <button className="lp-btn lp-btn-line lp-big" onClick={(e) => openAuth("login", e)}>Log in</button>
             </div>
+            <p className="lp-already">
+              Already have an account?{" "}
+              <button className="lp-inline-link" onClick={(e) => openAuth("login", e)}>Log in</button>
+            </p>
             <p className="lp-small">Teachers: create your account, then ask for teacher access.</p>
           </div>
           <Globe still={still} />
