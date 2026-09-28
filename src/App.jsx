@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import { Loader2 } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import { CSS } from "./styles";
-import { AuthScreen } from "./features/auth/AuthScreen";
+import { LandingPage } from "./features/landing/LandingPage";
 import { Shell, SCREEN_ROLES } from "./Shell";
 import { AdminConsole } from "./features/admin/AdminConsole";import "./features/question-engine/question-engine.css";
 import "./features/question-engine/multiple-choice.css";
@@ -160,7 +160,9 @@ export default function App() {
       {loading ? (
         <div className="boot"><Loader2 className="spin" size={22} /></div>
       ) : !session || !profile ? (
-        <AuthScreen showToast={showToast} />
+        // Livraison 67: the public home page (log in / create account open
+        // in a window over it).
+        <LandingPage showToast={showToast} />
       ) : screen.name === "admin" ? (
         // The administrator's screen is separate from the teacher space
         // (livraison 60). The database decides who may read it.
