@@ -407,7 +407,7 @@ export function TestImporter({ classId, teacherId, skill: initialSkill = "readin
   if (step === "input") {
     return (
       <div className="page page-wide">
-        <button className="btn-ghost" onClick={() => setScreen(returnTo || { name: "class", classId })}><ArrowLeft size={14} /> Back to class</button>
+        <button className="btn-ghost" onClick={() => setScreen(returnTo || { name: "class", classId })}><ArrowLeft size={14} /> {returnTo?.name === "exam-session" ? "Back to the exam" : "Back to class"}</button>
         <div className="eyebrow" style={{ marginTop: 12 }}>Import a test</div>
         <h1 className="page-title">Import a {skill === "reading" ? "Reading" : "Listening"} test</h1>
 
