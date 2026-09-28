@@ -84,7 +84,8 @@ body { margin: 0; }
 .btn-primary { display: inline-flex; align-items: center; gap: 7px; background: var(--ink); color: #fff; border: none; padding: 11px 18px; border-radius: 8px; font-family: inherit; font-size: 14px; font-weight: 600; cursor: pointer; transition: opacity .15s; }
 .btn-primary:hover:not(:disabled) { opacity: 0.85; }
 .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
-.btn-ghost { display: inline-flex; align-items: center; gap: 7px; background: var(--paper-raised); border: 1px solid var(--line); padding: 9px 14px; border-radius: 8px; font-family: 'IBM Plex Mono', monospace; font-size: 12.5px; font-weight: 500; color: var(--ink); cursor: pointer; letter-spacing: 0.03em; }
+.btn-ghost { display: inline-flex; align-items: center; gap: 7px; background: #fff; border: 1px solid var(--line); padding: 9px 14px; border-radius: 8px; font-family: inherit; font-size: 13.5px; font-weight: 600; color: var(--ink); cursor: pointer; }
+.btn-ghost:hover:not(:disabled) { background: var(--paper-raised); }
 
 .shell { display: flex; height: 100vh; overflow: hidden; }
 .sidebar { width: 240px; background: var(--sidebar); color: var(--sidebar-text); padding: 22px 16px; display: flex; flex-direction: column; flex-shrink: 0; }
@@ -107,6 +108,10 @@ body { margin: 0; }
 .main { flex: 1; min-width: 0; overflow-y: auto; height: 100%; display: flex; flex-direction: column; }
 .main > .app-topbar { position: sticky; top: 0; z-index: 5; }
 .main > *:not(.app-topbar):not(.wf-overlay) { padding: 40px 44px; }
+/* Livraison 69: a page may never be wider than the screen (on a phone the
+   class page was 25px too wide and its right edge was cut off). */
+.main > * { min-width: 0; }
+.main > .page { width: 100%; }
 .page { max-width: 880px; }
 .page.narrow { max-width: 560px; }
 /* Wider, centered variant used only by the Reading/Listening builder
@@ -442,4 +447,57 @@ body { margin: 0; }
 /* Checkbox row, used for "allow audio pause" and future toggle options */
 .checkbox-row { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--ink); cursor: pointer; }
 .checkbox-row input[type="checkbox"] { width: 15px; height: 15px; accent-color: var(--teal); cursor: pointer; }
+
+/* ---------- Livraison 69: page headers, breadcrumbs, menus ---------- */
+.crumbs { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; font-size: 13px; color: var(--ink-soft); margin-bottom: 14px; }
+.crumb-link { background: none; border: none; padding: 2px 0; font: inherit; color: var(--ink-soft); cursor: pointer; }
+.crumb-link:hover { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
+.crumb-here { color: var(--ink); font-weight: 600; }
+.crumb-sep { color: #B7B2A3; }
+.ph { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; flex-wrap: wrap; margin-bottom: 22px; }
+.ph-main { display: flex; gap: 14px; align-items: flex-start; min-width: 0; }
+.ph-icon { width: 42px; height: 42px; border-radius: 11px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 2px; }
+.ph-title { font-family: 'Fraunces', serif; font-size: 28px; font-weight: 600; margin: 0; line-height: 1.15; overflow-wrap: anywhere; }
+.ph-meta { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.ph-actions { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
+.pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; padding: 5px 11px; border-radius: 999px; background: #F1EFE7; color: var(--ink-soft); font-weight: 600; border: none; font-family: inherit; }
+.pill-teal { background: var(--teal-soft); color: var(--teal); }
+button.pill { cursor: pointer; }
+button.pill:hover { filter: brightness(0.97); }
+.btn-teal { display: inline-flex; align-items: center; gap: 7px; background: var(--teal); color: #fff; border: 1px solid var(--teal); padding: 10px 16px; border-radius: 9px; font-family: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+.btn-teal:hover:not(:disabled) { opacity: 0.92; }
+.btn-dots { padding: 9px 12px; font-weight: 800; letter-spacing: 1px; }
+.dm { position: relative; display: inline-block; }
+.dm-list { position: absolute; right: 0; top: calc(100% + 8px); z-index: 30; min-width: 240px; background: #fff; border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 20px 50px rgba(18,20,15,0.16); padding: 6px; }
+.dm-list.dm-left { right: auto; left: 0; }
+.dm-list.dm-wide { width: 390px; max-width: calc(100vw - 32px); }
+.dm-item { display: flex; width: 100%; gap: 12px; align-items: center; padding: 10px 12px; border-radius: 9px; background: none; border: none; font-family: inherit; font-size: 14px; color: var(--ink); cursor: pointer; text-align: left; }
+.dm-item.dm-rich { align-items: flex-start; padding: 11px 12px; }
+.dm-item:hover:not(:disabled), .dm-item:focus-visible { background: #F3F6F4; outline: none; }
+.dm-item:disabled { opacity: 0.45; cursor: not-allowed; }
+.dm-danger { color: var(--rose); }
+.dm-danger:hover:not(:disabled) { background: var(--rose-soft); }
+.dm-icon { display: inline-flex; flex-shrink: 0; }
+.dm-text { display: flex; flex-direction: column; min-width: 0; }
+.dm-title { font-weight: 600; }
+.dm-hint { font-size: 12.5px; color: var(--ink-soft); margin-top: 2px; line-height: 1.4; }
+.dm-sep { height: 1px; background: var(--line); margin: 6px 8px; }
+.dm-label { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-soft); padding: 8px 12px 4px; }
+.type-ic { width: 34px; height: 34px; border-radius: 9px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.type-ic.ic-dark { background: var(--ink); color: #fff; }
+.type-ic.ic-reading { background: var(--info-soft); color: var(--info); }
+.type-ic.ic-listening { background: var(--teal-soft); color: var(--teal); }
+.type-ic.ic-writing { background: var(--amber-soft); color: var(--amber); }
+.type-ic.ic-speaking { background: var(--rose-soft); color: var(--rose); }
+.copy-done { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; background: var(--teal-soft); border: 1px solid var(--teal); color: var(--ink); border-radius: 10px; padding: 11px 14px; margin-bottom: 18px; font-size: 14px; }
+.copy-done .btn-link { background: none; border: none; padding: 0; font: inherit; font-weight: 700; color: var(--teal); cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+.copy-done .copy-x { margin-left: auto; background: none; border: none; color: var(--ink-soft); cursor: pointer; font-size: 18px; line-height: 1; }
+@media (max-width: 760px) {
+  .ph-title { font-size: 23px; }
+  /* On a phone the menus open under the whole row of buttons, from edge
+     to edge, so they never run off the screen. */
+  .ph-actions { width: 100%; position: relative; }
+  .ph-actions .dm { position: static; }
+  .ph-actions .dm-list, .ph-actions .dm-list.dm-wide { left: 0; right: 0; width: auto; max-width: none; min-width: 0; }
+}
 `;
