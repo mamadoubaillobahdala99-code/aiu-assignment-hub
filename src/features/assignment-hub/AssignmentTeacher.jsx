@@ -9,6 +9,8 @@ import { TeacherPaperPreview } from "../question-engine/TeacherPaperPreview";
 import { deleteUnusedSpeakingFiles } from "../question-engine/speaking";
 import { confirmDialog } from "../../lib/confirmDialog";
 import { DropMenu, DropMenuItem, DropMenuSeparator, Breadcrumb } from "../../components/DropMenu";
+import { loadAssignmentWork, assignmentStats } from "./assignmentWork";
+import { AssignmentStats, StudentsTable, QuestionsTable } from "./AssignmentStudents";
 
 const CRITERIA = [
   { key: "score_task_achievement", label: "Task Achievement" },
@@ -37,12 +39,10 @@ export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen,
   const [roster, setRoster] = useState([]);
   const [isStructured, setIsStructured] = useState(false);
   const [structuredStudentIds, setStructuredStudentIds] = useState(new Set());
-  // Structured Writing only: who has started (draft saved) and whose
-  // correction is published — for the In progress / Graded badges.
-  const [writingStartedIds, setWritingStartedIds] = useState(new Set());
-  const [writingReleasedIds, setWritingReleasedIds] = useState(new Set());
-  // Structured Speaking only (consult, nothing submitted): who opened it.
-  const [speakingViewedIds, setSpeakingViewedIds] = useState(new Set());
+  // Livraison 73: every student's status, time and result, and (Reading /
+  // Listening) how each question went — see assignmentWork.js.
+  const [work, setWork] = useState(null);
+  const [tab, setTab] = useState("students");
   const [activeStructuredStudent, setActiveStructuredStudent] = useState(null);
   const [busy, setBusy] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -95,7 +95,8 @@ export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen,
       }
     }
     const { data: r } = await supabase.from("roster").select("student_id, profiles(name)").eq("class_id", classId);
-    setRoster((r || []).map((x) => ({ id: x.student_id, name: x.profiles?.name || "Unknown" })));
+    const people = (r || []).map((x) => ({ id: x.student_id, name: x.profiles?.name || "Unknown" }));
+    setRoster(people);
 
     // Reliable check: assignment.type alone can't tell a Question Engine
     // assignment apart from an old-style one — "Reading"/"Listening" are
@@ -108,29 +109,12 @@ export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen,
     const structured = (sectionCount || 0) > 0;
     setIsStructured(structured);
 
-    if (structured && a?.type === "Speaking") {
-      const { data: sv } = await supabase.from("speaking_views").select("student_id").eq("assignment_id", assignmentId);
-      setSpeakingViewedIds(new Set((sv || []).map((row) => row.student_id)));
-      setStructuredStudentIds(new Set());
-    } else if (structured && a?.type === "Writing") {
-      // Structured Writing: answers live in writing_responses, not student_answers.
-      const { data: wr } = await supabase.from("writing_responses").select("student_id, submitted_at").eq("assignment_id", assignmentId);
-      setStructuredStudentIds(new Set((wr || []).filter((row) => row.submitted_at).map((row) => row.student_id)));
-      setWritingStartedIds(new Set((wr || []).map((row) => row.student_id)));
-      const { data: fb } = await supabase.from("assignment_feedback").select("student_id, released_at").eq("assignment_id", assignmentId);
-      setWritingReleasedIds(new Set((fb || []).filter((row) => row.released_at).map((row) => row.student_id)));
-    } else if (structured) {
-      // Handed in = has answers, OR is marked handed in in exam_attempts.
-      // Looking at the answers alone showed a copy handed in empty as
-      // "Not submitted", and the teacher could not open it — while the
-      // student's own screen, the class page and the exam screen all
-      // (rightly) counted it as handed in. An empty copy that was handed
-      // in is not a copy that was never handed in: it opens, and scores 0.
-      const [{ data: sa }, { data: att }] = await Promise.all([
-        supabase.from("student_answers").select("student_id").eq("assignment_id", assignmentId),
-        supabase.from("exam_attempts").select("student_id").eq("assignment_id", assignmentId).not("submitted_at", "is", null),
-      ]);
-      setStructuredStudentIds(new Set([...(sa || []), ...(att || [])].map((row) => row.student_id)));
+    // Livraison 73: one reader for the statuses, times and results (same
+    // "handed in" rules as before and as the class page).
+    if (a) {
+      const w = await loadAssignmentWork({ assignment: a, roster: people, structured });
+      setWork(w);
+      setStructuredStudentIds(new Set(w.rows.filter((x) => x.open).map((x) => x.id)));
     }
 
     // Where this paper can be copied: my classes, and the exams I am on
@@ -244,7 +228,7 @@ export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen,
         assignmentId={assignmentId}
         studentId={activeStructuredStudent.id}
         studentName={activeStructuredStudent.name}
-        onBack={() => setActiveStructuredStudent(null)}
+        onBack={() => { setActiveStructuredStudent(null); load(); }}
         showToast={showToast}
       />
     );
@@ -280,42 +264,10 @@ export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen,
     );
   }
 
-  // Two groups, per Phase 25 — submitted students first, not-submitted
-  // after, instead of one flat list.
-  const isSpeakingStructured = isStructured && assignment.type === "Speaking";
-  const submittedRoster = roster.filter((s) =>
-    isSpeakingStructured ? speakingViewedIds.has(s.id) : structuredStudentIds.has(s.id)
-  );
-  const notSubmittedRoster = roster.filter((s) => !submittedRoster.includes(s));
-
-  function statusFor(student) {
-    if (isSpeakingStructured) return speakingViewedIds.has(student.id) ? "viewed" : "to-view";
-    if (isStructured && assignment.type === "Writing") {
-      if (writingReleasedIds.has(student.id) && structuredStudentIds.has(student.id)) return "graded";
-      if (structuredStudentIds.has(student.id)) return "submitted";
-      if (writingStartedIds.has(student.id)) return "in-progress";
-      return "pending";
-    }
-    return structuredStudentIds.has(student.id) ? "submitted" : "pending";
-  }
-
-  function handleRowClick(student) {
-    if (isStructured) {
-      if (structuredStudentIds.has(student.id)) setActiveStructuredStudent(student);
-      return;
-    }
-  }
-
-  function renderRow(s) {
-    const clickable = structuredStudentIds.has(s.id);
-    return (
-      <div key={s.id} className={`sub-row ${clickable ? "" : "sub-row-disabled"}`} onClick={clickable ? () => handleRowClick(s) : undefined}>
-        <div className="avatar small">{s.name.slice(0, 1).toUpperCase()}</div>
-        <div className="sub-name">{s.name}</div>
-        <StatusBadge status={statusFor(s)} />
-        {clickable && <ChevronRight size={15} className="chev" />}
-      </div>
-    );
+  const stats = work && isStructured ? assignmentStats(assignment.type, work) : null;
+  const isPaper = isStructured && (assignment.type === "Reading" || assignment.type === "Listening");
+  function openStudent(student) {
+    if (isStructured && structuredStudentIds.has(student.id)) setActiveStructuredStudent(student);
   }
 
   return (
@@ -413,23 +365,24 @@ export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen,
         </div>
       )}
 
-      {roster.length === 0 ? (
-        <EmptyState icon={<Users size={24} />} title="No students in this class yet" />
+      {work !== null && !isStructured && (
+        <div className="feedback-panel">This assignment has no content yet{locked ? "" : " — use Edit to build it"}. Students cannot hand anything in until it has at least one Part.</div>
+      )}
+
+      {work === null ? <CenterSpinner /> : roster.length === 0 ? (
+        <EmptyState icon={<Users size={24} />} title={exam ? "No candidate has joined this exam yet" : "No students in this class yet"} />
       ) : (
         <>
-          <h3 className="section-title">{isSpeakingStructured ? "Viewed" : "Submitted"} ({submittedRoster.length})</h3>
-          {submittedRoster.length === 0 ? (
-            <p className="empty-inline">{isSpeakingStructured ? "No student has opened it yet." : "No submissions yet."}</p>
-          ) : (
-            <div className="sub-list">{submittedRoster.map(renderRow)}</div>
+          <AssignmentStats stats={stats} />
+          {isPaper && (
+            <div className="tabs">
+              <button className={`tab ${tab === "students" ? "active" : ""}`} onClick={() => setTab("students")}>Students ({roster.length})</button>
+              <button className={`tab ${tab === "questions" ? "active" : ""}`} onClick={() => setTab("questions")}>Questions ({work.questions.length})</button>
+            </div>
           )}
-
-          <h3 className="section-title" style={{ marginTop: 22 }}>{isSpeakingStructured ? "Not viewed yet" : "Not submitted"} ({notSubmittedRoster.length})</h3>
-          {notSubmittedRoster.length === 0 ? (
-            <p className="empty-inline">{isSpeakingStructured ? "Everyone has opened it." : "Everyone has submitted."}</p>
-          ) : (
-            <div className="sub-list">{notSubmittedRoster.map(renderRow)}</div>
-          )}
+          {isPaper && tab === "questions"
+            ? <QuestionsTable questions={work.questions} handed={stats?.handed || 0} />
+            : <StudentsTable rows={work.rows} type={isStructured ? assignment.type : "none"} onOpen={openStudent} />}
         </>
       )}
 
