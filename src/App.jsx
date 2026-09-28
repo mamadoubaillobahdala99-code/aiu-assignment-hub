@@ -33,7 +33,10 @@ function screenToHash(s) {
   for (const [k, v] of Object.entries(s)) {
     // examLocked is never kept in the address: the screen reads it from
     // the database itself (livraison 69) — as text, "false" looked true.
-    if (k === "name" || k === "examLocked" || v === undefined || v === null || typeof v === "object") continue;
+    // dup (livraison 70) is a one-time request ("open with the Duplicate
+    // panel ready"): never kept in the address, so a refresh does not
+    // open the panel again.
+    if (k === "name" || k === "examLocked" || k === "dup" || v === undefined || v === null || typeof v === "object") continue;
     params.set(k, String(v));
   }
   // Livraison 69: "where Back goes" travels in the address too, so a
