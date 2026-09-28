@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from "react";
-import { BookOpen, Users, Plus, Check, Clock, AlertTriangle, LogOut, GraduationCap, FileText, ChevronRight, X, Copy, CheckCircle2, Headphones, PenLine, Mic, ListChecks, ArrowLeft, Loader2, Timer, Highlighter, Maximize, Minimize, User, Menu, ShieldCheck } from "lucide-react";
+import { BookOpen, Users, Plus, Check, Clock, AlertTriangle, LogOut, GraduationCap, FileText, ChevronRight, X, Copy, CheckCircle2, Headphones, PenLine, Mic, ListChecks, ArrowLeft, Loader2, Timer, Highlighter, Maximize, Minimize, User, Menu, ShieldCheck, Home } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import { TeacherHome } from "./features/assignment-hub/TeacherHome";
 import { TeacherDashboard } from "./features/assignment-hub/TeacherDashboard";
 import { ClassDetail } from "./features/assignment-hub/ClassDetail";
 import { AssignmentTeacher } from "./features/assignment-hub/AssignmentTeacher";
 import { JoinClass } from "./features/assignment-hub/JoinClass";
-import { StudentHome } from "./features/assignment-hub/StudentHome";
+import { StudentAssignments } from "./features/assignment-hub/StudentHome";
+import { StudentDashboard } from "./features/assignment-hub/StudentDashboard";
 import { StudentClasses } from "./features/assignment-hub/StudentClasses";
 import { StudentClassDetail } from "./features/assignment-hub/StudentClassDetail";
 import { Profile } from "./features/assignment-hub/Profile";
@@ -54,6 +55,8 @@ export const SCREEN_ROLES = {
   exams: "teacher",
   "exam-session": "teacher",
   join: "student",
+  // Livraison 71: the student's full list (Home is now their dashboard).
+  "student-assignments": "student",
   "student-classes": "student",
   "student-class-detail": "student",
   "assignment-student": "student",
@@ -135,18 +138,29 @@ export function Shell({ profile, setProfile, userId, onSignOut, screen: rawScree
               <Timer size={17} /> Dashboard
             </button>
           )}
-          <button className={`nav-item ${screen.name === "home" ? "active" : ""}`} onClick={() => setScreen({ name: "home" })}>
-            {isTeacher ? <BookOpen size={17} /> : <ListChecks size={17} />}
-            {isTeacher ? "My classes" : "My assignments"}
-          </button>
+          {isTeacher ? (
+            <button className={`nav-item ${screen.name === "home" ? "active" : ""}`} onClick={() => setScreen({ name: "home" })}>
+              <BookOpen size={17} /> My classes
+            </button>
+          ) : (
+            <>
+              {/* Livraison 71: Home (dashboard) first, then the full list. */}
+              <button className={`nav-item ${screen.name === "home" ? "active" : ""}`} onClick={() => setScreen({ name: "home" })}>
+                <Home size={17} /> Home
+              </button>
+              <button className={`nav-item ${screen.name === "student-assignments" ? "active" : ""}`} onClick={() => setScreen({ name: "student-assignments" })}>
+                <ListChecks size={17} /> My assignments
+              </button>
+            </>
+          )}
           {isTeacher && (
             <button className={`nav-item ${screen.name === "exams" || screen.name === "exam-session" ? "active" : ""}`} onClick={() => setScreen({ name: "exams" })}>
               <ShieldCheck size={17} /> Exams
             </button>
           )}
           {!isTeacher && (
-            <button className={`nav-item ${screen.name === "student-classes" ? "active" : ""}`} onClick={() => setScreen({ name: "student-classes" })}>
-              <BookOpen size={17} /> My Classes
+            <button className={`nav-item ${screen.name === "student-classes" || screen.name === "student-class-detail" ? "active" : ""}`} onClick={() => setScreen({ name: "student-classes" })}>
+              <BookOpen size={17} /> My classes
             </button>
           )}
           {!isTeacher && (
@@ -211,7 +225,8 @@ export function Shell({ profile, setProfile, userId, onSignOut, screen: rawScree
           <ExamSessionDetail sessionId={screen.sessionId} userId={userId} setScreen={setScreen} showToast={showToast} />
         )}
         {screen.name === "home" && isTeacher && <TeacherHome userId={userId} setScreen={setScreen} showToast={showToast} />}
-        {screen.name === "home" && !isTeacher && <StudentHome userId={userId} setScreen={setScreen} showToast={showToast} />}
+        {screen.name === "home" && !isTeacher && <StudentDashboard userId={userId} profile={profile} setScreen={setScreen} />}
+        {screen.name === "student-assignments" && !isTeacher && <StudentAssignments userId={userId} setScreen={setScreen} />}
         {screen.name === "profile" && (
           <Profile profile={profile} setProfile={setProfile} userId={userId} setScreen={setScreen} showToast={showToast} />
         )}
