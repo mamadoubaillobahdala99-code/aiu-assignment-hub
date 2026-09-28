@@ -32,7 +32,7 @@ const CRITERIA = [
 //               room's work, so Edit and Delete disappear. Preview and
 //               Duplicate stay. The database refuses it too (a trigger),
 //               this only spares the teacher the error.
-export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen, showToast, returnTo, examLocked }) {
+export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen, showToast, returnTo, examLocked, openDuplicate }) {
   const [assignment, setAssignment] = useState(null);
   const [roster, setRoster] = useState([]);
   const [isStructured, setIsStructured] = useState(false);
@@ -58,6 +58,15 @@ export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen,
   const [homeName, setHomeName] = useState("");
   // After "Duplicate": we stay here, with a link to the copy.
   const [lastCopy, setLastCopy] = useState(null);
+  // Livraison 70: "Duplicate…" chosen from the class's table opens this
+  // page with the Duplicate panel ready. The request is used once: it is
+  // taken out of the address, so a refresh does not open it again.
+  useEffect(() => {
+    if (!openDuplicate) return;
+    setShowDuplicate(true);
+    const cleaned = window.location.hash.replace(/([?&])dup=1(&|$)/, (m, a, b) => (b ? a : "")).replace(/[?&]$/, "");
+    if (cleaned !== window.location.hash) window.history.replaceState(null, "", cleaned);
+  }, [openDuplicate, assignmentId]);
 
   const load = useCallback(async () => {
     const { data: a } = await supabase.from("assignments").select("*").eq("id", assignmentId).single();
