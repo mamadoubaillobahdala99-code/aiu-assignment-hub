@@ -1,124 +1,170 @@
-import React, { useState, useEffect, useCallback } from "react";
-import { BookOpen, Users, Plus, Check, Clock, AlertTriangle, LogOut, GraduationCap, FileText, ChevronRight, X, Copy, CheckCircle2, Headphones, PenLine, Mic, ListChecks, ArrowLeft, Loader2, Timer, Highlighter } from "lucide-react";
-import { supabase } from "../../supabaseClient";
-import { uid, makeCode, TYPES, fmtDate, daysUntil, wordCount, isPdfUrl } from "../../lib/utils";
-import { AttachmentPreview, PageHeader, EmptyState, CenterSpinner, Modal, StatusBadge } from "../../components/shared";
-import { TicketCard } from "./TicketCard";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { Users, FileText, Search } from "lucide-react";
+import { TYPES } from "../../lib/utils";
+import { EmptyState, CenterSpinner } from "../../components/shared";
+import { loadStudentWork, isDone, sortTodo, sortDone, actionLabel, resultLabel } from "./studentWork";
 
-export function StudentHome({ userId, setScreen, showToast }) {
-  const [items, setItems] = useState(null);
-  const [classCount, setClassCount] = useState(0);
+// Livraison 71 — the student's full list of assignments ("My assignments"),
+// in two parts: To do (most urgent first) and Done (newest first, with the
+// result once the teacher has published it). The same two tables are used
+// on a class page.
 
-  const load = useCallback(async () => {
-    const { data: joined } = await supabase.from("roster").select("class_id, classes(id, name, kind)").eq("student_id", userId);
-    // A student who sat an exam is on that exam's private container as
-    // well. It is not a class and must never show up as one.
-    const rosterRows = (joined || []).filter((r) => r.classes?.kind !== "exam");
-    const classIds = rosterRows.map((r) => r.class_id);
-    setClassCount(classIds.length);
-    if (classIds.length === 0) { setItems([]); return; }
+const SKILLS = ["Reading", "Listening", "Writing", "Speaking"];
+const icClass = { Reading: "ic-reading", Listening: "ic-listening", Writing: "ic-writing", Speaking: "ic-speaking" };
 
-    const { data: assignments } = await supabase.from("assignments").select("*").in("class_id", classIds);
+export function TypeIcon({ it, size = 17 }) {
+  const Icon = (TYPES[it.type] || TYPES.Other).icon;
+  return <span className={`type-ic ${icClass[it.skill] || "ic-reading"}`}><Icon size={size} /></span>;
+}
 
-    // Question Engine assignments (Reading/Listening built with the new
-    // structured builder) never write to `submissions` — they use
-    // exam_sections + exam_attempts + student_answers instead. Figure
-    // out which assignments are which so each gets the right status.
-    const assignmentIds = (assignments || []).map((a) => a.id);
-    const { data: qeSections } =
-      assignmentIds.length > 0
-        ? await supabase.from("exam_sections").select("assignment_id").in("assignment_id", assignmentIds)
-        : { data: [] };
-    const qeAssignmentIds = new Set((qeSections || []).map((s) => s.assignment_id));
+export function DuePill({ due }) {
+  if (due.tone === "none") return <span className="dt-muted">No due date</span>;
+  return <span className={`pill ${due.tone === "danger" ? "pill-rose" : due.tone === "warn" ? "pill-amber" : "pill-plain"}`}>{due.label}</span>;
+}
 
-    // "Started" and "submitted" both come from the attempt row, which is
-    // the authoritative record (submit_student_answers stamps
-    // submitted_at). We no longer ask student_answers: a student can only
-    // read those once the teacher has published the results, so using
-    // them here would show a submitted exam as still to be done. It is
-    // also one network call less.
-    const { data: myAttempts } =
-      qeAssignmentIds.size > 0
-        ? await supabase.from("exam_attempts").select("assignment_id, submitted_at").eq("student_id", userId).in("assignment_id", [...qeAssignmentIds])
-        : { data: [] };
-    const attemptedIds = new Set((myAttempts || []).map((r) => r.assignment_id));
-    const submittedIds = new Set((myAttempts || []).filter((r) => r.submitted_at).map((r) => r.assignment_id));
+function fmtDay(iso) {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+}
 
-    // Structured Writing keeps its answers in writing_responses: a saved
-    // draft means "in progress", a submitted text means "submitted".
-    const writingIds = (assignments || []).filter((a) => a.type === "Writing" && qeAssignmentIds.has(a.id)).map((a) => a.id);
-    const { data: myWriting } =
-      writingIds.length > 0
-        ? await supabase.from("writing_responses").select("assignment_id, submitted_at").eq("student_id", userId).in("assignment_id", writingIds)
-        : { data: [] };
-    for (const w of myWriting || []) {
-      if (w.submitted_at) submittedIds.add(w.assignment_id);
-      else attemptedIds.add(w.assignment_id);
-    }
-
-    // Structured Speaking is consult-only: "Viewed" once opened.
-    const speakingIds = (assignments || []).filter((a) => a.type === "Speaking" && qeAssignmentIds.has(a.id)).map((a) => a.id);
-    const { data: myViews } =
-      speakingIds.length > 0
-        ? await supabase.from("speaking_views").select("assignment_id").eq("student_id", userId).in("assignment_id", speakingIds)
-        : { data: [] };
-    const viewedIds = new Set((myViews || []).map((r) => r.assignment_id));
-
-    const { data: myFeedback } =
-      qeAssignmentIds.size > 0
-        ? await supabase.from("assignment_feedback").select("assignment_id, released_at").eq("student_id", userId).in("assignment_id", [...qeAssignmentIds])
-        : { data: [] };
-    const releasedIds = new Set((myFeedback || []).filter((f) => f.released_at).map((f) => f.assignment_id));
-
-    const combined = (assignments || []).map((a) => {
-      const cls = rosterRows.find((r) => r.class_id === a.class_id)?.classes;
-      let status;
-      if (qeAssignmentIds.has(a.id) && a.type === "Speaking") {
-        status = viewedIds.has(a.id) ? "viewed" : "to-view";
-      } else if (qeAssignmentIds.has(a.id)) {
-        if (submittedIds.has(a.id)) {
-          const released = a.auto_release_score || releasedIds.has(a.id);
-          status = released ? "graded" : "submitted";
-        } else if (attemptedIds.has(a.id)) status = "in-progress";
-        else status = "pending";
-      } else {
-        // An assignment with no Part yet — a builder that was interrupted
-        // before it could write its content. Nothing has been handed in,
-        // so it is simply "to do"; the student sees an explanatory screen
-        // if they open it.
-        status = "pending";
-      }
-      return { ...a, dueDate: a.due_date, className: cls?.name || "Class", status };
-    });
-    combined.sort((a, b) => {
-      if (!a.dueDate) return 1;
-      if (!b.dueDate) return -1;
-      return new Date(a.dueDate) - new Date(b.dueDate);
-    });
-    setItems(combined);
-  }, [userId]);
-
-  useEffect(() => { load(); }, [load]);
-
-  if (items === null) return <CenterSpinner />;
-
+export function TodoTable({ items, open, showClass = true }) {
+  if (items.length === 0) return <p className="empty-inline">Nothing to do here — well done.</p>;
   return (
-    <div className="page page-wide">
-      <PageHeader eyebrow="Student" title="My assignments" />
-      {classCount === 0 ? (
-        <EmptyState icon={<Users size={26} />} title="You haven't joined a class yet" body="Get a join code from your teacher, then join from the sidebar." />
-      ) : items.length === 0 ? (
-        <EmptyState icon={<FileText size={26} />} title="Nothing posted yet" body="Your teacher hasn't added any assignments to your class(es) yet." />
-      ) : (
-        <div className="ticket-list">
-          {items.map((a) => (
-            <TicketCard key={a.id} assignment={a} onClick={() => setScreen({ name: "assignment-student", classId: a.class_id, assignmentId: a.id })} statusBadge={<StatusBadge status={a.status} />} />
+    <div className="dt-wrap">
+      <table className="dt">
+        <thead><tr><th>Assignment</th>{showClass && <th className="hide-sm">Class</th>}<th className="hide-sm">Time</th><th className="hide-sm">Due</th><th aria-label="Open" /></tr></thead>
+        <tbody>
+          {items.map((it) => (
+            <tr key={it.id} className="dt-row" onClick={() => open(it)}>
+              <td>
+                <div className="dt-title">
+                  <TypeIcon it={it} />
+                  <span className="dt-title-text">
+                    <button type="button" className="dt-open" onClick={(e) => { e.stopPropagation(); open(it); }}>{it.title}</button>
+                    <span className="dt-sub">{it.type}{showClass ? <span className="show-sm"> · {it.className}</span> : null}{it.status === "in-progress" ? " · started" : ""}{it.due.tone !== "none" && <span className={`show-sm due-${it.due.tone}`}> · {it.due.label}</span>}</span>
+                  </span>
+                </div>
+              </td>
+              {showClass && <td className="hide-sm">{it.className}</td>}
+              <td className="hide-sm dt-nowrap">{it.time_limit_minutes && it.skill !== "Speaking" ? `${it.time_limit_minutes} min` : "—"}</td>
+              <td className="hide-sm"><DuePill due={it.due} /></td>
+              <td className="dt-actions" onClick={(e) => e.stopPropagation()}>
+                <button type="button" className="btn-ghost btn-go" onClick={() => open(it)}>{actionLabel(it)} →</button>
+              </td>
+            </tr>
           ))}
-        </div>
-      )}
+        </tbody>
+      </table>
     </div>
   );
 }
 
-// ---------- Student: assignment detail (submit) ----------
-// ---------- Reading passage with click-to-highlight ----------
+export function DoneTable({ items, open, showClass = true }) {
+  if (items.length === 0) return <p className="empty-inline">Nothing handed in yet.</p>;
+  return (
+    <div className="dt-wrap">
+      <table className="dt">
+        <thead><tr><th>Assignment</th>{showClass && <th className="hide-sm">Class</th>}<th className="hide-sm">{"Handed in"}</th><th>Result</th><th className="hide-sm" aria-label="Open" /></tr></thead>
+        <tbody>
+          {items.map((it) => {
+            const r = resultLabel(it);
+            return (
+              <tr key={it.id} className="dt-row" onClick={() => open(it)}>
+                <td>
+                  <div className="dt-title">
+                    <TypeIcon it={it} />
+                    <span className="dt-title-text">
+                      <button type="button" className="dt-open" onClick={(e) => { e.stopPropagation(); open(it); }}>{it.title}</button>
+                      <span className="dt-sub">{it.type}{showClass ? <span className="show-sm"> · {it.className}</span> : null}</span>
+                    </span>
+                  </div>
+                </td>
+                {showClass && <td className="hide-sm">{it.className}</td>}
+                <td className="hide-sm dt-muted dt-nowrap">{it.status === "viewed" ? `Opened ${fmtDay(it.doneAt)}` : fmtDay(it.doneAt)}</td>
+                <td><span className={`pill ${r.tone === "teal" ? "pill-teal" : ""}`}>{r.text}</span></td>
+                <td className="dt-actions hide-sm" onClick={(e) => e.stopPropagation()}>
+                  <button type="button" className="btn-ghost btn-go" onClick={() => open(it)}>{it.status === "graded" ? "See →" : "Open →"}</button>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// Search box + one chip per skill, shared by the student lists.
+export function useListFilter(items) {
+  const [query, setQuery] = useState("");
+  const [skill, setSkill] = useState("All");
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return (items || []).filter((it) => (skill === "All" || it.skill === skill) && (!q || String(it.title || "").toLowerCase().includes(q)));
+  }, [items, query, skill]);
+  const bar = (
+    <div className="dt-toolbar">
+      <label className="dt-search">
+        <Search size={15} />
+        <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search assignments…" aria-label="Search assignments" />
+      </label>
+      <div className="dt-chips" role="group" aria-label="Filter by skill">
+        {["All", ...SKILLS].map((s) => (
+          <button key={s} type="button" className={`dt-chip ${skill === s ? "on" : ""}`} aria-pressed={skill === s} onClick={() => setSkill(s)}>{s}</button>
+        ))}
+      </div>
+    </div>
+  );
+  return { filtered, bar, reset: () => { setQuery(""); setSkill("All"); }, active: query.trim() !== "" || skill !== "All" };
+}
+
+export function StudentAssignments({ userId, setScreen }) {
+  const [data, setData] = useState(null);
+  const load = useCallback(async () => { setData(await loadStudentWork(userId)); }, [userId]);
+  useEffect(() => { load(); }, [load]);
+  const { filtered, bar, reset, active } = useListFilter(data?.items);
+
+  if (data === null) return <CenterSpinner />;
+  const open = (it) => setScreen({ name: "assignment-student", classId: it.class_id, assignmentId: it.id });
+  const todo = sortTodo(filtered.filter((it) => !isDone(it)));
+  const done = sortDone(filtered.filter(isDone));
+  const allTodo = data.items.filter((it) => !isDone(it));
+  const dueToday = allTodo.filter((it) => it.due.tone === "danger").length;
+
+  return (
+    <div className="page page-wide">
+      <div className="ph">
+        <div className="ph-main">
+          <div>
+            <div className="eyebrow">Student</div>
+            <h1 className="ph-title">My assignments</h1>
+            {data.items.length > 0 && (
+              <div className="ph-meta">
+                {dueToday > 0 && <span className="pill pill-rose">{dueToday} due today or late</span>}
+                <span className="pill">{allTodo.length} to do</span>
+                <span className="pill pill-teal">{data.items.length - allTodo.length} done</span>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {data.classes.length === 0 ? (
+        <EmptyState icon={<Users size={26} />} title="You haven't joined a class yet" body="Get a join code from your teacher, then use Join a class in the menu." />
+      ) : data.items.length === 0 ? (
+        <EmptyState icon={<FileText size={26} />} title="Nothing posted yet" body="Your teacher hasn't added any assignments to your class(es) yet." />
+      ) : (
+        <>
+          {bar}
+          {active && todo.length + done.length === 0 && (
+            <p className="empty-inline">No assignment matches. <button className="dt-reset" onClick={reset}>Show all</button></p>
+          )}
+          <div className="sec-label">To do ({todo.length})</div>
+          <TodoTable items={todo} open={open} />
+          <div className="sec-label" style={{ marginTop: 26 }}>Done ({done.length})</div>
+          <DoneTable items={done} open={open} />
+        </>
+      )}
+    </div>
+  );
+}
