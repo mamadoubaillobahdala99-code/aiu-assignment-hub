@@ -1,0 +1,86 @@
+/* Livraison 67 — public home page. Every rule starts with .lp so nothing
+   here can reach the rest of the site. */
+.lp { min-height: 100vh; background: var(--paper); color: var(--ink); font-family: 'Public Sans', system-ui, sans-serif; }
+.lp-hero { background: radial-gradient(900px 600px at 75% 45%, #24507A 0%, var(--sidebar) 45%, #122A44 100%); color: #fff; padding-bottom: 60px; }
+.lp-top { display: flex; align-items: center; justify-content: space-between; padding: 22px 56px; max-width: 1400px; margin: 0 auto; }
+.lp-descr { font-size: 13px; font-weight: 600; letter-spacing: 0.2em; text-transform: uppercase; color: #C9D8E6; }
+.lp-nav { display: flex; gap: 10px; }
+
+.lp-btn { border-radius: 999px; padding: 10px 22px; font-family: inherit; font-size: 14px; font-weight: 600; cursor: pointer; border: 1.5px solid rgba(255,255,255,0.55); background: transparent; color: #fff; transition: transform .15s, background .15s, opacity .15s; }
+.lp-btn:hover { transform: translateY(-1px); }
+.lp-btn:focus-visible { outline: 3px solid #7FD1BE; outline-offset: 2px; }
+.lp-btn-line:hover { background: rgba(255,255,255,0.08); }
+.lp-btn-white { background: #fff; color: var(--sidebar); border-color: #fff; }
+.lp-btn-orange { background: var(--amber); border-color: var(--amber); color: #fff; }
+.lp-btn-orange:hover { opacity: 0.92; }
+.lp-big { padding: 15px 30px; font-size: 15.5px; }
+
+.lp-main { display: grid; grid-template-columns: 1fr 1.05fr; align-items: center; gap: 10px; padding: 10px 56px 0; max-width: 1400px; margin: 0 auto; }
+.lp-tag { display: inline-block; background: rgba(127,209,190,0.14); color: #7FD1BE; font-size: 12.5px; font-weight: 600; padding: 6px 12px; border-radius: 999px; margin-bottom: 22px; letter-spacing: 0.02em; }
+.lp-title { font-family: 'Fraunces', Georgia, serif; font-size: 54px; line-height: 1.08; font-weight: 600; margin: 0 0 18px; color: #fff; }
+.lp-title em { font-style: normal; color: #7FD1BE; }
+.lp-lead { font-size: 19px; line-height: 1.5; color: #fff; margin: 0 0 8px; max-width: 520px; }
+.lp-sub { font-size: 16px; line-height: 1.55; color: #C9D8E6; margin: 0 0 28px; max-width: 520px; }
+.lp-ctas { display: flex; gap: 12px; margin-bottom: 18px; flex-wrap: wrap; }
+.lp-small { font-size: 13px; color: #9FB6CC; margin: 0; }
+
+.lp-globe { position: relative; height: 540px; }
+.lp-globe svg { width: 100%; height: 100%; }
+.lp-grid { stroke: #7FD1BE; stroke-opacity: 0.42; stroke-width: 1.3; }
+.lp-rim { stroke: #7FD1BE; stroke-opacity: 0.6; stroke-width: 1.6; }
+.lp-orbit { stroke: #7FD1BE; stroke-dasharray: 6 8; fill: none; }
+.lp-orbit-back { stroke-opacity: 0.25; stroke-width: 1.5; }
+.lp-orbit-front { stroke-opacity: 0.6; stroke-width: 1.8; animation: lp-flow 6s linear infinite; }
+.lp-moon { fill: var(--amber); }
+@keyframes lp-flow { to { stroke-dashoffset: -140; } }
+.lp-chip { position: absolute; display: flex; align-items: center; gap: 8px; padding: 8px 14px 8px 10px; border-radius: 999px; font-size: 13px; font-weight: 600; color: #fff; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.22); backdrop-filter: blur(4px); animation: lp-float 7s ease-in-out infinite; }
+.lp-chip:nth-of-type(2) { animation-delay: -2s; }
+.lp-chip:nth-of-type(3) { animation-delay: -4s; }
+.lp-chip:nth-of-type(4) { animation-delay: -5.5s; }
+.lp-chip b { width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; color: #fff; }
+@keyframes lp-float { 50% { transform: translateY(-8px); } }
+.lp-still .lp-orbit-front, .lp-still .lp-chip { animation: none; }
+@media (prefers-reduced-motion: reduce) { .lp-orbit-front, .lp-chip, .lp-btn { animation: none; transition: none; } }
+
+.lp-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; padding: 0 56px; margin: -34px auto 0; max-width: 1400px; position: relative; }
+.lp-card { background: #fff; border-radius: 16px; padding: 18px 20px; display: flex; gap: 14px; align-items: flex-start; box-shadow: 0 10px 30px rgba(18,42,68,0.12); }
+.lp-ic { width: 40px; height: 40px; border-radius: 10px; background: var(--teal-soft); color: var(--teal); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.lp-card h3 { font-size: 15px; color: var(--sidebar); margin: 0 0 4px; }
+.lp-card p { font-size: 13px; color: var(--ink-soft); line-height: 1.45; margin: 0; }
+.lp-foot { padding: 22px 56px 30px; font-size: 11.5px; color: #8A948D; max-width: 1400px; margin: 0 auto; line-height: 1.5; }
+
+/* The log-in / sign-up window. */
+.lp-veil { position: fixed; inset: 0; z-index: 50; background: rgba(18,20,15,0.45); backdrop-filter: blur(3px); display: flex; align-items: center; justify-content: center; padding: 20px; overflow-y: auto; }
+.lp-window { position: relative; width: 100%; max-width: 440px; margin: auto; }
+.lp-window .auth-card { max-width: none; box-shadow: 0 30px 80px rgba(0,0,0,0.25); background: #fff; }
+.lp-close { position: absolute; top: 12px; right: 12px; z-index: 1; width: 34px; height: 34px; border-radius: 50%; border: none; background: transparent; color: var(--ink-soft); cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.lp-close:hover { background: var(--paper); }
+.lp-close:focus-visible { outline: 3px solid var(--teal); }
+
+/* Tablet */
+@media (max-width: 980px) {
+  .lp-main { grid-template-columns: 1fr; }
+  .lp-globe { height: 380px; order: -1; }
+  .lp-cards { grid-template-columns: 1fr; margin-top: -24px; }
+}
+/* Phone */
+@media (max-width: 560px) {
+  .lp-top { padding: 16px 18px; }
+  .lp-descr { font-size: 11.5px; letter-spacing: 0.16em; }
+  .lp-hide-phone { display: none; }
+  .lp-btn { padding: 9px 16px; font-size: 13px; }
+  .lp-main { padding: 0 18px; }
+  .lp-globe { height: 290px; margin: 0 -8px; }
+  .lp-chip { font-size: 11.5px; padding: 6px 11px 6px 8px; }
+  .lp-chip b { width: 18px; height: 18px; font-size: 9px; }
+  .lp-title { font-size: 34px; }
+  .lp-lead { font-size: 17px; }
+  .lp-sub { font-size: 15px; margin-bottom: 22px; }
+  .lp-ctas { flex-direction: column; }
+  .lp-big { width: 100%; }
+  .lp-cards { padding: 0 18px; gap: 12px; }
+  .lp-foot { padding: 20px 18px 28px; }
+  .lp-veil { padding: 0; align-items: stretch; }
+  .lp-window { max-width: none; min-height: 100%; }
+  .lp-window .auth-card { border-radius: 0; min-height: 100vh; padding: 56px 22px 32px; box-shadow: none; border: none; }
+}
