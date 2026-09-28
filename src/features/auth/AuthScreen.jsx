@@ -57,15 +57,10 @@ export function AuthForm({ showToast, initialMode = "signup" }) {
     <div className="auth-card">
       <h2 className="auth-form-title">{mode === "signup" ? "Create your account" : "Welcome back"}</h2>
 
-      <div className="auth-tabs">
-        <button className={`auth-tab ${mode === "signup" ? "active" : ""}`} onClick={() => setMode("signup")}>Create account</button>
-        <button className={`auth-tab ${mode === "login" ? "active" : ""}`} onClick={() => setMode("login")}>Log in</button>
-      </div>
-
       {mode === "signup" && (
         <>
           <label className="field-label">Your name</label>
-          <input className="field-input" placeholder="e.g. Mamadou Bailo" value={name} onChange={(e) => setName(e.target.value)} />
+          <input className="field-input" placeholder="e.g. Aicha Lamarana" value={name} onChange={(e) => setName(e.target.value)} />
           <label className="auth-teacher-request" style={{
             display: "flex", gap: 10, alignItems: "flex-start", marginTop: 14, padding: "11px 12px",
             border: `1px solid ${teacherRequest ? "var(--teal)" : "var(--line)"}`, borderRadius: 10,
@@ -99,9 +94,13 @@ export function AuthForm({ showToast, initialMode = "signup" }) {
       <button className="btn-primary auth-submit" disabled={busy} onClick={submit}>
         {busy ? "Please wait…" : mode === "signup" ? "Create account" : "Log in"} <ChevronRight size={16} />
       </button>
-      {mode === "signup" && (
-        <p className="auth-note">A confirmation email may be sent depending on your project settings — check your inbox if login doesn't work right away.</p>
-      )}
+      {/* Livraison 68: one small sentence to switch, instead of two tabs. */}
+      <p className="auth-switch">
+        {mode === "signup" ? "Already have an account? " : "New here? "}
+        <button type="button" className="auth-switch-link" onClick={() => { setErr(""); setMode(mode === "signup" ? "login" : "signup"); }}>
+          {mode === "signup" ? "Log in" : "Create an account"}
+        </button>
+      </p>
     </div>
   );
 }
