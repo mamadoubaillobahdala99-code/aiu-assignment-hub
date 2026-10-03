@@ -761,4 +761,43 @@ mark.rs-mark-on { outline: 2px solid var(--rose); outline-offset: 1px; }
   .next-up-title { font-size: 20px; }
   .skill-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+/* Livraison 77 — Profile, Join a class, teacher preview. */
+.pf-grid { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 18px; align-items: start; }
+.pf-who { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; }
+.pf-avatar { width: 56px; height: 56px; font-size: 22px; }
+.pf-who-main { display: flex; flex-direction: column; min-width: 0; }
+.pf-who-main b { font-size: 17px; overflow-wrap: anywhere; }
+.pf-inline { display: flex; gap: 8px; align-items: stretch; }
+.pf-inline .field-input { flex: 1; min-width: 0; }
+.pf-inline .btn-ghost { white-space: nowrap; }
+.pf-readonly { padding: 11px 13px; border: 1px dashed var(--line); border-radius: 8px; background: #FAF9F5; font-size: 14.5px; color: var(--ink-soft); overflow-wrap: anywhere; }
+.pf-acts { display: flex; flex-direction: column; }
+.pf-act { display: flex; align-items: center; gap: 10px; width: 100%; padding: 11px 2px; background: none; border: none; border-bottom: 1px solid #EFECE3; font-family: inherit; font-size: 14px; color: var(--ink); text-align: left; cursor: pointer; }
+.pf-act:last-child { border-bottom: none; }
+.pf-act span { flex: 1; }
+.pf-act b { font-family: 'Fraunces', serif; font-size: 18px; }
+.pf-act .pf-act-go { color: var(--ink-soft); }
+.pf-act:hover span, .pf-act:hover .pf-act-go { color: var(--teal); }
+.pf-admin { border-style: dashed; border-color: #1B3A5C; }
+.pf-admin .panel-h h2 { display: inline-flex; align-items: center; gap: 7px; color: #1B3A5C; }
+.jc-page { max-width: 640px; margin: 0 auto; }
+.jc-card { text-align: center; padding: 48px 8px 24px; }
+.jc-boxes { display: flex; justify-content: center; gap: 10px; margin: 26px 0 8px; }
+.jc-box { width: 58px; height: 66px; border: 2px solid var(--line); border-radius: 12px; background: #fff; text-align: center; font-family: 'IBM Plex Mono', monospace; font-size: 28px; font-weight: 700; color: var(--ink); text-transform: uppercase; outline: none; padding: 0; transition: border-color .15s, box-shadow .15s; }
+.jc-box.on { border-color: var(--teal); }
+.jc-box:focus { border-color: var(--teal); box-shadow: 0 0 0 3px var(--teal-soft); }
+.jc-boxes.bad .jc-box { border-color: var(--rose); }
+.jc-err { margin: 6px auto 0; max-width: 420px; }
+.jc-go { margin-top: 18px; min-width: 200px; justify-content: center; }
+.jc-mine { margin-top: 20px; font-size: 13.5px; color: var(--ink-soft); }
+.pv-views { margin-bottom: 14px; }
+.pv-key .pv-part-row td { background: #F6F4EE; font-size: 11.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-soft); padding-top: 8px; padding-bottom: 8px; }
+.pv-part .qe-sp-questions, .pv-part .qe-sp-cuecard { margin-top: 4px; }
+@media (max-width: 900px) { .pf-grid { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 760px) {
+  .jc-card { padding-top: 24px; }
+  .jc-boxes { gap: 7px; }
+  .jc-box { width: 48px; height: 58px; font-size: 24px; }
+  .pf-inline { flex-wrap: wrap; }
+}
 `;
