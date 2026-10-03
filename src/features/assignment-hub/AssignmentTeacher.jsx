@@ -34,7 +34,7 @@ const CRITERIA = [
 //               room's work, so Edit and Delete disappear. Preview and
 //               Duplicate stay. The database refuses it too (a trigger),
 //               this only spares the teacher the error.
-export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen, showToast, returnTo, examLocked, openDuplicate, studentId }) {
+export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen, showToast, returnTo, examLocked, openDuplicate, studentId, view }) {
   const [assignment, setAssignment] = useState(null);
   const [roster, setRoster] = useState([]);
   const [isStructured, setIsStructured] = useState(false);
@@ -58,7 +58,9 @@ export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen,
   const [duplicateTargetClass, setDuplicateTargetClass] = useState("");
   const [duplicating, setDuplicating] = useState(false);
   // Reading the paper itself, with its answer key — no student needed.
-  const [previewing, setPreviewing] = useState(false);
+  // Livraison 77: the preview is part of the address (view=preview), so a
+  // refresh stays on it and the browser's Back returns to the assignment.
+  const previewing = view === "preview";
   // Livraison 69: where this paper lives. undefined = not read yet;
   // null = a class paper; otherwise its exam and that exam's state.
   const [exam, setExam] = useState(undefined);
@@ -280,10 +282,6 @@ export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen,
     return assignment.type === "Writing" ? <TeacherWritingReview key={activeRow.id} {...common} /> : <TeacherQuestionEngineReview key={activeRow.id} {...common} />;
   }
 
-  if (previewing) {
-    return <TeacherPaperPreview assignmentId={assignmentId} onBack={() => setPreviewing(false)} />;
-  }
-
   const meta = TYPES[assignment.type] || TYPES.Other;
   const Icon = meta.icon;
 
@@ -307,6 +305,21 @@ export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen,
             editAssignmentId: assignmentId,
             returnTo: examHome || returnTo,
           }
+    );
+  }
+
+  if (previewing) {
+    // Wait until we know whether this paper belongs to an exam, so the
+    // breadcrumb and the Edit button are right from the first view.
+    if (exam === undefined) return <CenterSpinner />;
+    const closePreview = () => setScreen(base);
+    const crumbs = exam
+      ? [{ label: "Exams", onClick: () => setScreen({ name: "exams" }) }, { label: homeName || "Exam", onClick: () => setScreen(backScreen) }]
+      : [{ label: "My classes", onClick: () => setScreen({ name: "home" }) }, { label: homeName || "Class", onClick: () => setScreen(backScreen) }];
+    return (
+      <TeacherPaperPreview assignmentId={assignmentId} onBack={closePreview}
+                           crumbs={[...crumbs, { label: assignment.title, onClick: closePreview }, { label: "Preview" }]}
+                           onEdit={isStructured && !locked ? openEdit : null} />
     );
   }
 
@@ -343,7 +356,7 @@ export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen,
         </div>
         <div className="ph-actions">
           {isStructured && (
-            <button className="btn-ghost" onClick={() => setPreviewing(true)}>
+            <button className="btn-ghost" onClick={() => setScreen({ ...base, view: "preview" })}>
               <Eye size={15} /> Preview
             </button>
           )}
