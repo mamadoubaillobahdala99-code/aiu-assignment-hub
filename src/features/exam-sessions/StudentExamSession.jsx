@@ -19,6 +19,12 @@ import { isPhoneScreen } from "../question-engine/useInvigilation";
 // paper has neither content nor timer. This screen only draws what the
 // server says, so a candidate who tampers with it gains nothing.
 //
+// Livraison 79 — « Everyone together » (script 46): when the teacher starts
+// each paper for the whole room, this list shows the waiting room, « Waiting
+// for the teacher to start … », the time left for a late candidate, and a
+// paper missed. It still only draws what the server says; the paper's own
+// screen is unchanged.
+//
 // A paper opens INSIDE this screen (the same bridge the classes use), so
 // finishing one brings the candidate straight back to the list without
 // ever passing through the normal app — which is what an exam room needs.
@@ -175,11 +181,15 @@ export function StudentExamSession({ userId, screen, setScreen, showToast }) {
   // is open — nothing must disturb a candidate who is writing.
   const statusRef = useRef(loadStatus);
   statusRef.current = loadStatus;
+  // Livraison 79: every 5 seconds while the room waits for the teacher's
+  // Start, so the Start button appears quickly for everyone.
+  const waitingRoom = Boolean(status && status.start_mode === "together" && !status.free_from && !status.closed_at && !status.results_released_at
+    && (status.items || []).some((i) => i.type !== "Speaking" && !i.room_started_at && !i.submitted && !i.missed));
   useEffect(() => {
     if (!activeId || openPaper) return;
-    const t = setInterval(() => statusRef.current(), 10000);
+    const t = setInterval(() => statusRef.current(), waitingRoom ? 5000 : 10000);
     return () => clearInterval(t);
-  }, [activeId, openPaper]);
+  }, [activeId, openPaper, waitingRoom]);
 
   async function join() {
     const c = code.trim();
@@ -297,6 +307,15 @@ export function StudentExamSession({ userId, screen, setScreen, showToast }) {
   }
 
   const items = status.items || [];
+  // Livraison 79 — « Everyone together ».
+  const together = status.start_mode === "together";
+  const roomFree = Boolean(status.free_from);
+  const offsetMs = status.server_now ? new Date(status.server_now).getTime() - Date.now() : 0;
+  const serverNow = Date.now() + offsetMs;
+  const hm = (iso) => new Date(iso).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+  const waitsForTeacher = (it) => together && !roomFree && it.type !== "Speaking" && !it.room_started_at && !it.submitted && !it.missed;
+  const firstTimed = items.find((i) => i.type !== "Speaking");
+  const noneStarted = together && !roomFree && firstTimed && !items.some((i) => i.room_started_at);
   const released = Boolean(status.results_released_at);
   const closed = Boolean(status.closed_at);
   const allDone = items.length > 0 && items.every((i) => i.submitted);
@@ -326,6 +345,24 @@ export function StudentExamSession({ userId, screen, setScreen, showToast }) {
                 ? "Every paper has been handed in. Nothing can be opened again."
                 : "Your teacher has closed the exam."}{" "}
               Your results will appear here once your teacher publishes them.
+            </em>
+          </div>
+        </div>
+      ) : noneStarted ? (
+        <div className="exs-wait" role="status">
+          <span className="exs-wait-ic"><Hourglass size={26} /></span>
+          <strong>Please wait — your teacher will start {firstTimed.type}</strong>
+          <em>Everyone starts at the same time. The Start button appears here by itself; you don't need to refresh the page.</em>
+          {status.candidates > 0 && <span className="pill">{status.candidates} candidate{status.candidates === 1 ? "" : "s"} in the room</span>}
+        </div>
+      ) : together && !roomFree ? (
+        <div className="exs-banner">
+          <Hourglass size={18} />
+          <div>
+            <strong>Everyone together: your teacher starts each paper.</strong>
+            <em>
+              Same start and same end for everyone. When you hand a paper in, wait here: the next one
+              opens when your teacher starts it. This page updates by itself.
             </em>
           </div>
         </div>
@@ -383,6 +420,15 @@ export function StudentExamSession({ userId, screen, setScreen, showToast }) {
                   <div className="ex-item-sub">
                     {it.type}
                     {it.minutes ? ` · ${it.minutes} minutes` : ""}
+                    {/* Livraison 79: a paper started for the room that I have not
+                        started yet — when it ends, and how much time is left. */}
+                    {together && it.room_started_at && !it.started && !it.submitted && !it.missed && it.minutes && it.readable && !released && !closed && (() => {
+                      const startAt = new Date(it.start_if_now || it.room_started_at).getTime();
+                      const end = startAt + it.minutes * 60000;
+                      const leftMin = Math.max(0, Math.floor((end - serverNow) / 60000));
+                      return <span className="exs-late"> · started at {hm(it.room_started_at)} — ends at {hm(new Date(end).toISOString())} · {leftMin} min left</span>;
+                    })()}
+                    {it.extra_minutes > 0 && <span className="exs-late"> · +{it.extra_minutes} min from your teacher</span>}
                   </div>
                 </div>
 
@@ -397,6 +443,10 @@ export function StudentExamSession({ userId, screen, setScreen, showToast }) {
                   </button>
                 ) : it.submitted ? (
                   <span className="exs-state exs-state-done"><CheckCircle2 size={14} /> Handed in</span>
+                ) : it.missed ? (
+                  <span className="exs-state"><MinusCircle size={14} /> Missed — ended at {hm(new Date(new Date(it.room_started_at).getTime() + (it.minutes || 0) * 60000).toISOString())}</span>
+                ) : waitsForTeacher(it) ? (
+                  <span className="exs-state exs-state-wait"><Hourglass size={14} /> Waiting for the teacher to start {it.type}</span>
                 ) : waitingForRoom ? (
                   <span className="exs-state"><Headphones size={14} /> Your teacher starts the recording</span>
                 ) : it.readable && onPhone ? (
