@@ -11,6 +11,7 @@ import { StudentDashboard } from "./features/assignment-hub/StudentDashboard";
 import { StudentClasses } from "./features/assignment-hub/StudentClasses";
 import { StudentClassDetail } from "./features/assignment-hub/StudentClassDetail";
 import { Profile } from "./features/assignment-hub/Profile";
+import { AdminConsole } from "./features/admin/AdminConsole";
 import { AssignmentOpenBridge } from "./features/question-engine/AssignmentOpenBridge";
 import { TeacherReadingBuilder } from "./features/question-engine/TeacherReadingBuilder";
 import { TeacherListeningBuilder } from "./features/question-engine/TeacherListeningBuilder";
@@ -62,7 +63,8 @@ export const SCREEN_ROLES = {
   "assignment-student": "student",
   "student-exam": "student",
   // The administrator's screen, open to either role: the DATABASE
-  // refuses its content to anyone who is not an administrator.
+  // refuses its content to anyone who is not an administrator. Since
+  // livraison 77 it is a page of the app, with the menu on the left.
   admin: "both",
 };
 
@@ -176,7 +178,7 @@ export function Shell({ profile, setProfile, userId, onSignOut, screen: rawScree
         </nav>
 
         {/* Livraison 69: Profile joins the account buttons at the bottom. */}
-        <button className={`nav-item ${screen.name === "profile" ? "active" : ""}`} onClick={() => setScreen({ name: "profile" })}>
+        <button className={`nav-item ${screen.name === "profile" || screen.name === "admin" ? "active" : ""}`} onClick={() => setScreen({ name: "profile" })}>
           <User size={16} /> Profile
         </button>
 
@@ -230,13 +232,14 @@ export function Shell({ profile, setProfile, userId, onSignOut, screen: rawScree
         {screen.name === "profile" && (
           <Profile profile={profile} setProfile={setProfile} userId={userId} setScreen={setScreen} showToast={showToast} />
         )}
+        {screen.name === "admin" && <AdminConsole profile={profile} setScreen={setScreen} />}
         {screen.name === "student-classes" && !isTeacher && <StudentClasses userId={userId} setScreen={setScreen} />}
         {screen.name === "student-class-detail" && !isTeacher && <StudentClassDetail classId={screen.classId} userId={userId} setScreen={setScreen} showToast={showToast} />}
         {screen.name === "join" && !isTeacher && <JoinClass userId={userId} setScreen={setScreen} showToast={showToast} />}
         {screen.name === "student-exam" && !isTeacher && <StudentExamSession userId={userId} screen={screen} setScreen={setScreen} showToast={showToast} />}
         {screen.name === "class" && isTeacher && <ClassDetail classId={screen.classId} setScreen={setScreen} showToast={showToast} />}
         {screen.name === "assignment-teacher" && isTeacher && (
-          <AssignmentTeacher classId={screen.classId} assignmentId={screen.assignmentId} teacherId={userId} setScreen={setScreen} showToast={showToast} returnTo={screen.returnTo} examLocked={screen.examLocked} openDuplicate={screen.dup === "1"} studentId={screen.studentId} />
+          <AssignmentTeacher classId={screen.classId} assignmentId={screen.assignmentId} teacherId={userId} setScreen={setScreen} showToast={showToast} returnTo={screen.returnTo} examLocked={screen.examLocked} openDuplicate={screen.dup === "1"} studentId={screen.studentId} view={screen.view} />
         )}
         {screen.name === "assignment-student" && !isTeacher && (
           <AssignmentOpenBridge userId={userId} classId={screen.classId} assignmentId={screen.assignmentId} setScreen={setScreen} showToast={showToast} />
