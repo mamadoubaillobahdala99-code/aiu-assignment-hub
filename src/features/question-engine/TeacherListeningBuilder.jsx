@@ -11,6 +11,7 @@ import { GroupImagePicker } from "./GroupImage";
 import { useIsExamContainer, countStoredQuestions } from "./useExamContainer";
 import { FormCompletionBuilder, FlowchartCompletionBuilder, WordBankCompletionBuilder, ShortAnswerBuilder } from "./CompletionExtraBuilders";
 import { confirmDialog } from "../../lib/confirmDialog";
+import { BuilderLayout, PartsNav, Checklist, useBuilderCrumbs, makeLeaveGuard } from "./BuilderLayout";
 
 const MAX_LISTENING_PARTS = 4;
 
@@ -433,6 +434,18 @@ export function TeacherListeningBuilder({ classId, teacherId, setScreen, showToa
     setScreen(returnTo || { name: "class", classId });
   }
 
+  // Livraison 75 — the same page, arranged in three columns (see
+  // BuilderLayout). Every input, button and handler below is the one this
+  // screen always had; only their place on the page changed.
+  const partOk = (p) => p.groups.length > 0 && p.groups.every((g) =>
+    g.mode === "completion" ? g.summaryText.trim() && g.questions.length > 0
+      : g.mode === "labelling" ? g.imageUrl && g.questions.length > 0
+      : g.questions.length > 0);
+  const qCount = (p) => p.groups.reduce((n, g) => n + g.questions.length, 0);
+  const hasWork = Boolean(singleAudio?.url) || parts.some((p) => p.audioUrl || p.groups.some((g) => g.questions.length > 0 || g.summaryText.trim()));
+  const guard = makeLeaveGuard(hasWork && !publishing);
+  const crumbs = useBuilderCrumbs({ classId, returnTo, setScreen, guard, here: editAssignmentId ? "Edit Listening assignment" : "New Listening assignment" });
+
   if (loadingExisting) {
     return (
       <div className="page page-wide">
@@ -441,349 +454,389 @@ export function TeacherListeningBuilder({ classId, teacherId, setScreen, showToa
     );
   }
 
+  const minutesOk = parseInt(timeLimit, 10) >= 1;
+  const checklist = [
+    ...(audioMode === "single" ? [{ label: "Recording for the whole test", ok: Boolean(singleAudio?.url) }] : []),
+    ...parts.flatMap((p, i) => [
+      ...(audioMode === "parts" ? [{ label: `Part ${i + 1}: audio`, ok: Boolean(p.audioUrl) }] : []),
+      { label: `Part ${i + 1}: questions${qCount(p) ? ` (${qCount(p)})` : ""}`, ok: partOk(p) },
+    ]),
+    { label: "Time limit set", ok: minutesOk },
+  ];
+  const publishButton = (
+    <button className="btn-primary" disabled={!canPublish || publishing || savingSettings} onClick={publish}>
+      {publishing ? "Saving…" : editAssignmentId ? "Save changes" : "Publish assignment"}
+    </button>
+  );
+
   return (
-    <div className="page page-wide">
-      <div className="eyebrow">Structured Listening</div>
-      <h1 className="page-title">{editAssignmentId ? "Edit Listening assignment" : "New Listening assignment"}</h1>
-      {editAssignmentId && (
-        <div className="qe-edit-notice">
-          <strong>The {storedQuestionCount > 0 ? `${storedQuestionCount} questions` : "questions"} already in this paper are not shown below.</strong>{" "}
-          To change only the title, dates, time or audio settings, use <em>Save title and settings only</em> at the bottom: the questions and the students' answers stay exactly as they are.
-          {" "}<em>Save changes</em> replaces all the questions with the Parts you build on this screen.
-          {existingAnswerCount > 0 && ` ${existingAnswerCount} answer${existingAnswerCount > 1 ? "s have" : " has"} already been submitted and would be reset.`}
-        </div>
-      )}
+    <BuilderLayout
+      crumbs={crumbs}
+      eyebrow={editAssignmentId ? "Structured Listening · editing" : "Structured Listening · not published yet"}
+      heading={editAssignmentId ? "Edit Listening assignment" : "New Listening assignment"}
+      sub={title.trim() ? title.trim() : "Name it in Settings — or a name is given automatically."}
+      actions={editAssignmentId ? null : publishButton}
+      notice={
+        <>
+          {editAssignmentId && (
+            <div className="qe-edit-notice">
+              <strong>The {storedQuestionCount > 0 ? `${storedQuestionCount} questions` : "questions"} already in this paper are not shown below.</strong>{" "}
+              To change only the title, dates, time or audio settings, use <em>Save title and settings only</em> (right column): the questions and the students' answers stay exactly as they are.
+              {" "}<em>Save changes</em> replaces all the questions with the Parts you build on this screen.
+              {existingAnswerCount > 0 && ` ${existingAnswerCount} answer${existingAnswerCount > 1 ? "s have" : " has"} already been submitted and would be reset.`}
+            </div>
+          )}
+        </>
+      }
+      nav={
+        <PartsNav
+          items={parts.map((p, i) => ({
+            id: `part-${p.localId}`,
+            label: `Part ${i + 1}`,
+            sub: `${audioMode === "parts" ? (p.audioUrl ? "audio ✓ · " : "no audio yet · ") : ""}${qCount(p)} question${qCount(p) === 1 ? "" : "s"}`,
+            ok: (audioMode === "single" || Boolean(p.audioUrl)) && partOk(p),
+          }))}
+          onAdd={addPart}
+          canAdd={parts.length < MAX_LISTENING_PARTS}
+          addLabel={`Add Part ${parts.length + 1}`}
+        />
+      }
+      settings={
+        <>
+          <label className="field-label">Title (optional)</label>
+          <input className="field-input" placeholder="e.g. IELTS Listening Practice Test 1" value={title} onChange={(e) => setTitle(e.target.value)} />
 
-      <label className="field-label" style={{ marginTop: 16 }}>Title (optional — auto-generated if left blank)</label>
-      <input className="field-input" placeholder="e.g. IELTS Listening Practice Test 1" value={title} onChange={(e) => setTitle(e.target.value)} />
-
-      <div style={{ display: "flex", gap: 16, marginTop: 14 }}>
-        <div style={{ flex: 1 }}>
-          <label className="field-label">Due date (optional)</label>
-          <input type="date" className="field-input" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
-        </div>
-        <div style={{ flex: 1 }}>
-          <label className="field-label">Due time (optional)</label>
-          <input type="time" className="field-input" value={dueTime} onChange={(e) => setDueTime(e.target.value)} />
-        </div>
-        <div style={{ flex: 1 }}>
+          <div className="bl-row2">
+            <div>
+              <label className="field-label">Due date (optional)</label>
+              <input type="date" className="field-input" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+            </div>
+            <div>
+              <label className="field-label">Due time (optional)</label>
+              <input type="time" className="field-input" value={dueTime} onChange={(e) => setDueTime(e.target.value)} />
+            </div>
+          </div>
           <label className="field-label">Time limit, minutes</label>
           <input type="number" min="1" className="field-input" placeholder="e.g. 40" value={timeLimit} onChange={(e) => setTimeLimit(e.target.value)} />
-        </div>
-      </div>
-
-      <label className="checkbox-row" style={{ marginTop: 16 }}>
-        <input type="checkbox" checked={autoReleaseScore} onChange={(e) => setAutoReleaseScore(e.target.checked)} />
-        Show score to students automatically once they submit
-      </label>
-      <p className="field-hint" style={{ marginTop: 2 }}>
-        {autoReleaseScore ? "Students see their score right after submitting." : "Students see \"Submitted\" only — you release the score from the review screen when ready."}
-      </p>
-
-      <label className="checkbox-row" style={{ marginTop: 10 }}>
-        <input type="checkbox" checked={showAnswerReview} onChange={(e) => setShowAnswerReview(e.target.checked)} />
-        Let students see which answers were correct/incorrect, with the correct answer
-      </label>
-      <p className="field-hint" style={{ marginTop: 2 }}>
-        {showAnswerReview ? "Students can review each question after their score is visible." : "Students only see their overall score, never the answer key — useful if you plan to reuse this test."}
-      </p>
-
-      <label className="field-label" style={{ marginTop: 20 }}>Audio</label>
-      <div className="type-row">
-        <button type="button" className={`type-chip ${audioMode === "single" ? "active" : ""}`} onClick={() => setAudioMode("single")}>One audio for the whole test</button>
-        <button type="button" className={`type-chip ${audioMode === "parts" ? "active" : ""}`} onClick={() => setAudioMode("parts")}>One audio per part</button>
-      </div>
-      <p className="field-hint" style={{ marginTop: 2 }}>
-        {audioMode === "single"
-          ? "Like the real test: the recording plays through all the parts. Students switch part without stopping it."
-          : "Each part has its own file, with its own number of plays — handy for practice section by section."}
-      </p>
-
-      {audioMode === "single" && (
-        <div className="feedback-panel" style={{ marginTop: 10 }}>
-          <label className="field-label" style={{ marginTop: 0 }}>Recording for the whole test</label>
-          <AudioFilePicker teacherId={teacherId} value={singleAudio} onChange={(f) => setSingleAudio(f || null)} />
 
           <label className="checkbox-row" style={{ marginTop: 14 }}>
-            <input type="checkbox" checked={examMode} onChange={(e) => setExamMode(e.target.checked)} />
-            Exam mode: one listening only, no pause and no rewind
+            <input type="checkbox" checked={autoReleaseScore} onChange={(e) => setAutoReleaseScore(e.target.checked)} />
+            Show score to students automatically once they submit
           </label>
-          {inExam && !examMode && (
-            <p className="qe-exam-warn">This paper is part of an exam, but candidates will be able to pause and replay the recording.</p>
-          )}
           <p className="field-hint" style={{ marginTop: 2 }}>
-            {examMode
-              ? "The recording starts when the student presses \"I'm ready\" and plays straight through. Refreshing the page carries on where the server says it is — never back at the beginning."
-              : "Practice: students can pause and replay the recording as they like."}
+            {autoReleaseScore ? "Students see their score right after submitting." : "Students see \"Submitted\" only — you release the score from the review screen when ready."}
           </p>
 
-          <label className="field-label" style={{ marginTop: 14 }}>Checking time after the recording (minutes)</label>
-          <input
-            type="number"
-            min="0"
-            max="30"
-            className="field-input"
-            style={{ maxWidth: 160 }}
-            value={checkMinutes}
-            onChange={(e) => setCheckMinutes(e.target.value)}
-          />
+          <label className="checkbox-row" style={{ marginTop: 10 }}>
+            <input type="checkbox" checked={showAnswerReview} onChange={(e) => setShowAnswerReview(e.target.checked)} />
+            Let students see which answers were correct/incorrect, with the correct answer
+          </label>
           <p className="field-hint" style={{ marginTop: 2 }}>
-            {checkMinutes === "0" || checkMinutes === ""
-              ? "No automatic sending: students submit when they want."
-              : `When the recording ends, students get ${checkMinutes} minute${checkMinutes === "1" ? "" : "s"} to check their answers, then everything is sent automatically.`}
+            {showAnswerReview ? "Students can review each question after their score is visible." : "Students only see their overall score, never the answer key — useful if you plan to reuse this test."}
           </p>
-        </div>
-      )}
-
-      {parts.map((part, pi) => (
-        <div key={part.localId} className="qe-part-block">
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 28 }}>
-            <h3 className="section-title" style={{ margin: 0 }}>Part {pi + 1}</h3>
-            {parts.length > 1 && (
-              <button className="btn-ghost" onClick={() => removePart(part.localId)}><X size={13} /> Remove this part</button>
+        </>
+      }
+      checklist={<Checklist items={checklist} />}
+      footer={
+        <>
+          {error && <div className="field-error" style={{ marginTop: 12 }}>{error}</div>}
+          <div className="qe-builder-actions">
+            {editAssignmentId && (
+              <button className="btn-primary" disabled={savingSettings || publishing} onClick={saveSettingsOnly}>
+                {savingSettings ? "Saving…" : "Save title and settings only"}
+              </button>
             )}
+            <button className={editAssignmentId ? "btn-ghost" : "btn-primary"} disabled={!canPublish || publishing || savingSettings} onClick={publish}>
+              {publishing ? "Saving…" : editAssignmentId ? "Save changes (replace the questions)" : "Publish assignment"}
+            </button>
           </div>
+        </>
+      }
+    >
+      <div className="panel bl-audio">
+        <label className="field-label" style={{ marginTop: 0 }}>Audio</label>
+        <div className="type-row">
+          <button type="button" className={`type-chip ${audioMode === "single" ? "active" : ""}`} onClick={() => setAudioMode("single")}>One audio for the whole test</button>
+          <button type="button" className={`type-chip ${audioMode === "parts" ? "active" : ""}`} onClick={() => setAudioMode("parts")}>One audio per part</button>
+        </div>
+        <p className="field-hint" style={{ marginTop: 2 }}>
+          {audioMode === "single"
+            ? "Like the real test: the recording plays through all the parts. Students switch part without stopping it."
+            : "Each part has its own file, with its own number of plays — handy for practice section by section."}
+        </p>
 
-          {audioMode === "parts" && (
-          <>
-          <label className="field-label" style={{ marginTop: 14 }}>Audio file</label>
-          <AudioFilePicker
-            teacherId={teacherId}
-            value={part.audioUrl ? { url: part.audioUrl, filename: part.audioFilename } : null}
-            onChange={(f) => handleAudioChange(part.localId, f)}
-          />
+        {audioMode === "single" && (
+          <div className="feedback-panel" style={{ marginTop: 10 }}>
+            <label className="field-label" style={{ marginTop: 0 }}>Recording for the whole test</label>
+            <AudioFilePicker teacherId={teacherId} value={singleAudio} onChange={(f) => setSingleAudio(f || null)} />
 
-          <label className="field-label" style={{ marginTop: 14 }}>Plays allowed (leave blank for unlimited)</label>
-          <input
-            type="number"
-            min="1"
-            className="field-input"
-            style={{ maxWidth: 160 }}
-            placeholder="Unlimited"
-            value={part.maxPlays}
-            onChange={(e) => handleMaxPlaysChange(part.localId, e.target.value)}
-          />
-          {inExam && !part.maxPlays && (
-            <p className="qe-exam-warn">This paper is part of an exam, but candidates will be able to replay this part as often as they like.</p>
-          )}
-          </>
-          )}
+            <label className="checkbox-row" style={{ marginTop: 14 }}>
+              <input type="checkbox" checked={examMode} onChange={(e) => setExamMode(e.target.checked)} />
+              Exam mode: one listening only, no pause and no rewind
+            </label>
+            {inExam && !examMode && (
+              <p className="qe-exam-warn">This paper is part of an exam, but candidates will be able to pause and replay the recording.</p>
+            )}
+            <p className="field-hint" style={{ marginTop: 2 }}>
+              {examMode
+                ? "The recording starts when the student presses \"I'm ready\" and plays straight through. Refreshing the page carries on where the server says it is — never back at the beginning."
+                : "Practice: students can pause and replay the recording as they like."}
+            </p>
 
-          <h4 className="section-title" style={{ marginTop: 20, fontSize: 14 }}>Question groups</h4>
-
-          {part.groups.map((group, gi) => (
-            <div key={group.localId} className="feedback-panel" style={{ marginBottom: 14 }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-                <span className="qe-group-heading-preview">
-                  {group.questions.length > 0
-                    ? numbering[pi][gi].start === numbering[pi][gi].end
-                      ? `Question ${numbering[pi][gi].start}`
-                      : `Questions ${numbering[pi][gi].start}-${numbering[pi][gi].end}`
-                    : "New group"}
-                </span>
-                <button className="btn-ghost" onClick={() => removeGroup(part.localId, group.localId)}><X size={13} /> Remove group</button>
-              </div>
-
-              <label className="field-label">Instructions shown to students</label>
-              <textarea
-                className="field-input textarea"
-                style={{ minHeight: 90 }}
-                placeholder="Appears automatically once you add the first question below"
-                value={group.instruction}
-                onChange={(e) => updateInstruction(part.localId, group.localId, e.target.value)}
-              />
-
-              {group.questions.length === 0 && (
-                <>
-                  <label className="field-label" style={{ marginTop: 14 }}>Group type</label>
-                  <div className="type-row">
-                    <button type="button" className={`type-chip ${group.mode === "questions" ? "active" : ""}`} onClick={() => setGroupMode(part.localId, group.localId, "questions")}>Question list</button>
-                    <button type="button" className={`type-chip ${group.mode === "completion" ? "active" : ""}`} onClick={() => setGroupMode(part.localId, group.localId, "completion")}>Summary Completion</button>
-                    <button type="button" className={`type-chip ${group.mode === "matching" ? "active" : ""}`} onClick={() => setGroupMode(part.localId, group.localId, "matching")}>Matching</button>
-                    <button type="button" className={`type-chip ${group.mode === "labelling" ? "active" : ""}`} onClick={() => setGroupMode(part.localId, group.localId, "labelling")}>Labelling (map / plan / diagram)</button>
-                    <button type="button" className={`type-chip ${group.mode === "shortanswer" ? "active" : ""}`} onClick={() => setGroupMode(part.localId, group.localId, "shortanswer")}>Short answer</button>
-                  </div>
-
-                  {group.mode === "matching" && (
-                    <>
-                      <label className="field-label" style={{ marginTop: 14 }}>Matching type</label>
-                      <div className="type-row">
-                        <button type="button" className={`type-chip ${group.matchingType === "matching_features" ? "active" : ""}`} onClick={() => patchGroup(part.localId, group.localId, { matchingType: "matching_features" })}>Choose from a box / list</button>
-                        <button type="button" className={`type-chip ${group.matchingType === "matching_sentence_endings" ? "active" : ""}`} onClick={() => patchGroup(part.localId, group.localId, { matchingType: "matching_sentence_endings" })}>Sentence Endings</button>
-                      </div>
-                    </>
-                  )}
-
-                  {group.mode === "labelling" && (
-                    <>
-                      <label className="field-label" style={{ marginTop: 14 }}>Labelling type</label>
-                      <div className="type-row">
-                        <button type="button" className={`type-chip ${group.labellingKind === "map" ? "active" : ""}`} onClick={() => patchGroup(part.localId, group.localId, { labellingKind: "map" })}>Map / plan — letters on the image</button>
-                        <button type="button" className={`type-chip ${group.labellingKind === "diagram" ? "active" : ""}`} onClick={() => patchGroup(part.localId, group.localId, { labellingKind: "diagram" })}>Diagram — words to write</button>
-                      </div>
-                    </>
-                  )}
-
-                  {group.mode === "completion" && (
-                    <>
-                      <label className="field-label" style={{ marginTop: 14 }}>Completion style</label>
-                      <div className="type-row">
-                        <button type="button" className={`type-chip ${group.completionStyle === "paragraph" ? "active" : ""}`} onClick={() => setCompletionStyle(part.localId, group.localId, "paragraph")}>Plain text</button>
-                        <button type="button" className={`type-chip ${group.completionStyle === "notes" ? "active" : ""}`} onClick={() => setCompletionStyle(part.localId, group.localId, "notes")}>Notes</button>
-                        <button type="button" className={`type-chip ${group.completionStyle === "table" ? "active" : ""}`} onClick={() => setCompletionStyle(part.localId, group.localId, "table")}>Table</button>
-                        <button type="button" className={`type-chip ${group.completionStyle === "sentences" ? "active" : ""}`} onClick={() => setCompletionStyle(part.localId, group.localId, "sentences")}>Sentences</button>
-                        <button type="button" className={`type-chip ${group.completionStyle === "form" ? "active" : ""}`} onClick={() => setCompletionStyle(part.localId, group.localId, "form")}>Form</button>
-                        <button type="button" className={`type-chip ${group.completionStyle === "flowchart" ? "active" : ""}`} onClick={() => setCompletionStyle(part.localId, group.localId, "flowchart")}>Flow-chart</button>
-                        <button type="button" className={`type-chip ${group.completionStyle === "wordbank" ? "active" : ""}`} onClick={() => setCompletionStyle(part.localId, group.localId, "wordbank")}>Summary + word list</button>
-                      </div>
-                    </>
-                  )}
-                </>
-              )}
-
-              <GroupImagePicker
-                teacherId={teacherId}
-                value={group.imageUrl}
-                onChange={(url) => patchGroup(part.localId, group.localId, { imageUrl: url })}
-                label={group.mode === "labelling" ? "Map / plan / diagram image" : "Image for this group (optional)"}
-                required={group.mode === "labelling"}
-                hint={
-                  group.mode === "labelling"
-                    ? group.labellingKind === "map"
-                      ? "Use an image that already shows the letters (A, B, C…). Students see it above the questions and can zoom in."
-                      : "Use an image that already shows the numbered labels. Students see it above the answer boxes and can zoom in."
-                    : "Shown to students above this group's questions (e.g. a flow-chart or table figure)."
-                }
-              />
-
-              {group.mode === "labelling" ? (
-                <LabellingBuilder
-                  group={group}
-                  teacherId={teacherId}
-                  skill="listening"
-                  kind={group.labellingKind}
-                  onQuestionsCreated={(questions, instr) => onLabellingCreated(part.localId, group.localId, questions, instr)}
-                />
-              ) : group.mode === "shortanswer" ? (
-                <ShortAnswerBuilder
-                  group={group}
-                  teacherId={teacherId}
-                  skill="listening"
-                  onQuestionsCreated={(questions) => onLabellingCreated(part.localId, group.localId, questions, SHORT_ANSWER_INSTRUCTION)}
-                />
-              ) : group.mode === "matching" ? (
-                <MatchingBuilder
-                  group={group}
-                  teacherId={teacherId}
-                  skill="listening"
-                  matchingType={group.matchingType}
-                  onQuestionsCreated={(questions) => onBlanksCreated(part.localId, group.localId, questions)}
-                />
-              ) : group.mode === "completion" ? (
-                group.completionStyle === "notes" ? (
-                  <NotesCompletionBuilder
-                    group={group}
-                    teacherId={teacherId}
-                    skill="listening"
-                    onSummaryTextChange={(text) => updateSummaryText(part.localId, group.localId, text)}
-                    onBlanksCreated={(questions) => onBlanksCreated(part.localId, group.localId, questions)}
-                  />
-                ) : group.completionStyle === "table" ? (
-                  <TableCompletionBuilder
-                    group={group}
-                    teacherId={teacherId}
-                    skill="listening"
-                    onSummaryTextChange={(text) => updateSummaryText(part.localId, group.localId, text)}
-                    onBlanksCreated={(questions) => onBlanksCreated(part.localId, group.localId, questions)}
-                  />
-                ) : group.completionStyle === "form" ? (
-                  <FormCompletionBuilder
-                    group={group}
-                    teacherId={teacherId}
-                    skill="listening"
-                    onSummaryTextChange={(text) => updateSummaryText(part.localId, group.localId, text)}
-                    onBlanksCreated={(questions) => onLabellingCreated(part.localId, group.localId, questions, FORM_INSTRUCTION)}
-                  />
-                ) : group.completionStyle === "flowchart" ? (
-                  <FlowchartCompletionBuilder
-                    group={group}
-                    teacherId={teacherId}
-                    skill="listening"
-                    onSummaryTextChange={(text) => updateSummaryText(part.localId, group.localId, text)}
-                    onBlanksCreated={(questions) => onLabellingCreated(part.localId, group.localId, questions, FLOWCHART_INSTRUCTION)}
-                  />
-                ) : group.completionStyle === "wordbank" ? (
-                  <WordBankCompletionBuilder
-                    group={group}
-                    teacherId={teacherId}
-                    skill="listening"
-                    onSummaryTextChange={(text) => updateSummaryText(part.localId, group.localId, text)}
-                    onBlanksCreated={(questions) => onLabellingCreated(part.localId, group.localId, questions, WORDBANK_INSTRUCTION)}
-                  />
-                ) : group.completionStyle === "sentences" ? (
-                  <SentenceCompletionBuilder
-                    group={group}
-                    teacherId={teacherId}
-                    skill="listening"
-                    onSummaryTextChange={(text) => updateSummaryText(part.localId, group.localId, text)}
-                    onBlanksCreated={(questions) => onBlanksCreated(part.localId, group.localId, questions)}
-                  />
-                ) : (
-                  <SummaryCompletionBuilder
-                    group={group}
-                    teacherId={teacherId}
-                    skill="listening"
-                    onSummaryTextChange={(text) => updateSummaryText(part.localId, group.localId, text)}
-                    onBlanksCreated={(questions) => onBlanksCreated(part.localId, group.localId, questions)}
-                  />
-                )
-              ) : (
-                <>
-                  <div style={{ marginTop: 14 }}>
-                    {group.questions.length === 0 ? (
-                      <p className="empty-inline">No questions yet in this group.</p>
-                    ) : (
-                      <div className="qe-question-list">
-                        {group.questions.map((q, i) => (
-                          <div key={q.id} className="qe-question-row"><Check size={14} className="qe-question-check" /><span>{numbering[pi][gi].numbers[i]}. {q.prompt}</span></div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  {addingQuestionFor === group.localId ? (
-                    <div style={{ marginTop: 12 }}>
-                      <TeacherQuestionForm teacherId={teacherId} skill="listening" onCreated={(q) => onQuestionCreated(part.localId, group.localId, q)} />
-                      <button className="btn-ghost" style={{ marginTop: 8 }} onClick={() => setAddingQuestionFor(null)}>Cancel</button>
-                    </div>
-                  ) : (
-                    <button className="btn-ghost" style={{ marginTop: 10 }} onClick={() => setAddingQuestionFor(group.localId)}><Plus size={13} /> Add question</button>
-                  )}
-                </>
+            <label className="field-label" style={{ marginTop: 14 }}>Checking time after the recording (minutes)</label>
+            <input
+              type="number"
+              min="0"
+              max="30"
+              className="field-input"
+              style={{ maxWidth: 160 }}
+              value={checkMinutes}
+              onChange={(e) => setCheckMinutes(e.target.value)}
+            />
+            <p className="field-hint" style={{ marginTop: 2 }}>
+              {checkMinutes === "0" || checkMinutes === ""
+                ? "No automatic sending: students submit when they want."
+                : `When the recording ends, students get ${checkMinutes} minute${checkMinutes === "1" ? "" : "s"} to check their answers, then everything is sent automatically.`}
+            </p>
+          </div>
+        )}
+      </div>
+        {parts.map((part, pi) => (
+          <div key={part.localId} id={`part-${part.localId}`} className="qe-part-block">
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 28 }}>
+              <h3 className="section-title" style={{ margin: 0 }}>Part {pi + 1}</h3>
+              {parts.length > 1 && (
+                <button className="btn-ghost" onClick={() => removePart(part.localId)}><X size={13} /> Remove this part</button>
               )}
             </div>
-          ))}
 
-          <button className="btn-ghost" onClick={() => addGroup(part.localId)}><Plus size={14} /> Add question group</button>
-        </div>
-      ))}
+            {audioMode === "parts" && (
+            <>
+            <label className="field-label" style={{ marginTop: 14 }}>Audio file</label>
+            <AudioFilePicker
+              teacherId={teacherId}
+              value={part.audioUrl ? { url: part.audioUrl, filename: part.audioFilename } : null}
+              onChange={(f) => handleAudioChange(part.localId, f)}
+            />
 
-      {parts.length < MAX_LISTENING_PARTS && (
-        <button className="btn-ghost" style={{ marginTop: 20 }} onClick={addPart}><Plus size={14} /> Add another part (Part {parts.length + 1})</button>
-      )}
+            <label className="field-label" style={{ marginTop: 14 }}>Plays allowed (leave blank for unlimited)</label>
+            <input
+              type="number"
+              min="1"
+              className="field-input"
+              style={{ maxWidth: 160 }}
+              placeholder="Unlimited"
+              value={part.maxPlays}
+              onChange={(e) => handleMaxPlaysChange(part.localId, e.target.value)}
+            />
+            {inExam && !part.maxPlays && (
+              <p className="qe-exam-warn">This paper is part of an exam, but candidates will be able to replay this part as often as they like.</p>
+            )}
+            </>
+            )}
 
-      {error && <div className="field-error" style={{ marginTop: 16 }}>{error}</div>}
+            <h4 className="section-title" style={{ marginTop: 20, fontSize: 14 }}>Question groups</h4>
 
-      <div className="qe-builder-actions">
-        {editAssignmentId && (
-          <button className="btn-primary" disabled={savingSettings || publishing} onClick={saveSettingsOnly}>
-            {savingSettings ? "Saving…" : "Save title and settings only"}
-          </button>
+            {part.groups.map((group, gi) => (
+              <div key={group.localId} className="feedback-panel" style={{ marginBottom: 14 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                  <span className="qe-group-heading-preview">
+                    {group.questions.length > 0
+                      ? numbering[pi][gi].start === numbering[pi][gi].end
+                        ? `Question ${numbering[pi][gi].start}`
+                        : `Questions ${numbering[pi][gi].start}-${numbering[pi][gi].end}`
+                      : "New group"}
+                  </span>
+                  <button className="btn-ghost" onClick={() => removeGroup(part.localId, group.localId)}><X size={13} /> Remove group</button>
+                </div>
+
+                <label className="field-label">Instructions shown to students</label>
+                <textarea
+                  className="field-input textarea"
+                  style={{ minHeight: 90 }}
+                  placeholder="Appears automatically once you add the first question below"
+                  value={group.instruction}
+                  onChange={(e) => updateInstruction(part.localId, group.localId, e.target.value)}
+                />
+
+                {group.questions.length === 0 && (
+                  <>
+                    <label className="field-label" style={{ marginTop: 14 }}>Group type</label>
+                    <div className="type-row">
+                      <button type="button" className={`type-chip ${group.mode === "questions" ? "active" : ""}`} onClick={() => setGroupMode(part.localId, group.localId, "questions")}>Question list</button>
+                      <button type="button" className={`type-chip ${group.mode === "completion" ? "active" : ""}`} onClick={() => setGroupMode(part.localId, group.localId, "completion")}>Summary Completion</button>
+                      <button type="button" className={`type-chip ${group.mode === "matching" ? "active" : ""}`} onClick={() => setGroupMode(part.localId, group.localId, "matching")}>Matching</button>
+                      <button type="button" className={`type-chip ${group.mode === "labelling" ? "active" : ""}`} onClick={() => setGroupMode(part.localId, group.localId, "labelling")}>Labelling (map / plan / diagram)</button>
+                      <button type="button" className={`type-chip ${group.mode === "shortanswer" ? "active" : ""}`} onClick={() => setGroupMode(part.localId, group.localId, "shortanswer")}>Short answer</button>
+                    </div>
+
+                    {group.mode === "matching" && (
+                      <>
+                        <label className="field-label" style={{ marginTop: 14 }}>Matching type</label>
+                        <div className="type-row">
+                          <button type="button" className={`type-chip ${group.matchingType === "matching_features" ? "active" : ""}`} onClick={() => patchGroup(part.localId, group.localId, { matchingType: "matching_features" })}>Choose from a box / list</button>
+                          <button type="button" className={`type-chip ${group.matchingType === "matching_sentence_endings" ? "active" : ""}`} onClick={() => patchGroup(part.localId, group.localId, { matchingType: "matching_sentence_endings" })}>Sentence Endings</button>
+                        </div>
+                      </>
+                    )}
+
+                    {group.mode === "labelling" && (
+                      <>
+                        <label className="field-label" style={{ marginTop: 14 }}>Labelling type</label>
+                        <div className="type-row">
+                          <button type="button" className={`type-chip ${group.labellingKind === "map" ? "active" : ""}`} onClick={() => patchGroup(part.localId, group.localId, { labellingKind: "map" })}>Map / plan — letters on the image</button>
+                          <button type="button" className={`type-chip ${group.labellingKind === "diagram" ? "active" : ""}`} onClick={() => patchGroup(part.localId, group.localId, { labellingKind: "diagram" })}>Diagram — words to write</button>
+                        </div>
+                      </>
+                    )}
+
+                    {group.mode === "completion" && (
+                      <>
+                        <label className="field-label" style={{ marginTop: 14 }}>Completion style</label>
+                        <div className="type-row">
+                          <button type="button" className={`type-chip ${group.completionStyle === "paragraph" ? "active" : ""}`} onClick={() => setCompletionStyle(part.localId, group.localId, "paragraph")}>Plain text</button>
+                          <button type="button" className={`type-chip ${group.completionStyle === "notes" ? "active" : ""}`} onClick={() => setCompletionStyle(part.localId, group.localId, "notes")}>Notes</button>
+                          <button type="button" className={`type-chip ${group.completionStyle === "table" ? "active" : ""}`} onClick={() => setCompletionStyle(part.localId, group.localId, "table")}>Table</button>
+                          <button type="button" className={`type-chip ${group.completionStyle === "sentences" ? "active" : ""}`} onClick={() => setCompletionStyle(part.localId, group.localId, "sentences")}>Sentences</button>
+                          <button type="button" className={`type-chip ${group.completionStyle === "form" ? "active" : ""}`} onClick={() => setCompletionStyle(part.localId, group.localId, "form")}>Form</button>
+                          <button type="button" className={`type-chip ${group.completionStyle === "flowchart" ? "active" : ""}`} onClick={() => setCompletionStyle(part.localId, group.localId, "flowchart")}>Flow-chart</button>
+                          <button type="button" className={`type-chip ${group.completionStyle === "wordbank" ? "active" : ""}`} onClick={() => setCompletionStyle(part.localId, group.localId, "wordbank")}>Summary + word list</button>
+                        </div>
+                      </>
+                    )}
+                  </>
+                )}
+
+                <GroupImagePicker
+                  teacherId={teacherId}
+                  value={group.imageUrl}
+                  onChange={(url) => patchGroup(part.localId, group.localId, { imageUrl: url })}
+                  label={group.mode === "labelling" ? "Map / plan / diagram image" : "Image for this group (optional)"}
+                  required={group.mode === "labelling"}
+                  hint={
+                    group.mode === "labelling"
+                      ? group.labellingKind === "map"
+                        ? "Use an image that already shows the letters (A, B, C…). Students see it above the questions and can zoom in."
+                        : "Use an image that already shows the numbered labels. Students see it above the answer boxes and can zoom in."
+                      : "Shown to students above this group's questions (e.g. a flow-chart or table figure)."
+                  }
+                />
+
+                {group.mode === "labelling" ? (
+                  <LabellingBuilder
+                    group={group}
+                    teacherId={teacherId}
+                    skill="listening"
+                    kind={group.labellingKind}
+                    onQuestionsCreated={(questions, instr) => onLabellingCreated(part.localId, group.localId, questions, instr)}
+                  />
+                ) : group.mode === "shortanswer" ? (
+                  <ShortAnswerBuilder
+                    group={group}
+                    teacherId={teacherId}
+                    skill="listening"
+                    onQuestionsCreated={(questions) => onLabellingCreated(part.localId, group.localId, questions, SHORT_ANSWER_INSTRUCTION)}
+                  />
+                ) : group.mode === "matching" ? (
+                  <MatchingBuilder
+                    group={group}
+                    teacherId={teacherId}
+                    skill="listening"
+                    matchingType={group.matchingType}
+                    onQuestionsCreated={(questions) => onBlanksCreated(part.localId, group.localId, questions)}
+                  />
+                ) : group.mode === "completion" ? (
+                  group.completionStyle === "notes" ? (
+                    <NotesCompletionBuilder
+                      group={group}
+                      teacherId={teacherId}
+                      skill="listening"
+                      onSummaryTextChange={(text) => updateSummaryText(part.localId, group.localId, text)}
+                      onBlanksCreated={(questions) => onBlanksCreated(part.localId, group.localId, questions)}
+                    />
+                  ) : group.completionStyle === "table" ? (
+                    <TableCompletionBuilder
+                      group={group}
+                      teacherId={teacherId}
+                      skill="listening"
+                      onSummaryTextChange={(text) => updateSummaryText(part.localId, group.localId, text)}
+                      onBlanksCreated={(questions) => onBlanksCreated(part.localId, group.localId, questions)}
+                    />
+                  ) : group.completionStyle === "form" ? (
+                    <FormCompletionBuilder
+                      group={group}
+                      teacherId={teacherId}
+                      skill="listening"
+                      onSummaryTextChange={(text) => updateSummaryText(part.localId, group.localId, text)}
+                      onBlanksCreated={(questions) => onLabellingCreated(part.localId, group.localId, questions, FORM_INSTRUCTION)}
+                    />
+                  ) : group.completionStyle === "flowchart" ? (
+                    <FlowchartCompletionBuilder
+                      group={group}
+                      teacherId={teacherId}
+                      skill="listening"
+                      onSummaryTextChange={(text) => updateSummaryText(part.localId, group.localId, text)}
+                      onBlanksCreated={(questions) => onLabellingCreated(part.localId, group.localId, questions, FLOWCHART_INSTRUCTION)}
+                    />
+                  ) : group.completionStyle === "wordbank" ? (
+                    <WordBankCompletionBuilder
+                      group={group}
+                      teacherId={teacherId}
+                      skill="listening"
+                      onSummaryTextChange={(text) => updateSummaryText(part.localId, group.localId, text)}
+                      onBlanksCreated={(questions) => onLabellingCreated(part.localId, group.localId, questions, WORDBANK_INSTRUCTION)}
+                    />
+                  ) : group.completionStyle === "sentences" ? (
+                    <SentenceCompletionBuilder
+                      group={group}
+                      teacherId={teacherId}
+                      skill="listening"
+                      onSummaryTextChange={(text) => updateSummaryText(part.localId, group.localId, text)}
+                      onBlanksCreated={(questions) => onBlanksCreated(part.localId, group.localId, questions)}
+                    />
+                  ) : (
+                    <SummaryCompletionBuilder
+                      group={group}
+                      teacherId={teacherId}
+                      skill="listening"
+                      onSummaryTextChange={(text) => updateSummaryText(part.localId, group.localId, text)}
+                      onBlanksCreated={(questions) => onBlanksCreated(part.localId, group.localId, questions)}
+                    />
+                  )
+                ) : (
+                  <>
+                    <div style={{ marginTop: 14 }}>
+                      {group.questions.length === 0 ? (
+                        <p className="empty-inline">No questions yet in this group.</p>
+                      ) : (
+                        <div className="qe-question-list">
+                          {group.questions.map((q, i) => (
+                            <div key={q.id} className="qe-question-row"><Check size={14} className="qe-question-check" /><span>{numbering[pi][gi].numbers[i]}. {q.prompt}</span></div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {addingQuestionFor === group.localId ? (
+                      <div style={{ marginTop: 12 }}>
+                        <TeacherQuestionForm teacherId={teacherId} skill="listening" onCreated={(q) => onQuestionCreated(part.localId, group.localId, q)} />
+                        <button className="btn-ghost" style={{ marginTop: 8 }} onClick={() => setAddingQuestionFor(null)}>Cancel</button>
+                      </div>
+                    ) : (
+                      <button className="btn-ghost" style={{ marginTop: 10 }} onClick={() => setAddingQuestionFor(group.localId)}><Plus size={13} /> Add question</button>
+                    )}
+                  </>
+                )}
+              </div>
+            ))}
+
+            <button className="btn-ghost" onClick={() => addGroup(part.localId)}><Plus size={14} /> Add question group</button>
+          </div>
+        ))}
+
+        {parts.length < MAX_LISTENING_PARTS && (
+          <button className="btn-ghost" style={{ marginTop: 20 }} onClick={addPart}><Plus size={14} /> Add another part (Part {parts.length + 1})</button>
         )}
-        <button className={editAssignmentId ? "btn-ghost" : "btn-primary"} disabled={!canPublish || publishing || savingSettings} onClick={publish}>
-          {publishing ? "Saving…" : editAssignmentId ? "Save changes (replace the questions)" : "Publish assignment"}
-        </button>
-      </div>
-    </div>
+    </BuilderLayout>
   );
 }
