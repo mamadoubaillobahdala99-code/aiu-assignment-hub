@@ -130,3 +130,38 @@
 
 /* A Listening paper whose recording can be paused / replayed. */
 .ex-replay-badge { display: inline-block; margin-left: 8px; padding: 1px 8px; border-radius: 999px; background: #fdf0d9; color: #8a5a00; font-size: 11px; font-weight: 700; white-space: nowrap; }
+
+/* ---------- Livraison 78 — the teacher's exam pages ---------- */
+.dt-row-click { cursor: pointer; }
+.dt-row-click:hover td { background: #FAF9F5; }
+.ex-code-sm { display: block; font-family: 'IBM Plex Mono', monospace; letter-spacing: .04em; }
+.pill-btn { cursor: pointer; font-family: inherit; }
+.pill-btn:hover { filter: brightness(0.97); }
+.btn-primary.ex-close-btn { background: var(--ink); border-color: var(--ink); color: #fff; }
+.exd-grid { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 18px; align-items: start; }
+.exd-papers { display: flex; flex-direction: column; }
+.exd-paper { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid #EFECE3; }
+.exd-paper:last-child { border-bottom: none; }
+.exd-num { width: 24px; height: 24px; border-radius: 50%; background: var(--ink); color: #fff; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.exd-paper-open { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; background: none; border: none; padding: 0; text-align: left; font-family: inherit; color: var(--ink); cursor: pointer; }
+.exd-paper-open:disabled { cursor: default; opacity: .6; }
+.exd-paper-title { font-weight: 600; font-size: 14.5px; overflow-wrap: anywhere; }
+.exd-paper-open:hover:not(:disabled) .exd-paper-title { text-decoration: underline; text-underline-offset: 3px; }
+.exd-paper .chev { color: var(--ink-soft); flex-shrink: 0; }
+.ex-replay-badge.exd-bad { background: var(--rose-soft); color: var(--rose); border-color: var(--rose); }
+.bl-ck-ic.exd-ck-warn { background: var(--amber); font-size: 11px; font-weight: 700; }
+.bl-ck-ic.exd-ck-info { background: #C9D6DE; color: #1B3A5C; font-size: 10.5px; font-weight: 700; font-style: italic; }
+.exd-scroll { overflow-x: auto; }
+.exd-matrix { min-width: 560px; }
+.exd-matrix .exd-c { text-align: center; white-space: nowrap; }
+.exd-matrix td.exd-work { color: var(--teal); font-weight: 600; }
+.exd-matrix td.exd-next, .exd-matrix td.exd-none, .exd-matrix td.exd-lock { color: var(--ink-soft); }
+.exd-matrix td.exd-lock svg { vertical-align: -2px; }
+.exd-person { display: inline-flex; align-items: center; gap: 10px; white-space: nowrap; }
+@media (max-width: 900px) { .exd-grid { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 760px) {
+  .exd-paper { flex-wrap: wrap; }
+  .exd-paper .ex-audio-btn { width: 100%; }
+}
+.panel .ex-time-row { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 8px 10px; align-items: center; }
+.panel .ex-time-row .field-input { min-width: 0; width: 100%; }
