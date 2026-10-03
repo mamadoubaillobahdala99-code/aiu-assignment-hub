@@ -7,6 +7,7 @@ import { AudioFilePicker } from "./AudioFilePicker";
 import { GroupImagePicker } from "./GroupImage";
 import { AddGroupPanel, newAddedGroup, isAddedGroupReady } from "./AddGroupPanel";
 import { confirmDialog } from "../../lib/confirmDialog";
+import { BuilderLayout, PartsNav, useBuilderCrumbs, makeLeaveGuard } from "./BuilderLayout";
 
 // Editing a Reading or Listening paper IN PLACE.
 //
@@ -432,6 +433,16 @@ export function PaperEditor({ assignmentId, classId, teacherId, setScreen, showT
     });
   }
 
+  // Livraison 76 — the same editor in the three-column layout (see
+  // BuilderLayout). What is shown, what may change and how it is saved are
+  // unchanged; leaving with unsaved changes now asks first.
+  const unsaved = !loading && Boolean(diff) && (diff.count > 0 || Boolean(settingsChanged));
+  const guard = makeLeaveGuard(unsaved && !saving);
+  const crumbs = useBuilderCrumbs({
+    classId, returnTo, setScreen, guard, here: "Edit",
+    middle: [{ label: assignment?.title || "Paper", onClick: guard(back) }],
+  });
+
   if (loading) return <CenterSpinner />;
   if (loadError) {
     return (
@@ -455,285 +466,310 @@ export function PaperEditor({ assignmentId, classId, teacherId, setScreen, showT
   const nothingToSave = diff.count === 0 && !settingsChanged;
 
   return (
-    <div className="page page-wide qe-pe">
-      <button className="back-link" onClick={back}><ArrowLeft size={14} /> Back</button>
-      <div className="eyebrow">Edit {assignment.type}</div>
-      <h1 className="page-title">{assignment.title}</h1>
-
-      {state.level === 1 && (
-        <div className="qe-pe-banner is-ok">
-          <CheckCircle2 size={16} />
-          <span>Nobody has handed in this paper yet: you can correct the wording and the correct answers.</span>
-        </div>
-      )}
-      {state.level === 2 && (
-        <div className="qe-pe-banner is-warn">
-          <AlertTriangle size={16} />
-          <span>
-            <strong>{state.submitted} student{state.submitted > 1 ? "s have" : " has"} handed in this paper</strong>, but no one has seen a mark yet.
-            You can correct the wording and the correct answers — the copies will be re-marked automatically when you save.
-          </span>
-        </div>
-      )}
-      {state.level === 3 && (
-        <div className="qe-pe-banner is-lock">
-          <Lock size={16} />
-          <span>
-            <strong>Students have already seen their mark for this paper, so its correct answers are locked.</strong>{" "}
-            You can still fix typing mistakes in the wording.
-          </span>
-        </div>
-      )}
-      {state.level >= 2 && (
-        <div className="qe-pe-dup">
-          <span>
-            To make a different version for another class, duplicate it and edit the copy — this paper and its students' marks stay as they are.
-          </span>
-          <div className="qe-pe-dup-row">
-            <select className="field-input" value={dupTarget} onChange={(e) => setDupTarget(e.target.value)}>
-              <option value="">Choose a class or an exam…</option>
-              {targets.some((t) => t.kind === "class") && (
-                <optgroup label="My classes">
-                  {targets.filter((t) => t.kind === "class").map((t) => <option key={t.class_id} value={t.class_id}>{t.name}</option>)}
-                </optgroup>
-              )}
-              {targets.some((t) => t.kind === "exam") && (
-                <optgroup label="My exams (not started yet)">
-                  {targets.filter((t) => t.kind === "exam").map((t) => <option key={t.class_id} value={t.class_id}>{t.name}</option>)}
-                </optgroup>
-              )}
-            </select>
-            <button className="btn-ghost" disabled={!dupTarget || duplicating} onClick={duplicateAndEdit}>
-              <Copy size={13} /> {duplicating ? "Copying…" : "Duplicate and edit the copy"}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* ---------- Settings ---------- */}
-      <h3 className="section-title" style={{ marginTop: 22 }}>Settings</h3>
-      <label className="field-label">Title</label>
-      <input className="field-input" value={settings.title} onChange={(e) => setSettings({ ...settings, title: e.target.value })} />
-      <div className="qe-pe-row">
-        <div>
-          <label className="field-label">Due date (optional)</label>
-          <input type="date" className="field-input" value={settings.due_date} onChange={(e) => setSettings({ ...settings, due_date: e.target.value })} />
-        </div>
-        <div>
-          <label className="field-label">Due time (optional)</label>
-          <input type="time" className="field-input" value={settings.due_time} onChange={(e) => setSettings({ ...settings, due_time: e.target.value })} />
-        </div>
-        <div>
-          <label className="field-label">Time limit, minutes</label>
-          <input type="number" min="1" className="field-input" value={settings.time_limit_minutes} onChange={(e) => setSettings({ ...settings, time_limit_minutes: e.target.value })} />
-        </div>
-      </div>
-      <label className="checkbox-row" style={{ marginTop: 12 }}>
-        <input type="checkbox" checked={settings.auto_release_score} onChange={(e) => setSettings({ ...settings, auto_release_score: e.target.checked })} />
-        Show students their score right after they submit
-      </label>
-      <label className="checkbox-row" style={{ marginTop: 6 }}>
-        <input type="checkbox" checked={settings.show_answer_review} onChange={(e) => setSettings({ ...settings, show_answer_review: e.target.checked })} />
-        Let students see which answers were correct/incorrect, with the correct answer
-      </label>
-
-      {isListening && origSettings.listening_audio && (
-        <div className="feedback-panel" style={{ marginTop: 14 }}>
-          <label className="field-label" style={{ marginTop: 0 }}>Recording for the whole test</label>
-          <AudioFilePicker teacherId={teacherId} value={settings.listening_audio} onChange={(f) => setSettings({ ...settings, listening_audio: f || null })} />
-          <label className="checkbox-row" style={{ marginTop: 12 }}>
-            <input type="checkbox" checked={settings.listening_exam_mode} onChange={(e) => setSettings({ ...settings, listening_exam_mode: e.target.checked })} />
-            Exam mode: one listening only, no pause and no rewind
-          </label>
-          <label className="field-label" style={{ marginTop: 12 }}>Checking time after the recording (minutes)</label>
-          <input type="number" min="0" max="30" className="field-input" style={{ maxWidth: 160 }} value={settings.listening_check_minutes} onChange={(e) => setSettings({ ...settings, listening_check_minutes: e.target.value })} />
-        </div>
-      )}
-
-      {/* ---------- The paper ---------- */}
-      {structure.map((sec, si) => (
-        <div key={sec.id} className="qe-pe-part">
-          <h3 className="section-title">{sec.title || `Part ${si + 1}`}</h3>
-
-          {!isListening && (
-            <>
-              <label className="field-label">Passage title</label>
-              <input className="field-input" value={draft.sections[sec.id].passage_title} onChange={(e) => patchSection(sec.id, { passage_title: e.target.value })} />
-              <label className="field-label">Passage</label>
-              <textarea
-                className="field-input textarea qe-pe-passage"
-                value={draft.sections[sec.id].passage_text}
-                onChange={(e) => patchSection(sec.id, { passage_text: e.target.value })}
-              />
-              <p className="field-hint">Lines such as [[image:…]] are the pictures of the passage: leave them where they are.</p>
-            </>
-          )}
-          {isListening && !origSettings.listening_audio && (
-            <div className="qe-pe-media">
-              <label className="field-label" style={{ marginTop: 0 }}>Recording of this part</label>
-              <AudioFilePicker
-                teacherId={teacherId}
-                value={draft.sections[sec.id].audio_url ? { url: draft.sections[sec.id].audio_url, filename: draft.sections[sec.id].audio_url === orig.sections[sec.id].audio_url ? "Current recording" : "New recording" } : null}
-                onChange={(f) => patchSection(sec.id, { audio_url: f?.url || null })}
-              />
-              <label className="field-label">Plays allowed (leave blank for unlimited)</label>
-              <input
-                type="number"
-                min="1"
-                max="20"
-                placeholder="Unlimited"
-                className={`field-input ${hasProblem(`plays:${sec.id}`) ? "is-invalid" : ""}`}
-                style={{ maxWidth: 160 }}
-                value={draft.sections[sec.id].max_plays}
-                onChange={(e) => patchSection(sec.id, { max_plays: e.target.value })}
-              />
-              {hasProblem(`plays:${sec.id}`) && <div className="field-error">A whole number between 1 and 20, or empty.</div>}
+    <BuilderLayout
+      crumbs={crumbs}
+      eyebrow={`Edit ${assignment.type}`}
+      heading={assignment.title}
+      sub={state.level === 1 ? "Nobody has handed in yet — everything can be corrected." : state.level === 2 ? "Copies handed in — wording and correct answers can be corrected." : "Marks seen — only the wording can be corrected."}
+      actions={
+        <>
+          <button className="btn-ghost" onClick={guard(back)}><ArrowLeft size={14} /> Back</button>
+          <button className="btn-primary" disabled={saving || nothingToSave} onClick={save}>{saving ? "Saving…" : "Save changes"}</button>
+        </>
+      }
+      nav={
+        <PartsNav
+          items={structure.map((sec, si) => ({
+            id: `pe-part-${sec.id}`,
+            label: sec.title || `Part ${si + 1}`,
+            sub: `${sec.groups.length} group${sec.groups.length === 1 ? "" : "s"}`,
+            ok: !hasProblem(`part:${sec.id}`) && !hasProblem(`plays:${sec.id}`),
+          }))}
+        />
+      }
+      settings={
+        <>
+          <label className="field-label">Title</label>
+          <input className="field-input" value={settings.title} onChange={(e) => setSettings({ ...settings, title: e.target.value })} />
+          <div className="bl-row2">
+            <div>
+              <label className="field-label">Due date (optional)</label>
+              <input type="date" className="field-input" value={settings.due_date} onChange={(e) => setSettings({ ...settings, due_date: e.target.value })} />
             </div>
-          )}
-          {hasProblem(`part:${sec.id}`) && (
-            <div className="field-error">A part must keep at least one question group: undo one of the removals.</div>
-          )}
+            <div>
+              <label className="field-label">Due time (optional)</label>
+              <input type="time" className="field-input" value={settings.due_time} onChange={(e) => setSettings({ ...settings, due_time: e.target.value })} />
+            </div>
+            <div>
+              <label className="field-label">Time limit, minutes</label>
+              <input type="number" min="1" className="field-input" value={settings.time_limit_minutes} onChange={(e) => setSettings({ ...settings, time_limit_minutes: e.target.value })} />
+            </div>
+          </div>
+          <label className="checkbox-row" style={{ marginTop: 12 }}>
+            <input type="checkbox" checked={settings.auto_release_score} onChange={(e) => setSettings({ ...settings, auto_release_score: e.target.checked })} />
+            Show students their score right after they submit
+          </label>
+          <label className="checkbox-row" style={{ marginTop: 6 }}>
+            <input type="checkbox" checked={settings.show_answer_review} onChange={(e) => setSettings({ ...settings, show_answer_review: e.target.checked })} />
+            Let students see which answers were correct/incorrect, with the correct answer
+          </label>
+        </>
+      }
+      checklist={
+        <div className="bl-check">
+          <div className="bl-label">Changes <span className="bl-count">{diff.count + (settingsChanged ? 1 : 0)}</span></div>
+          {diff.problems.length > 0 && <div className="bl-ck"><span className="bl-ck-ic bl-ck-bad">!</span><span>{diff.problems.length} thing{diff.problems.length > 1 ? "s" : ""} to fix (shown in red)</span></div>}
+        </div>
+      }
+      footer={
+        <>
+          {error && <div className="field-error" style={{ marginTop: 12 }}>{error}</div>}
 
-          {sec.groups.map((g) => {
-            if (removedGroups.has(g.id)) {
-              return (
-                <div key={g.id} className="qe-pe-removed">
-                  <span>Question group removed ({g.questionIds.length} question{g.questionIds.length > 1 ? "s" : ""}) — deleted when you save.</span>
-                  <button type="button" className="btn-ghost" onClick={() => setRemovedGroups((set) => { const n = new Set(set); n.delete(g.id); return n; })}>
-                    <Undo2 size={13} /> Undo
-                  </button>
-                </div>
-              );
-            }
-            const qids = g.questionIds;
-            const qs = qids.map((id) => draft.questions[id]);
-            const shared = sharedChoices(qs);
-            const sharedHasText = shared && (qs[0].options?.choices || []).some((c) => c.text);
-            const range = numbering[`group:${g.id}`];
-            const first = range ? range[0] : null;
-            const last = range ? range[1] : null;
-            const aliveCount = qids.filter((id) => !removedQuestions.has(id)).length;
-            const isLabelling = qids.some((id) => orig.questions[id].type === "matching_map_labelling");
-            const gText = draft.groups[g.id].passage_text;
-            const gOrigText = orig.groups[g.id].passage_text;
-            return (
-              <div key={g.id} className="qe-pe-group">
-                <div className="qe-pe-group-head">
-                  <span>{range ? `Questions ${first}${last !== first ? `–${last}` : ""}` : "No question left"}</span>
-                  {canRemove && (
-                    <button type="button" className="btn-ghost qe-pe-remove" onClick={() => setRemovedGroups((set) => new Set(set).add(g.id))}>
-                      <Trash2 size={13} /> Remove this group
+          <div className="qe-builder-actions qe-pe-actions">
+            <button className="btn-primary" disabled={saving || nothingToSave} onClick={save}>
+              {saving ? "Saving…" : "Save changes"}
+            </button>
+            <button className="btn-ghost" disabled={saving} onClick={guard(back)}>Cancel</button>
+            <span className="field-hint" style={{ margin: 0 }}>
+              {nothingToSave
+                ? "Nothing changed yet."
+                : `${diff.count + (settingsChanged ? 1 : 0)} change${diff.count + (settingsChanged ? 1 : 0) > 1 ? "s" : ""} to save${diff.keysChanged ? ` — ${diff.keysChanged} correct answer${diff.keysChanged > 1 ? "s" : ""}` : ""}${diff.deleted ? ` — ${diff.deleted} removal${diff.deleted > 1 ? "s" : ""}` : ""}${diff.addGroups.length ? ` — ${diff.addGroups.length} new group${diff.addGroups.length > 1 ? "s" : ""}` : ""}.`}
+            </span>
+          </div>
+          <p className="field-hint">
+            {canRemove
+              ? "New groups are added at the end of their part. Adding a whole new part (passage) will come later."
+              : "Questions can only be added or removed while nobody has handed in this paper. To make a different version, duplicate it and edit the copy."}
+          </p>
+        </>
+      }
+    >
+        {state.level === 1 && (
+          <div className="qe-pe-banner is-ok">
+            <CheckCircle2 size={16} />
+            <span>Nobody has handed in this paper yet: you can correct the wording and the correct answers.</span>
+          </div>
+        )}
+        {state.level === 2 && (
+          <div className="qe-pe-banner is-warn">
+            <AlertTriangle size={16} />
+            <span>
+              <strong>{state.submitted} student{state.submitted > 1 ? "s have" : " has"} handed in this paper</strong>, but no one has seen a mark yet.
+              You can correct the wording and the correct answers — the copies will be re-marked automatically when you save.
+            </span>
+          </div>
+        )}
+        {state.level === 3 && (
+          <div className="qe-pe-banner is-lock">
+            <Lock size={16} />
+            <span>
+              <strong>Students have already seen their mark for this paper, so its correct answers are locked.</strong>{" "}
+              You can still fix typing mistakes in the wording.
+            </span>
+          </div>
+        )}
+        {state.level >= 2 && (
+          <div className="qe-pe-dup">
+            <span>
+              To make a different version for another class, duplicate it and edit the copy — this paper and its students' marks stay as they are.
+            </span>
+            <div className="qe-pe-dup-row">
+              <select className="field-input" value={dupTarget} onChange={(e) => setDupTarget(e.target.value)}>
+                <option value="">Choose a class or an exam…</option>
+                {targets.some((t) => t.kind === "class") && (
+                  <optgroup label="My classes">
+                    {targets.filter((t) => t.kind === "class").map((t) => <option key={t.class_id} value={t.class_id}>{t.name}</option>)}
+                  </optgroup>
+                )}
+                {targets.some((t) => t.kind === "exam") && (
+                  <optgroup label="My exams (not started yet)">
+                    {targets.filter((t) => t.kind === "exam").map((t) => <option key={t.class_id} value={t.class_id}>{t.name}</option>)}
+                  </optgroup>
+                )}
+              </select>
+              <button className="btn-ghost" disabled={!dupTarget || duplicating} onClick={duplicateAndEdit}>
+                <Copy size={13} /> {duplicating ? "Copying…" : "Duplicate and edit the copy"}
+              </button>
+            </div>
+          </div>
+        )}
+        {isListening && origSettings.listening_audio && (
+          <div className="feedback-panel" style={{ marginTop: 14 }}>
+            <label className="field-label" style={{ marginTop: 0 }}>Recording for the whole test</label>
+            <AudioFilePicker teacherId={teacherId} value={settings.listening_audio} onChange={(f) => setSettings({ ...settings, listening_audio: f || null })} />
+            <label className="checkbox-row" style={{ marginTop: 12 }}>
+              <input type="checkbox" checked={settings.listening_exam_mode} onChange={(e) => setSettings({ ...settings, listening_exam_mode: e.target.checked })} />
+              Exam mode: one listening only, no pause and no rewind
+            </label>
+            <label className="field-label" style={{ marginTop: 12 }}>Checking time after the recording (minutes)</label>
+            <input type="number" min="0" max="30" className="field-input" style={{ maxWidth: 160 }} value={settings.listening_check_minutes} onChange={(e) => setSettings({ ...settings, listening_check_minutes: e.target.value })} />
+          </div>
+        )}
+        {/* ---------- The paper ---------- */}
+        {structure.map((sec, si) => (
+          <div key={sec.id} id={`pe-part-${sec.id}`} className="qe-pe-part">
+            <h3 className="section-title">{sec.title || `Part ${si + 1}`}</h3>
+
+            {!isListening && (
+              <>
+                <label className="field-label">Passage title</label>
+                <input className="field-input" value={draft.sections[sec.id].passage_title} onChange={(e) => patchSection(sec.id, { passage_title: e.target.value })} />
+                <label className="field-label">Passage</label>
+                <textarea
+                  className="field-input textarea qe-pe-passage"
+                  value={draft.sections[sec.id].passage_text}
+                  onChange={(e) => patchSection(sec.id, { passage_text: e.target.value })}
+                />
+                <p className="field-hint">Lines such as [[image:…]] are the pictures of the passage: leave them where they are.</p>
+              </>
+            )}
+            {isListening && !origSettings.listening_audio && (
+              <div className="qe-pe-media">
+                <label className="field-label" style={{ marginTop: 0 }}>Recording of this part</label>
+                <AudioFilePicker
+                  teacherId={teacherId}
+                  value={draft.sections[sec.id].audio_url ? { url: draft.sections[sec.id].audio_url, filename: draft.sections[sec.id].audio_url === orig.sections[sec.id].audio_url ? "Current recording" : "New recording" } : null}
+                  onChange={(f) => patchSection(sec.id, { audio_url: f?.url || null })}
+                />
+                <label className="field-label">Plays allowed (leave blank for unlimited)</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="20"
+                  placeholder="Unlimited"
+                  className={`field-input ${hasProblem(`plays:${sec.id}`) ? "is-invalid" : ""}`}
+                  style={{ maxWidth: 160 }}
+                  value={draft.sections[sec.id].max_plays}
+                  onChange={(e) => patchSection(sec.id, { max_plays: e.target.value })}
+                />
+                {hasProblem(`plays:${sec.id}`) && <div className="field-error">A whole number between 1 and 20, or empty.</div>}
+              </div>
+            )}
+            {hasProblem(`part:${sec.id}`) && (
+              <div className="field-error">A part must keep at least one question group: undo one of the removals.</div>
+            )}
+
+            {sec.groups.map((g) => {
+              if (removedGroups.has(g.id)) {
+                return (
+                  <div key={g.id} className="qe-pe-removed">
+                    <span>Question group removed ({g.questionIds.length} question{g.questionIds.length > 1 ? "s" : ""}) — deleted when you save.</span>
+                    <button type="button" className="btn-ghost" onClick={() => setRemovedGroups((set) => { const n = new Set(set); n.delete(g.id); return n; })}>
+                      <Undo2 size={13} /> Undo
                     </button>
+                  </div>
+                );
+              }
+              const qids = g.questionIds;
+              const qs = qids.map((id) => draft.questions[id]);
+              const shared = sharedChoices(qs);
+              const sharedHasText = shared && (qs[0].options?.choices || []).some((c) => c.text);
+              const range = numbering[`group:${g.id}`];
+              const first = range ? range[0] : null;
+              const last = range ? range[1] : null;
+              const aliveCount = qids.filter((id) => !removedQuestions.has(id)).length;
+              const isLabelling = qids.some((id) => orig.questions[id].type === "matching_map_labelling");
+              const gText = draft.groups[g.id].passage_text;
+              const gOrigText = orig.groups[g.id].passage_text;
+              return (
+                <div key={g.id} className="qe-pe-group">
+                  <div className="qe-pe-group-head">
+                    <span>{range ? `Questions ${first}${last !== first ? `–${last}` : ""}` : "No question left"}</span>
+                    {canRemove && (
+                      <button type="button" className="btn-ghost qe-pe-remove" onClick={() => setRemovedGroups((set) => new Set(set).add(g.id))}>
+                        <Trash2 size={13} /> Remove this group
+                      </button>
+                    )}
+                  </div>
+                  {hasProblem(`empty:${g.id}`) && <div className="field-error">A group cannot be left without questions: remove the whole group instead, or undo.</div>}
+                  <label className="field-label">Instruction</label>
+                  <textarea className="field-input textarea qe-pe-short" value={draft.groups[g.id].instruction} onChange={(e) => patchGroup(g.id, { instruction: e.target.value })} />
+
+                  {(orig.groups[g.id].image_url || isLabelling) && (
+                    <div className={`qe-pe-image ${hasProblem(`image:${g.id}`) ? "is-invalid" : ""}`}>
+                      <GroupImagePicker
+                        teacherId={teacherId}
+                        value={draft.groups[g.id].image_url || ""}
+                        onChange={(url) => patchGroup(g.id, { image_url: url || null })}
+                        label={isLabelling ? "Map / plan (required)" : "Picture"}
+                        required={isLabelling}
+                      />
+                    </div>
+                  )}
+
+                  {gOrigText && (
+                    <GroupTextEditor
+                      value={gText}
+                      original={gOrigText}
+                      invalid={hasProblem(`group:${g.id}`)}
+                      questionsLeft={aliveCount}
+                      onChange={(v) => patchGroup(g.id, { passage_text: v })}
+                    />
+                  )}
+
+                  {sharedHasText && (
+                    <div className="qe-pe-options">
+                      <div className="field-label" style={{ marginTop: 0 }}>Options (for all the questions of this group)</div>
+                      {(qs[0].options?.choices || []).map((c) => (
+                        <div key={c.letter} className="qe-pe-choice">
+                          <span className="qe-pe-letter">{c.letter}</span>
+                          <input className="field-input" value={c.text} onChange={(e) => setChoiceText(qids, c.letter, e.target.value)} />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {qids.map((id) =>
+                    removedQuestions.has(id) ? (
+                      <div key={id} className="qe-pe-removed">
+                        <span>Question removed — deleted when you save.{countBlanks(gOrigText) > 0 ? " Also remove its \"___\" from the text above." : ""}</span>
+                        <button type="button" className="btn-ghost" onClick={() => setRemovedQuestions((set) => { const n = new Set(set); n.delete(id); return n; })}>
+                          <Undo2 size={13} /> Undo
+                        </button>
+                      </div>
+                    ) : (
+                    <QuestionEditor
+                      key={id}
+                      number={numbering[id]}
+                      onRemove={canRemove ? () => setRemovedQuestions((set) => new Set(set).add(id)) : null}
+                      q={draft.questions[id]}
+                      orig={orig.questions[id]}
+                      hideChoices={shared}
+                      keysLocked={keysLocked}
+                      promptInvalid={hasProblem(`prompt:${id}`)}
+                      keyInvalid={hasProblem(`key:${id}`)}
+                      onPatch={(patch) => patchQuestion(id, patch)}
+                      onChoice={(letter, text) => setChoiceText([id], letter, text)}
+                    />
+                    )
                   )}
                 </div>
-                {hasProblem(`empty:${g.id}`) && <div className="field-error">A group cannot be left without questions: remove the whole group instead, or undo.</div>}
-                <label className="field-label">Instruction</label>
-                <textarea className="field-input textarea qe-pe-short" value={draft.groups[g.id].instruction} onChange={(e) => patchGroup(g.id, { instruction: e.target.value })} />
+              );
+            })}
 
-                {(orig.groups[g.id].image_url || isLabelling) && (
-                  <div className={`qe-pe-image ${hasProblem(`image:${g.id}`) ? "is-invalid" : ""}`}>
-                    <GroupImagePicker
-                      teacherId={teacherId}
-                      value={draft.groups[g.id].image_url || ""}
-                      onChange={(url) => patchGroup(g.id, { image_url: url || null })}
-                      label={isLabelling ? "Map / plan (required)" : "Picture"}
-                      required={isLabelling}
-                    />
-                  </div>
-                )}
-
-                {gOrigText && (
-                  <GroupTextEditor
-                    value={gText}
-                    original={gOrigText}
-                    invalid={hasProblem(`group:${g.id}`)}
-                    questionsLeft={aliveCount}
-                    onChange={(v) => patchGroup(g.id, { passage_text: v })}
-                  />
-                )}
-
-                {sharedHasText && (
-                  <div className="qe-pe-options">
-                    <div className="field-label" style={{ marginTop: 0 }}>Options (for all the questions of this group)</div>
-                    {(qs[0].options?.choices || []).map((c) => (
-                      <div key={c.letter} className="qe-pe-choice">
-                        <span className="qe-pe-letter">{c.letter}</span>
-                        <input className="field-input" value={c.text} onChange={(e) => setChoiceText(qids, c.letter, e.target.value)} />
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {qids.map((id) =>
-                  removedQuestions.has(id) ? (
-                    <div key={id} className="qe-pe-removed">
-                      <span>Question removed — deleted when you save.{countBlanks(gOrigText) > 0 ? " Also remove its \"___\" from the text above." : ""}</span>
-                      <button type="button" className="btn-ghost" onClick={() => setRemovedQuestions((set) => { const n = new Set(set); n.delete(id); return n; })}>
-                        <Undo2 size={13} /> Undo
-                      </button>
-                    </div>
-                  ) : (
-                  <QuestionEditor
-                    key={id}
-                    number={numbering[id]}
-                    onRemove={canRemove ? () => setRemovedQuestions((set) => new Set(set).add(id)) : null}
-                    q={draft.questions[id]}
-                    orig={orig.questions[id]}
-                    hideChoices={shared}
-                    keysLocked={keysLocked}
-                    promptInvalid={hasProblem(`prompt:${id}`)}
-                    keyInvalid={hasProblem(`key:${id}`)}
-                    onPatch={(patch) => patchQuestion(id, patch)}
-                    onChoice={(letter, text) => setChoiceText([id], letter, text)}
-                  />
-                  )
-                )}
-              </div>
-            );
-          })}
-
-          {(added[sec.id] || []).map((g) => (
-            <AddGroupPanel
-              key={g.localId}
-              group={g}
-              teacherId={teacherId}
-              skill={isListening ? "listening" : "reading"}
-              startNumber={numbering[`new:${g.localId}`] || 1}
-              onUpdate={(fn) => updateAdded(sec.id, g.localId, fn)}
-              onCancel={() => cancelAdded(sec.id, g)}
-            />
-          ))}
-          {canRemove && (
-            <button
-              type="button"
-              className="btn-ghost qe-pe-addgroup"
-              onClick={() => setAdded((a) => ({ ...a, [sec.id]: [...(a[sec.id] || []), newAddedGroup(isListening ? "listening" : "reading")] }))}
-            >
-              <Plus size={14} /> Add a question group to {sec.title || `Part ${si + 1}`}
-            </button>
-          )}
-        </div>
-      ))}
-
-      {error && <div className="field-error" style={{ marginTop: 16 }}>{error}</div>}
-
-      <div className="qe-builder-actions qe-pe-actions">
-        <button className="btn-primary" disabled={saving || nothingToSave} onClick={save}>
-          {saving ? "Saving…" : "Save changes"}
-        </button>
-        <button className="btn-ghost" disabled={saving} onClick={back}>Cancel</button>
-        <span className="field-hint" style={{ margin: 0 }}>
-          {nothingToSave
-            ? "Nothing changed yet."
-            : `${diff.count + (settingsChanged ? 1 : 0)} change${diff.count + (settingsChanged ? 1 : 0) > 1 ? "s" : ""} to save${diff.keysChanged ? ` — ${diff.keysChanged} correct answer${diff.keysChanged > 1 ? "s" : ""}` : ""}${diff.deleted ? ` — ${diff.deleted} removal${diff.deleted > 1 ? "s" : ""}` : ""}${diff.addGroups.length ? ` — ${diff.addGroups.length} new group${diff.addGroups.length > 1 ? "s" : ""}` : ""}.`}
-        </span>
-      </div>
-      <p className="field-hint">
-        {canRemove
-          ? "New groups are added at the end of their part. Adding a whole new part (passage) will come later."
-          : "Questions can only be added or removed while nobody has handed in this paper. To make a different version, duplicate it and edit the copy."}
-      </p>
-    </div>
+            {(added[sec.id] || []).map((g) => (
+              <AddGroupPanel
+                key={g.localId}
+                group={g}
+                teacherId={teacherId}
+                skill={isListening ? "listening" : "reading"}
+                startNumber={numbering[`new:${g.localId}`] || 1}
+                onUpdate={(fn) => updateAdded(sec.id, g.localId, fn)}
+                onCancel={() => cancelAdded(sec.id, g)}
+              />
+            ))}
+            {canRemove && (
+              <button
+                type="button"
+                className="btn-ghost qe-pe-addgroup"
+                onClick={() => setAdded((a) => ({ ...a, [sec.id]: [...(a[sec.id] || []), newAddedGroup(isListening ? "listening" : "reading")] }))}
+              >
+                <Plus size={14} /> Add a question group to {sec.title || `Part ${si + 1}`}
+              </button>
+            )}
+          </div>
+        ))}
+    </BuilderLayout>
   );
 }
 
