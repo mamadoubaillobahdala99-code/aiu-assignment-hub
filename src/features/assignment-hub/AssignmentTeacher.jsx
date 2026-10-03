@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { BookOpen, Users, Plus, Check, Clock, AlertTriangle, LogOut, GraduationCap, FileText, ChevronRight, X, Copy, CheckCircle2, Headphones, PenLine, Mic, ListChecks, ArrowLeft, Loader2, Timer, Highlighter, Trash2, Pencil , Eye } from "lucide-react";
 import { supabase } from "../../supabaseClient";
 import { uid, makeCode, TYPES, fmtDate, fmtDueDateTime, daysUntil, wordCount, isPdfUrl } from "../../lib/utils";
@@ -9,7 +9,7 @@ import { TeacherPaperPreview } from "../question-engine/TeacherPaperPreview";
 import { deleteUnusedSpeakingFiles } from "../question-engine/speaking";
 import { confirmDialog } from "../../lib/confirmDialog";
 import { DropMenu, DropMenuItem, DropMenuSeparator, Breadcrumb } from "../../components/DropMenu";
-import { loadAssignmentWork, assignmentStats } from "./assignmentWork";
+import { loadAssignmentWork, assignmentStats, sortRows } from "./assignmentWork";
 import { AssignmentStats, StudentsTable, QuestionsTable } from "./AssignmentStudents";
 
 const CRITERIA = [
@@ -34,7 +34,7 @@ const CRITERIA = [
 //               room's work, so Edit and Delete disappear. Preview and
 //               Duplicate stay. The database refuses it too (a trigger),
 //               this only spares the teacher the error.
-export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen, showToast, returnTo, examLocked, openDuplicate }) {
+export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen, showToast, returnTo, examLocked, openDuplicate, studentId }) {
   const [assignment, setAssignment] = useState(null);
   const [roster, setRoster] = useState([]);
   const [isStructured, setIsStructured] = useState(false);
@@ -43,7 +43,14 @@ export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen,
   // Listening) how each question went — see assignmentWork.js.
   const [work, setWork] = useState(null);
   const [tab, setTab] = useState("students");
-  const [activeStructuredStudent, setActiveStructuredStudent] = useState(null);
+  // Livraison 74: the copy being marked is part of the page's address
+  // (studentId), so a refresh stays on it and the browser's Back returns
+  // to the list. Unsaved marking is protected (see below).
+  // shownId = the copy on screen. It follows the address, except when the
+  // copy on screen has unsaved marking: then it stays (with its text) until
+  // the teacher answers « Leave without saving? ».
+  const dirtyRef = useRef(false);
+  const [shownId, setShownId] = useState(studentId);
   const [busy, setBusy] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [myClasses, setMyClasses] = useState([]);
@@ -67,6 +74,27 @@ export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen,
     const cleaned = window.location.hash.replace(/([?&])dup=1(&|$)/, (m, a, b) => (b ? a : "")).replace(/[?&]$/, "");
     if (cleaned !== window.location.hash) window.history.replaceState(null, "", cleaned);
   }, [openDuplicate, assignmentId]);
+
+  // The browser's Back / Forward leaves a copy whose marking is not saved:
+  // the copy stays on screen, the address is put back, and the teacher is
+  // asked first (the in-page buttons ask by themselves).
+  useEffect(() => {
+    if (studentId === shownId) return;
+    if (!dirtyRef.current) { setShownId(studentId); return; }
+    const base = { name: "assignment-teacher", classId, assignmentId, ...(returnTo ? { returnTo } : {}) };
+    const target = studentId ? { ...base, studentId } : base;
+    // The browser sends two signals for Back (popstate, then hashchange);
+    // the address is put back after both, or the second would undo it.
+    const keep = shownId;
+    setTimeout(() => setScreen({ ...base, studentId: keep }), 120);
+    (async () => {
+      if (await confirmDialog({ title: "Leave without saving?", message: "You have unsaved changes on this copy. Leave without saving?", confirmLabel: "Leave without saving", danger: true })) {
+        dirtyRef.current = false;
+        setShownId(studentId);
+        setScreen(target);
+      }
+    })();
+  }, [studentId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const load = useCallback(async () => {
     const { data: a } = await supabase.from("assignments").select("*").eq("id", assignmentId).single();
@@ -126,6 +154,15 @@ export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen,
   }, [classId, assignmentId, teacherId]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Livraison 74: the statuses again (after marking a copy), without
+  // reading the whole page again.
+  const refreshWork = useCallback(async () => {
+    if (!assignment) return;
+    const w = await loadAssignmentWork({ assignment, roster, structured: isStructured });
+    setWork(w);
+    setStructuredStudentIds(new Set(w.rows.filter((x) => x.open).map((x) => x.id)));
+  }, [assignment, roster, isStructured]);
 
   const isWritingType = assignment?.type === "Writing Task 1" || assignment?.type === "Writing Task 2";
 
@@ -210,28 +247,37 @@ export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen,
 
   if (!assignment) return <CenterSpinner />;
 
-  if (activeStructuredStudent && assignment.type === "Writing") {
-    return (
-      <TeacherWritingReview
-        assignmentId={assignmentId}
-        studentId={activeStructuredStudent.id}
-        studentName={activeStructuredStudent.name}
-        onBack={() => { setActiveStructuredStudent(null); load(); }}
-        showToast={showToast}
-      />
-    );
-  }
+  if (shownId && work === null) return <CenterSpinner />;
 
-  if (activeStructuredStudent) {
-    return (
-      <TeacherQuestionEngineReview
-        assignmentId={assignmentId}
-        studentId={activeStructuredStudent.id}
-        studentName={activeStructuredStudent.name}
-        onBack={() => { setActiveStructuredStudent(null); load(); }}
-        showToast={showToast}
-      />
-    );
+  // Livraison 74: one copy open (from the address), with its neighbours.
+  const base = { name: "assignment-teacher", classId, assignmentId, ...(returnTo ? { returnTo } : {}) };
+  const order = work ? sortRows(work.rows).filter((r) => r.open) : [];
+  const activeRow = shownId && isStructured ? order.find((r) => r.id === shownId) || null : null;
+  if (activeRow) {
+    const i = order.findIndex((r) => r.id === activeRow.id);
+    const go = (r) => { refreshWork(); setScreen({ ...base, studentId: r.id }); };
+    const toMark = order.filter((r) => r.status === "to-mark" && r.id !== activeRow.id);
+    const nextToMark = toMark.find((r) => order.indexOf(r) > i) || toMark[0] || null;
+    const nav = {
+      label: assignment.type === "Writing" && activeRow.status === "to-mark"
+        ? `To mark: ${order.filter((r) => r.status === "to-mark").findIndex((r) => r.id === activeRow.id) + 1} of ${order.filter((r) => r.status === "to-mark").length}`
+        : `Copy ${i + 1} of ${order.length}`,
+      prev: i > 0 ? () => go(order[i - 1]) : null,
+      next: i < order.length - 1 ? () => go(order[i + 1]) : null,
+      nextToMark: nextToMark ? () => go(nextToMark) : null,
+      nextToMarkName: nextToMark?.name || "",
+    };
+    const homeCrumbs = exam
+      ? [{ label: "Exams", onClick: () => setScreen({ name: "exams" }) }, { label: homeName || "Exam", onClick: () => setScreen({ name: "exam-session", sessionId: exam.sessionId }) }]
+      : [{ label: "My classes", onClick: () => setScreen({ name: "home" }) }, { label: homeName || "Class", onClick: () => setScreen(returnTo || { name: "class", classId: assignment.class_id || classId }) }];
+    const closeCopy = () => { setScreen(base); load(); };
+    const crumbs = [...homeCrumbs, { label: assignment.title, onClick: closeCopy }, { label: activeRow.name }];
+    const common = {
+      assignmentId, studentId: activeRow.id, studentName: activeRow.name, handedAt: activeRow.at,
+      onBack: closeCopy, showToast, crumbs, nav,
+      onDirtyChange: (d) => { dirtyRef.current = d; },
+    };
+    return assignment.type === "Writing" ? <TeacherWritingReview key={activeRow.id} {...common} /> : <TeacherQuestionEngineReview key={activeRow.id} {...common} />;
   }
 
   if (previewing) {
@@ -267,7 +313,7 @@ export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen,
   const stats = work && isStructured ? assignmentStats(assignment.type, work) : null;
   const isPaper = isStructured && (assignment.type === "Reading" || assignment.type === "Listening");
   function openStudent(student) {
-    if (isStructured && structuredStudentIds.has(student.id)) setActiveStructuredStudent(student);
+    if (isStructured && structuredStudentIds.has(student.id)) setScreen({ ...base, studentId: student.id });
   }
 
   return (
