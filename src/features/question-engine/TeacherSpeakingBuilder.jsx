@@ -6,6 +6,7 @@ import { uid } from "../../lib/utils";
 import { fileRef } from "../../lib/storageFiles";
 import { SPEAKING_PARTS, DOC_ACCEPT, MAX_DOC_MB, MAX_DOCS_PER_PART, docKindOf, extOf, fmtSize, cleanDocuments, deleteUnusedSpeakingFiles } from "./speaking";
 import { confirmDialog } from "../../lib/confirmDialog";
+import { BuilderLayout, PartsNav, Checklist, useBuilderCrumbs, makeLeaveGuard } from "./BuilderLayout";
 
 // Structured Speaking — teacher side.
 // One assignment = Part 1 and/or Part 2 (cue card) and/or Part 3, each
@@ -222,6 +223,12 @@ export function TeacherSpeakingBuilder({ classId, teacherId, setScreen, showToas
     setScreen(returnTo || { name: "class", classId });
   }
 
+  // Livraison 76 — the same page in the three-column layout (see
+  // BuilderLayout). Inputs, buttons and handlers are unchanged.
+  const hasWork = [1, 2, 3].some((n) => parts[n].text.trim() || parts[n].newFiles.length > 0);
+  const guard = makeLeaveGuard(hasWork && !publishing);
+  const crumbs = useBuilderCrumbs({ classId, returnTo, setScreen, guard, here: editAssignmentId ? "Edit Speaking assignment" : "New Speaking assignment" });
+
   if (loadingExisting) {
     return (
       <div className="page page-wide">
@@ -230,95 +237,122 @@ export function TeacherSpeakingBuilder({ classId, teacherId, setScreen, showToas
     );
   }
 
+  const partReady = (n) => Boolean(parts[n].text.trim() || parts[n].docs.length + parts[n].newFiles.length > 0);
+  const checklist = [
+    { label: "At least one part ticked", ok: includedParts.length > 0 },
+    ...includedParts.map((n) => ({ label: `${SPEAKING_PARTS[n].label}: text or a document`, ok: partReady(n) })),
+  ];
+  const publishButton = (
+    <button className="btn-primary" disabled={!canPublish || publishing} onClick={publish}>
+      {publishing ? progress || "Saving…" : editAssignmentId ? "Save changes" : "Publish assignment"}
+    </button>
+  );
+
   return (
-    <div className="page page-wide">
-      <div className="eyebrow">Structured Speaking</div>
-      <h1 className="page-title">{editAssignmentId ? "Edit Speaking assignment" : "New Speaking assignment"}</h1>
-      <p className="field-hint" style={{ marginTop: 4 }}>Students consult the topics and documents to prepare. There is no recording and nothing to submit.</p>
+    <BuilderLayout
+      crumbs={crumbs}
+      eyebrow={editAssignmentId ? "Structured Speaking · editing" : "Structured Speaking · not published yet"}
+      heading={editAssignmentId ? "Edit Speaking assignment" : "New Speaking assignment"}
+      sub="Students consult the topics and documents to prepare. There is no recording and nothing to submit."
+      actions={publishButton}
+      nav={
+        <PartsNav
+          items={includedParts.map((n) => {
+            const docs = parts[n].docs.length + parts[n].newFiles.length;
+            return {
+              id: `spart-${n}`,
+              label: `${SPEAKING_PARTS[n].label} · ${SPEAKING_PARTS[n].title}`,
+              sub: `${parts[n].text.trim() ? "text ✓" : "no text yet"}${docs ? ` · ${docs} document${docs === 1 ? "" : "s"}` : ""}`,
+              ok: partReady(n),
+            };
+          })}
+        />
+      }
+      settings={
+        <>
+          <label className="field-label">Title (optional)</label>
+          <input className="field-input" placeholder="e.g. Speaking Practice — Travel" value={title} onChange={(e) => setTitle(e.target.value)} />
 
-      <label className="field-label" style={{ marginTop: 16 }}>Title (optional — auto-generated if left blank)</label>
-      <input className="field-input" placeholder="e.g. Speaking Practice — Travel" value={title} onChange={(e) => setTitle(e.target.value)} />
+          <label className="field-label">Due date (optional)</label>
+          <input type="date" className="field-input" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+          <label className="field-label">Due time (optional)</label>
+          <input type="time" className="field-input" value={dueTime} onChange={(e) => setDueTime(e.target.value)} />
 
-      <div style={{ maxWidth: 320, marginTop: 14 }}>
-        <label className="field-label">Due date (optional)</label>
-        <input type="date" className="field-input" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
-      </div>
-      <div style={{ maxWidth: 320, marginTop: 14 }}>
-        <label className="field-label">Due time (optional)</label>
-        <input type="time" className="field-input" value={dueTime} onChange={(e) => setDueTime(e.target.value)} />
-      </div>
+          <label className="field-label" style={{ marginTop: 14 }}>Parts in this assignment</label>
+          {[1, 2, 3].map((n) => (
+            <label key={n} className="checkbox-row" style={{ marginTop: n === 1 ? 0 : 6 }}>
+              <input type="checkbox" checked={parts[n].include} onChange={(e) => updatePart(n, { include: e.target.checked })} />
+              {SPEAKING_PARTS[n].label} — {SPEAKING_PARTS[n].title}
+            </label>
+          ))}
+          <p className="field-hint" style={{ marginTop: 2 }}>
+            {includedParts.length === 0 ? "Tick at least one part." : "Each part needs a text or at least one document."}
+          </p>
+        </>
+      }
+      checklist={<Checklist items={checklist} />}
+      footer={
+        <>
+          {error && <div className="field-error" style={{ marginTop: 12 }}>{error}</div>}
+          <div className="qe-builder-actions">{publishButton}</div>
+        </>
+      }
+    >
+        {includedParts.map((n) => {
+          const part = parts[n];
+          const meta = SPEAKING_PARTS[n];
+          return (
+            <div key={n} id={`spart-${n}`} className="feedback-panel qe-writing-task-block">
+              <h3 className="section-title" style={{ margin: 0 }}>{meta.label} — {meta.title}</h3>
 
-      <label className="field-label" style={{ marginTop: 18 }}>Parts in this assignment</label>
-      {[1, 2, 3].map((n) => (
-        <label key={n} className="checkbox-row" style={{ marginTop: n === 1 ? 0 : 6 }}>
-          <input type="checkbox" checked={parts[n].include} onChange={(e) => updatePart(n, { include: e.target.checked })} />
-          {SPEAKING_PARTS[n].label} — {SPEAKING_PARTS[n].title}
-        </label>
-      ))}
-      <p className="field-hint" style={{ marginTop: 2 }}>
-        {includedParts.length === 0 ? "Tick at least one part." : "Each part needs a text or at least one document."}
-      </p>
+              <label className="field-label" style={{ marginTop: 14 }}>{meta.field}</label>
+              <textarea
+                className="field-input textarea"
+                style={{ minHeight: n === 2 ? 170 : 130 }}
+                placeholder={meta.placeholder}
+                value={part.text}
+                onChange={(e) => updatePart(n, { text: e.target.value })}
+              />
 
-      {includedParts.map((n) => {
-        const part = parts[n];
-        const meta = SPEAKING_PARTS[n];
-        return (
-          <div key={n} className="feedback-panel qe-writing-task-block">
-            <h3 className="section-title" style={{ margin: 0 }}>{meta.label} — {meta.title}</h3>
-
-            <label className="field-label" style={{ marginTop: 14 }}>{meta.field}</label>
-            <textarea
-              className="field-input textarea"
-              style={{ minHeight: n === 2 ? 170 : 130 }}
-              placeholder={meta.placeholder}
-              value={part.text}
-              onChange={(e) => updatePart(n, { text: e.target.value })}
-            />
-
-            <label className="field-label" style={{ marginTop: 14 }}>Documents (optional)</label>
-            {(part.docs.length > 0 || part.newFiles.length > 0) && (
-              <div className="qe-sp-doclist">
-                {part.docs.map((d) => {
-                  const Icon = KIND_ICON[d.kind] || File;
-                  return (
-                    <div key={d.url} className="qe-sp-docrow">
-                      <Icon size={15} />
-                      <span className="qe-sp-docname">{d.name}</span>
-                      <span className="qe-sp-docmeta">{fmtSize(d.size)}</span>
-                      <button type="button" className="btn-ghost qe-sp-docremove" onClick={() => removeSavedDoc(n, d)}><X size={13} /> Remove</button>
-                    </div>
-                  );
-                })}
-                {part.newFiles.map((f) => {
-                  const Icon = KIND_ICON[f.kind] || File;
-                  return (
-                    <div key={f.localId} className="qe-sp-docrow qe-sp-docrow-new">
-                      <Icon size={15} />
-                      <span className="qe-sp-docname">{f.file.name}</span>
-                      <span className="qe-sp-docmeta">{fmtSize(f.file.size)} · uploads when you save</span>
-                      <button type="button" className="btn-ghost qe-sp-docremove" onClick={() => removeNewFile(n, f.localId)}><X size={13} /> Remove</button>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-            {part.docs.length + part.newFiles.length < MAX_DOCS_PER_PART && (
-              <label className="qe-writing-image-drop" style={{ marginTop: 8 }}>
-                <Paperclip size={16} />
-                <span>Add documents</span>
-                <input key={`${n}-${fileInputKey}`} type="file" multiple accept={DOC_ACCEPT} onChange={(e) => addFiles(n, e.target.files)} style={{ display: "none" }} />
-              </label>
-            )}
-            <p className="field-hint" style={{ marginTop: 6 }}>PDF, images (PNG, JPG, WebP), audio (MP3, M4A, WAV) or Word (.docx) — up to {MAX_DOC_MB} MB each.</p>
-          </div>
-        );
-      })}
-
-      {error && <div className="field-error" style={{ marginTop: 16 }}>{error}</div>}
-
-      <button className="btn-primary" style={{ marginTop: 24 }} disabled={!canPublish || publishing} onClick={publish}>
-        {publishing ? progress || "Saving…" : editAssignmentId ? "Save changes" : "Publish assignment"}
-      </button>
-    </div>
+              <label className="field-label" style={{ marginTop: 14 }}>Documents (optional)</label>
+              {(part.docs.length > 0 || part.newFiles.length > 0) && (
+                <div className="qe-sp-doclist">
+                  {part.docs.map((d) => {
+                    const Icon = KIND_ICON[d.kind] || File;
+                    return (
+                      <div key={d.url} className="qe-sp-docrow">
+                        <Icon size={15} />
+                        <span className="qe-sp-docname">{d.name}</span>
+                        <span className="qe-sp-docmeta">{fmtSize(d.size)}</span>
+                        <button type="button" className="btn-ghost qe-sp-docremove" onClick={() => removeSavedDoc(n, d)}><X size={13} /> Remove</button>
+                      </div>
+                    );
+                  })}
+                  {part.newFiles.map((f) => {
+                    const Icon = KIND_ICON[f.kind] || File;
+                    return (
+                      <div key={f.localId} className="qe-sp-docrow qe-sp-docrow-new">
+                        <Icon size={15} />
+                        <span className="qe-sp-docname">{f.file.name}</span>
+                        <span className="qe-sp-docmeta">{fmtSize(f.file.size)} · uploads when you save</span>
+                        <button type="button" className="btn-ghost qe-sp-docremove" onClick={() => removeNewFile(n, f.localId)}><X size={13} /> Remove</button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              {part.docs.length + part.newFiles.length < MAX_DOCS_PER_PART && (
+                <label className="qe-writing-image-drop" style={{ marginTop: 8 }}>
+                  <Paperclip size={16} />
+                  <span>Add documents</span>
+                  <input key={`${n}-${fileInputKey}`} type="file" multiple accept={DOC_ACCEPT} onChange={(e) => addFiles(n, e.target.files)} style={{ display: "none" }} />
+                </label>
+              )}
+              <p className="field-hint" style={{ marginTop: 6 }}>PDF, images (PNG, JPG, WebP), audio (MP3, M4A, WAV) or Word (.docx) — up to {MAX_DOC_MB} MB each.</p>
+            </div>
+          );
+        })}
+      {includedParts.length === 0 && <p className="empty-inline">Tick at least one part in Settings.</p>}
+    </BuilderLayout>
   );
 }
