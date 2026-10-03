@@ -4,7 +4,7 @@ import { supabase } from "./supabaseClient";
 import { CSS } from "./styles";
 import { LandingPage } from "./features/landing/LandingPage";
 import { Shell, SCREEN_ROLES } from "./Shell";
-import { AdminConsole } from "./features/admin/AdminConsole";import "./features/question-engine/question-engine.css";
+import "./features/question-engine/question-engine.css";
 import "./features/question-engine/multiple-choice.css";
 import "./features/question-engine/bulk-paste.css";
 import "./features/question-engine/summary-completion.css";
@@ -84,6 +84,12 @@ export default function App() {
   );
   const [toast, setToast] = useState(null);
 
+  // Livraison 77: a teacher who opens the site without a screen in the
+  // address (a fresh visit, a sign-in, a sign-in link) lands on their
+  // Dashboard; a student on their Home (which is their dashboard). A
+  // screen already in the address (refresh, a link, Back) is kept.
+  const landingRef = useRef(typeof window === "undefined" || !hashToScreen(window.location.hash));
+
   const showToast = useCallback((msg) => {
     setToast(msg);
     setTimeout(() => setToast(null), 2400);
@@ -114,7 +120,7 @@ export default function App() {
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       if (session) loadProfile(session.user.id);
-      else setProfile(null);
+      else { setProfile(null); landingRef.current = true; }
     });
 
     return () => listener.subscription.unsubscribe();
@@ -128,6 +134,10 @@ export default function App() {
   const firstSyncRef = useRef(true);
   useEffect(() => {
     if (loading || !session || !profile) return;
+    if (landingRef.current) {
+      landingRef.current = false;
+      if (profile.role === "teacher" && screen.name === "home") { setScreen({ name: "dashboard" }); return; }
+    }
     const next = screenToHash(screen);
     if (window.location.hash === next) { firstSyncRef.current = false; return; }
     if (firstSyncRef.current) window.history.replaceState(null, "", next);
@@ -162,8 +172,12 @@ export default function App() {
     };
   }, [profile]);
 
+  // Signing out empties the address too: the next person to sign in on
+  // this computer starts on their own first screen.
   async function handleSignOut() {
     await supabase.auth.signOut();
+    landingRef.current = true;
+    window.history.replaceState(null, "", window.location.pathname + window.location.search);
     setScreen({ name: "home" });
   }
 
@@ -176,11 +190,10 @@ export default function App() {
         // Livraison 67: the public home page (log in / create account open
         // in a window over it).
         <LandingPage showToast={showToast} />
-      ) : screen.name === "admin" ? (
-        // The administrator's screen is separate from the teacher space
-        // (livraison 60). The database decides who may read it.
-        <AdminConsole profile={profile} setScreen={setScreen} />
       ) : (
+        // Livraison 77: the administrator's screen is now a page of the
+        // app (menu on the left), reached from the Profile. The database
+        // still decides who may read it.
         <Shell profile={profile} setProfile={setProfile} userId={session.user.id} onSignOut={handleSignOut} screen={screen} setScreen={setScreen} showToast={showToast} />
       )}
       {toast && <div className="toast">{toast}</div>}
