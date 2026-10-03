@@ -701,7 +701,7 @@ mark.rs-mark-on { outline: 2px solid var(--rose); outline-offset: 1px; }
 .bl-label { font-size: 11.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-soft); margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
 .bl-count { font-weight: 700; color: var(--teal); letter-spacing: 0; }
 .bl-settings .field-label { margin-top: 10px; }
-.bl-settings .field-label:first-of-type { margin-top: 0; }
+.bl-settings > .bl-label + .field-label { margin-top: 0; }
 .bl-row2 { display: grid; grid-template-columns: 1fr; gap: 0; }
 .bl-parts { display: flex; flex-direction: column; gap: 4px; }
 .bl-part { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; padding: 9px 11px; border-radius: 9px; border: 1px solid transparent; background: none; font-family: inherit; color: var(--ink-soft); cursor: pointer; }
@@ -721,6 +721,18 @@ mark.rs-mark-on { outline: 2px solid var(--rose); outline-offset: 1px; }
 .bl-right .qe-builder-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
 .bl-right .qe-builder-actions button { width: 100%; }
 .bl-audio { margin-bottom: 18px; }
+.bl-steps { list-style: none; display: flex; align-items: center; gap: 10px; margin: 0 0 18px; padding: 0; flex-wrap: wrap; }
+.bl-step { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--ink-soft); }
+.bl-step:not(:last-child)::after { content: ""; width: 40px; height: 2px; background: var(--line); margin-left: 4px; }
+.bl-step.done:not(:last-child)::after { background: var(--teal); }
+.bl-step-n { width: 24px; height: 24px; border-radius: 50%; border: 2px solid var(--line); background: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; }
+.bl-step.done .bl-step-n { background: var(--teal); border-color: var(--teal); color: #fff; }
+.bl-step.now { color: var(--ink); }
+.bl-step.now .bl-step-n { border-color: var(--teal); color: var(--teal); }
+.bl-import-panel { max-width: 900px; }
+.bl-import-panel > .field-label:first-child { margin-top: 0 !important; }
+.bl-ck-ic.bl-ck-bad { background: var(--rose); font-size: 11px; font-weight: 700; }
+.bl-right .qe-pe-actions .field-hint { text-align: center; }
 @media (max-width: 1250px) {
   .bl-grid { grid-template-columns: minmax(0, 1fr) 300px; grid-template-areas: "left left" "center right"; }
   .bl-left { position: static; }
