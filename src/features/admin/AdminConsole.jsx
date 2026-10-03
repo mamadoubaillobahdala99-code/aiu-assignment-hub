@@ -1,10 +1,13 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { ArrowLeft, Loader2, RefreshCw } from "lucide-react";
+import { Loader2, RefreshCw, ShieldCheck } from "lucide-react";
 import { supabase } from "../../supabaseClient";
+import { Breadcrumb } from "../../components/DropMenu";
 import "./admin.css";
 
-// The administrator's screen (livraison 60). It is a SEPARATE screen, with
-// its own bar, not a page inside the teacher space. It only reads.
+// The administrator's screen (livraison 60). Since livraison 77 it is a
+// page of the app (menu on the left), reached from the administrator's
+// Profile: « Profile › Administration ». It only reads, apart from the
+// Approve / Decline decisions (unchanged).
 //
 // Everything shown comes from admin_overview(), which the DATABASE refuses
 // to anyone who is not an administrator ("Not allowed"): hiding the menu
@@ -84,141 +87,129 @@ export function AdminConsole({ profile, setScreen }) {
     decidingRef.current = false;
   }
 
-  const back = () => setScreen({ name: "home" });
+  const back = () => setScreen({ name: "profile" });
   const teachers = data?.teacher_list || [];
   const requests = (data?.requests || []).filter((r) => !decided.has(r.user_id));
+  const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
 
   return (
-    <div className="adm-root">
-      <header className="adm-bar">
-        <div className="adm-brand">
-          <span className="adm-mark">AIU</span>
-          <span className="adm-name">Assignment Hub</span>
-          <span className="adm-badge">ADMIN</span>
-        </div>
-        <nav className="adm-tabs" aria-label="Admin sections">
-          <span className="adm-tab active">Overview</span>
-        </nav>
-        <div className="adm-right">
-          <span className="adm-who">{profile?.name}</span>
-          <button className="adm-back" onClick={back}>
-            <ArrowLeft size={14} /> Back to the app
-          </button>
-        </div>
-      </header>
-
-      <main className="adm-main">
-        <div className="adm-head">
+    <div className="page page-dash adm-page">
+      <Breadcrumb items={[{ label: "Profile", onClick: back }, { label: "Administration" }]} />
+      <div className="ph">
+        <div className="ph-main">
+          <span className="ph-icon adm-ic"><ShieldCheck size={21} /></span>
           <div>
-            <h1 className="adm-title">Admin</h1>
-            <p className="adm-sub">Albukhary International University. Only the administrator can open this screen.</p>
+            <div className="eyebrow">Administrator</div>
+            <h1 className="ph-title">Administration</h1>
+            <div className="ph-sub">Albukhary International University. Only the administrator can open this page.</div>
           </div>
-          {data && (
-            <button className="btn-ghost" onClick={load} disabled={loading}>
-              <RefreshCw size={13} /> Refresh
-            </button>
-          )}
         </div>
-
-        {loading && !data && (
-          <div className="adm-center"><Loader2 className="spin" size={20} /></div>
-        )}
-
-        {error === "denied" && (
-          <div className="adm-note" role="alert">
-            <strong>This screen is for the administrator only.</strong>
-            <button className="btn-primary" style={{ marginTop: 12 }} onClick={back}>Back to the app</button>
-          </div>
-        )}
-        {error === "failed" && (
-          <div className="adm-note" role="alert">
-            <strong>The figures could not be loaded.</strong> Check your internet connection.
-            <div><button className="btn-ghost" style={{ marginTop: 12 }} onClick={load}>Try again</button></div>
-          </div>
-        )}
-
         {data && (
-          <>
-            <div className="adm-tiles">
-              <div className="adm-tile">
-                <div className="adm-tile-label">Teachers</div>
-                <div className="adm-tile-num">{data.teachers}</div>
-              </div>
-              <div className="adm-tile">
-                <div className="adm-tile-label">Students</div>
-                <div className="adm-tile-num">{data.students}</div>
-                <div className="adm-tile-sub">
-                  active in the last 30 days: {data.students_active_30d} · not in any class: {data.students_no_class}
-                </div>
-              </div>
-              <div className="adm-tile">
-                <div className="adm-tile-label">Classes</div>
-                <div className="adm-tile-num">{data.classes}</div>
-              </div>
-              <div className={`adm-tile ${requests.length > 0 ? "adm-tile-warn" : ""}`}>
-                <div className="adm-tile-label">Teacher access requests</div>
-                <div className="adm-tile-num">{requests.length}</div>
-              </div>
-            </div>
+          <div className="ph-actions">
+            <button className="btn-ghost" onClick={load} disabled={loading}>
+              <RefreshCw size={14} /> {loading ? "Refreshing…" : "Refresh"}
+            </button>
+          </div>
+        )}
+      </div>
 
-            <h2 className="adm-section">Teacher access requests</h2>
+      {loading && !data && (
+        <div className="adm-center"><Loader2 className="spin" size={20} /></div>
+      )}
+
+      {error === "denied" && (
+        <div className="panel adm-note" role="alert">
+          <strong>This page is for the administrator only.</strong>
+          <div><button className="btn-primary" style={{ marginTop: 12 }} onClick={back}>Back to my profile</button></div>
+        </div>
+      )}
+      {error === "failed" && (
+        <div className="panel adm-note" role="alert">
+          <strong>The figures could not be loaded.</strong> Check your internet connection.
+          <div><button className="btn-ghost" style={{ marginTop: 12 }} onClick={load}>Try again</button></div>
+        </div>
+      )}
+
+      {data && (
+        <>
+          <div className="stat-grid">
+            <div className="stat"><div className="stat-l">Teachers</div><div className="stat-v">{data.teachers}</div><div className="stat-d">with teacher access</div></div>
+            <div className="stat"><div className="stat-l">Students</div><div className="stat-v">{data.students}</div><div className="stat-d">active in 30 days: {data.students_active_30d} · in no class: {data.students_no_class}</div></div>
+            <div className="stat"><div className="stat-l">Classes</div><div className="stat-v">{data.classes}</div><div className="stat-d">all teachers</div></div>
+            <div className={`stat ${requests.length > 0 ? "adm-stat-warn" : ""}`}><div className="stat-l">Teacher access requests</div><div className="stat-v">{requests.length}</div><div className="stat-d">{requests.length ? "waiting for you" : "nothing waiting"}</div></div>
+          </div>
+
+          <section className="panel">
+            <div className="panel-h"><h2>Teacher access requests</h2>{requests.length > 0 && <span className="pill pill-amber">{plural(requests.length, "request")} waiting</span>}</div>
             {notice && <div className="adm-notice" role="status">{notice}</div>}
             {requests.length === 0 ? (
-              <p className="adm-sub">No request waiting.</p>
+              <p className="empty-inline">No request waiting.</p>
             ) : (
-              <div className="adm-reqs">
-                {requests.map((r) => (
-                  <div key={r.user_id} className="adm-req">
-                    <div className="adm-req-avatar">{(r.name || "?").slice(0, 1).toUpperCase()}</div>
-                    <div className="adm-req-main">
-                      <strong>{r.name}</strong>
-                      <span className="adm-muted">{r.email} · asked {lastLogin(r.requested_at)}</span>
-                    </div>
-                    <div className="adm-req-tools">
-                      <button className="btn-ghost" disabled={!!deciding} onClick={() => decide(r, false)}>
-                        {deciding === r.user_id ? "…" : "Decline"}
-                      </button>
-                      <button className="btn-primary" disabled={!!deciding} onClick={() => decide(r, true)}>
-                        {deciding === r.user_id ? "Saving…" : "Approve"}
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-            <p className="adm-foot" style={{ marginBottom: 26 }}>Approve gives teacher access. The person reloads the page and sees the teacher space.</p>
-
-            <h2 className="adm-section">Teachers</h2>
-            {teachers.length === 0 ? (
-              <p className="adm-sub">No teacher yet.</p>
-            ) : (
-              <div className="adm-table-wrap">
-                <table className="adm-table">
+              <div className="dt-wrap adm-table-wrap">
+                <table className="dt adm-dt">
                   <thead>
-                    <tr><th>Name</th><th>Email</th><th>Classes</th><th>Signed up</th><th>Last login</th></tr>
+                    <tr><th>Name</th><th className="hide-sm">Email</th><th>Asked</th><th className="adm-th-act"><span className="sr-only">Decision</span></th></tr>
                   </thead>
                   <tbody>
-                    {teachers.map((t, i) => (
-                      <tr key={i}>
+                    {requests.map((r) => (
+                      <tr key={r.user_id} className="adm-req">
                         <td>
-                          <strong>{t.name}</strong>
-                          {t.admin && <span className="adm-pill">ADMIN</span>}
+                          <span className="adm-person">
+                            <span className="adm-req-avatar" aria-hidden="true">{(r.name || "?").slice(0, 1).toUpperCase()}</span>
+                            <span className="prow-main"><b>{r.name}</b><span className="dt-sub show-sm adm-mail">{r.email}</span></span>
+                          </span>
                         </td>
-                        <td className="adm-muted">{t.email}</td>
-                        <td>{t.classes}</td>
-                        <td>{day(t.signed_up)}</td>
-                        <td>{lastLogin(t.last_login)}</td>
+                        <td className="hide-sm dt-sub adm-mail">{r.email}</td>
+                        <td className="dt-nowrap">{lastLogin(r.requested_at)}</td>
+                        <td className="adm-act">
+                          <button className="btn-ghost" disabled={!!deciding} onClick={() => decide(r, false)}>
+                            {deciding === r.user_id ? "…" : "Decline"}
+                          </button>
+                          <button className="btn-primary" disabled={!!deciding} onClick={() => decide(r, true)}>
+                            {deciding === r.user_id ? "Saving…" : "Approve"}
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
             )}
-            <p className="adm-foot">Students are only counted here, never listed.</p>
-          </>
-        )}
-      </main>
+            <p className="panel-note" style={{ margin: "10px 0 0" }}>Approve gives teacher access. The person reloads the page and sees the teacher space. Declined: they can ask again in 7 days.</p>
+          </section>
+
+          <section className="panel">
+            <div className="panel-h"><h2>Teachers</h2><span className="panel-note">{plural(teachers.length, "teacher")}</span></div>
+            {teachers.length === 0 ? (
+              <p className="empty-inline">No teacher yet.</p>
+            ) : (
+              <div className="dt-wrap adm-table-wrap">
+                <table className="dt adm-dt adm-table">
+                  <thead>
+                    <tr><th>Name</th><th className="hide-sm">Email</th><th>Classes</th><th className="hide-sm">Signed up</th><th>Last login</th></tr>
+                  </thead>
+                  <tbody>
+                    {teachers.map((t, i) => (
+                      <tr key={i}>
+                        <td>
+                          <b>{t.name}</b>
+                          {t.admin && <span className="adm-pill">ADMIN</span>}
+                          <span className="dt-sub show-sm adm-mail">{t.email}</span>
+                        </td>
+                        <td className="hide-sm dt-sub adm-mail">{t.email}</td>
+                        <td>{t.classes}</td>
+                        <td className="hide-sm dt-nowrap">{day(t.signed_up)}</td>
+                        <td className="dt-nowrap">{lastLogin(t.last_login)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <p className="panel-note" style={{ margin: "10px 0 0" }}>Students are only counted here, never listed.</p>
+          </section>
+        </>
+      )}
     </div>
   );
 }
-
