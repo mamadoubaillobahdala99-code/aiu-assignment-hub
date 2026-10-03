@@ -1,11 +1,13 @@
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { ArrowLeft, Eye, PenLine, MessageSquare } from "lucide-react";
 import { supabase } from "../../supabaseClient";
 import { CenterSpinner } from "../../components/shared";
 import { WritingView } from "./WritingView";
 import { sanitizeWritingHtml } from "./writingHtml";
 import { StoredImg } from "../../lib/storageFiles";
+import { Breadcrumb } from "../../components/DropMenu";
+import { listMarks, NotesList, fmtWhen } from "./ResultParts";
 
 // Structured Writing — what the student sees once the teacher publishes:
 // overall band + general feedback, then per task the teacher's corrected
@@ -22,7 +24,13 @@ const CRITERIA = [
 
 const fmt = (v) => (v === null || v === undefined ? "—" : String(Number(v)));
 
-export function StudentWritingFeedback({ assignmentId, userId, setScreen }) {
+// Livraison 74 — same content, new layout: the overall band, each task's
+// band and the publication date at the top, the teacher's comment, then
+// per task the corrected copy (or the original) with, beside it, the
+// criteria as bars and the list of the teacher's notes (a click shows
+// where the note is in the text).
+// inExam: the paper belongs to an exam — "Back" returns to the exam.
+export function StudentWritingFeedback({ assignmentId, userId, setScreen, inExam = false }) {
   const [loading, setLoading] = useState(true);
   const [assignment, setAssignment] = useState(null);
   const [sections, setSections] = useState([]);
@@ -32,6 +40,7 @@ export function StudentWritingFeedback({ assignmentId, userId, setScreen }) {
   const [activeIndex, setActiveIndex] = useState(0);
   const [view, setView] = useState("corrected");
   const [openNote, setOpenNote] = useState(null); // { text, note }
+  const textRef = useRef(null);
 
   const load = useCallback(async () => {
     const { data: a } = await supabase.from("assignments").select("id, title, type").eq("id", assignmentId).single();
@@ -86,21 +95,37 @@ export function StudentWritingFeedback({ assignmentId, userId, setScreen }) {
   const hasScores = grade && CRITERIA.some((c) => grade[c.key] !== null && grade[c.key] !== undefined);
   const markCount = grade ? (sanitizeWritingHtml(grade.corrected_html, { allowMarks: true }).match(/<mark[\s>]/g) || []).length : 0;
 
-  return (
-    <div className="page page-wide qe-wrf">
-      <button className="back-link" onClick={() => setScreen({ name: "home" })}><ArrowLeft size={14} /> Back to assignments</button>
-      <div className="eyebrow">Writing — feedback</div>
-      <h1 className="page-title">{assignment.title}</h1>
+  const back = () => setScreen(inExam ? { name: "home" } : { name: "student-assignments" });
+  const marks = view === "corrected" && grade ? listMarks(grade.corrected_html) : [];
+  const pct = (v) => (v === null || v === undefined ? 0 : Math.max(0, Math.min(100, (Number(v) / 9) * 100)));
 
-      <div className="qe-wrf-summary">
-        <div className="qe-wrf-band">
-          <div className="qe-wrf-band-label">Overall band</div>
-          <div className="qe-wrf-band-value">{feedback?.band || "—"}</div>
+  return (
+    <div className="page page-wide rs-page qe-wrf">
+      <Breadcrumb items={[{ label: inExam ? "Exam" : "My assignments", onClick: back }, { label: assignment.title }]} />
+
+      <div className="rs-hero">
+        <div className="rs-band-box">
+          <div className="eyebrow">Overall band</div>
+          <div className="rs-big">{feedback?.band || "—"}</div>
         </div>
-        <div className="qe-wrf-comment">
-          <div className="qe-wrf-band-label"><MessageSquare size={13} /> Teacher's feedback</div>
-          <p>{feedback?.feedback || "No general comment."}</p>
+        <div className="rs-hero-main">
+          <div className="eyebrow">Writing · your result</div>
+          <h1 className="rs-title">{assignment.title}</h1>
+          <div className="rs-task-bands">
+            {sections.map((s) => (
+              <div key={s.id} className="rs-task-band">
+                <span>Writing Task {s.taskNumber}</span>
+                <b>{grades[s.id]?.task_band != null ? fmt(grades[s.id].task_band) : "—"}</b>
+              </div>
+            ))}
+          </div>
+          {feedback?.released_at && <div className="rs-hero-meta">Published {fmtWhen(feedback.released_at)}</div>}
         </div>
+      </div>
+
+      <div className="rs-teacher-note">
+        <div className="rs-teacher-note-h"><MessageSquare size={14} /> Feedback from your teacher</div>
+        <p>{feedback?.feedback || "No general comment."}</p>
       </div>
 
       {sections.length > 1 && (
@@ -115,25 +140,25 @@ export function StudentWritingFeedback({ assignmentId, userId, setScreen }) {
       )}
 
       {active && (
-        <div className="qe-wrf-body">
-          <div className="qe-wrf-text">
+        <div className="rs-two">
+          <div className="rs-main">
             <details className="qe-wrv-question">
               <summary>Question — Writing Task {active.taskNumber}</summary>
               {active.prompt && <div className="qe-wr-prompt">{active.prompt}</div>}
               {active.imageUrl && <StoredImg className="qe-wrv-question-img" src={active.imageUrl} alt={`Writing Task ${active.taskNumber}`} />}
             </details>
 
-            <div className="qe-wrv-viewbar">
-              <div className="qe-wrv-toggle" role="tablist">
-                <button className={view === "corrected" ? "active" : ""} onClick={() => setView("corrected")}><PenLine size={13} /> Teacher's correction</button>
-                <button className={view === "original" ? "active" : ""} onClick={() => { setView("original"); setOpenNote(null); }}><Eye size={13} /> My original</button>
+            <div className="rs-viewbar">
+              <div className="rs-seg" role="tablist">
+                <button type="button" role="tab" aria-selected={view === "corrected"} className={view === "corrected" ? "on" : ""} onClick={() => setView("corrected")}><PenLine size={13} /> Corrected copy</button>
+                <button type="button" role="tab" aria-selected={view === "original"} className={view === "original" ? "on" : ""} onClick={() => { setView("original"); setOpenNote(null); }}><Eye size={13} /> My original</button>
               </div>
               {view === "corrected" && grade && (
-                <span className="qe-wrf-markcount">{markCount === 0 ? "No errors marked" : `${markCount} error${markCount > 1 ? "s" : ""} marked — click one to read the note`}</span>
+                <span className="rs-hint">{markCount === 0 ? "No errors marked" : `${markCount} error${markCount > 1 ? "s" : ""} marked — click one to read the note`}</span>
               )}
             </div>
 
-            <div className="qe-wrv-original">
+            <div className="qe-wrv-original" ref={textRef}>
               {view === "corrected" && grade ? (
                 <WritingView html={grade.corrected_html} allowMarks onMarkClick={(m) => setOpenNote(m)} emptyText="You left this task empty." />
               ) : (
@@ -144,7 +169,7 @@ export function StudentWritingFeedback({ assignmentId, userId, setScreen }) {
             <div className="sub-meta" style={{ marginTop: 8 }}>{resp?.word_count || 0} words</div>
           </div>
 
-          <div className="qe-wrf-side">
+          <div className="rs-side">
             {openNote && (
               <div className="qe-wrf-note">
                 <div className="qe-wrf-note-quote">“{openNote.text}”</div>
@@ -152,26 +177,28 @@ export function StudentWritingFeedback({ assignmentId, userId, setScreen }) {
                 <button className="qe-wrv-link" onClick={() => setOpenNote(null)}>Close</button>
               </div>
             )}
-
-            <div className="feedback-panel">
-              <div className="field-label">Writing Task {active.taskNumber}</div>
-              {hasScores ? (
-                <>
-                  {CRITERIA.map((c) => (
-                    <div key={c.key} className="criteria-row">
-                      <span className="criteria-label">{c.label(active.taskNumber)}</span>
-                      <strong>{fmt(grade[c.key])}</strong>
-                    </div>
-                  ))}
-                  <div className="criteria-avg">Task band: <strong>{fmt(grade.task_band)}</strong></div>
-                </>
-              ) : (
-                <p className="field-hint" style={{ margin: 0 }}>No scores for this task.</p>
-              )}
+            <div className="panel">
+              <div className="panel-h"><h2>Task {active.taskNumber} — criteria</h2>{grade?.task_band != null && <span className="pill pill-teal">Band {fmt(grade.task_band)}</span>}</div>
+              {hasScores ? CRITERIA.map((c) => (
+                <div key={c.key} className="rs-crit">
+                  <div className="rs-crit-h"><span>{c.label(active.taskNumber)}</span><b>{fmt(grade[c.key])}</b></div>
+                  <div className="rs-crit-bar"><i style={{ width: `${pct(grade[c.key])}%` }} /></div>
+                </div>
+              )) : <p className="empty-inline" style={{ margin: 0 }}>No scores for this task.</p>}
             </div>
+            {view === "corrected" && grade && (
+              <div className="panel">
+                <div className="panel-h"><h2>Notes from your teacher</h2><span className="panel-note">{marks.length}</span></div>
+                <NotesList marks={marks} containerRef={textRef} empty="No error marked in this task." />
+              </div>
+            )}
           </div>
         </div>
       )}
+
+      <div className="rs-foot">
+        <button className="back-link" onClick={back}><ArrowLeft size={14} /> {inExam ? "Back to the exam" : "Back to my assignments"}</button>
+      </div>
     </div>
   );
 }
