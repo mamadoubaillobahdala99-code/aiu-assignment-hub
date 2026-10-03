@@ -1,11 +1,15 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   ShieldCheck, Lock, CheckCircle2, Play, Headphones, FileText,
-  ArrowLeft, Flag, Hourglass, MinusCircle, Smartphone,
+  ArrowLeft, Flag, Hourglass, MinusCircle, Smartphone, Laptop, ChevronRight,
 } from "lucide-react";
 import { supabase } from "../../supabaseClient";
-import { PageHeader, CenterSpinner } from "../../components/shared";
-import { TYPES } from "../../lib/utils";
+import { CenterSpinner } from "../../components/shared";
+import { Breadcrumb } from "../../components/DropMenu";
+import { CodeBoxes } from "../../components/CodeBoxes";
+import { TYPES, fmtDate } from "../../lib/utils";
+import { examStage, fmtBand } from "./examWork";
+import { loadMyExamBands } from "./studentExamWork";
 import { AssignmentOpenBridge } from "../question-engine/AssignmentOpenBridge";
 import { isPhoneScreen } from "../question-engine/useInvigilation";
 
@@ -25,6 +29,13 @@ import { isPhoneScreen } from "../question-engine/useInvigilation";
 // paper missed. It still only draws what the server says; the paper's own
 // screen is unchanged.
 //
+// Livraison 80 — the code in 6 boxes, « My past exams » with the overall
+// band once the results are published, and a past exam opened from that
+// list is kept in the address (#/student-exam?exam=…): Back returns to the
+// list, F5 stays on it. The exam a candidate is SITTING still opens by
+// itself, never through the address, and its papers open exactly as before.
+// Nothing here writes to the database except join_exam (unchanged).
+//
 // A paper opens INSIDE this screen (the same bridge the classes use), so
 // finishing one brings the candidate straight back to the list without
 // ever passing through the normal app — which is what an exam room needs.
@@ -38,6 +49,7 @@ import { isPhoneScreen } from "../question-engine/useInvigilation";
 // already in the exam (no code to type) or who left full screen on the
 // list, where nothing is watched.
 const FULLSCREEN_TYPES = ["Reading", "Listening", "Writing"];
+const CODE_LEN = 6;   // an exam code: 6 characters (create_exam_session, duplicate_exam_session)
 // Returns true when THIS call is the one that asked for full screen.
 function requestEnterFullscreen(onPhone) {
   const el = document.documentElement;
@@ -69,7 +81,14 @@ export function StudentExamSession({ userId, screen, setScreen, showToast }) {
   const pendingPaperRef = useRef(screen?.paper || null);
   const [resolvingAddress, setResolvingAddress] = useState(Boolean(screen?.paper));
   const urlPaper = screen?.paper || null;
-  const [code, setCode] = useState("");
+  // Livraison 80: a PAST exam opened from « My past exams ». Only a valid
+  // session id is read; anything else is ignored.
+  const urlExam = /^[0-9a-f-]{36}$/i.test(screen?.exam || "") ? screen.exam : null;
+  const urlExamRef = useRef(urlExam);
+  urlExamRef.current = urlExam;
+  // Every screen this page writes keeps the past exam in the address.
+  const here = useCallback((extra = {}) => ({ name: "student-exam", ...(urlExamRef.current ? { exam: urlExamRef.current } : {}), ...extra }), []);
+  const [code, setCode] = useState(() => Array(CODE_LEN).fill(""));
   const [joining, setJoining] = useState(false);
   const [err, setErr] = useState("");
   // A real exam is not sat on a phone: no fullscreen at all on iPhone,
@@ -105,6 +124,9 @@ export function StudentExamSession({ userId, screen, setScreen, showToast }) {
     // no way left to enter a new exam at all.
     setActiveId((cur) => {
       if (cur && rows.some((r) => r.id === cur)) return cur;
+      // Livraison 80: a past exam in the address (F5 on it) comes first.
+      const asked = urlExamRef.current;
+      if (asked && rows.some((r) => r.id === asked)) return asked;
       const live = rows.find((r) => !r.closed_at && !r.results_released_at);
       return live ? live.id : null;
     });
@@ -113,23 +135,84 @@ export function StudentExamSession({ userId, screen, setScreen, showToast }) {
   useEffect(() => { loadSessions(); }, [loadSessions]);
 
   // ---------- the state of the exam I am sitting ----------
+  // An answer for an exam that is no longer the one on screen is dropped
+  // (livraison 80: going from one exam to another quickly).
+  const activeRef = useRef(activeId);
+  activeRef.current = activeId;
   const loadStatus = useCallback(async () => {
     if (!activeId) { setStatus(null); return; }
     const { data, error } = await supabase.rpc("exam_session_status", { p_session_id: activeId });
+    if (activeRef.current !== activeId) return;
     if (error) { setStatus(false); return; }
     setStatus(data);
   }, [activeId]);
 
-  useEffect(() => { loadStatus(); }, [loadStatus]);
+  useEffect(() => { setStatus(null); loadStatus(); }, [loadStatus]);
+
+  // ---------- livraison 80: a past exam in the address ----------
+  // Opening one from the list writes it in the address; Back (or the
+  // « Exam » link) takes it out and returns to where the list was shown.
+  const pastFromRef = useRef(undefined);   // what was on screen before the past exam (undefined = opened by F5 / a link)
+  const prevUrlExamRef = useRef(urlExam);
+  useEffect(() => {
+    const prev = prevUrlExamRef.current;
+    prevUrlExamRef.current = urlExam;
+    if (sessions === null) return;
+    if (urlExam) {
+      if (sessions.some((x) => x.id === urlExam)) setActiveId(urlExam);
+      else setScreen({ name: "student-exam" });          // not one of my exams: the list
+      return;
+    }
+    if (prev) {
+      const back = pastFromRef.current;
+      pastFromRef.current = undefined;
+      if (back !== undefined) { setActiveId(back); return; }
+      const live = sessions.find((r) => !r.closed_at && !r.results_released_at);
+      setActiveId(live ? live.id : null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urlExam, sessions]);
+  function openPast(id) {
+    pastFromRef.current = activeId;
+    setScreen({ name: "student-exam", exam: id });
+  }
+
+  // ---------- livraison 80: my published bands ----------
+  // Only for the exams whose results are published; read with my own rights.
+  const [bands, setBands] = useState(() => new Map());
+  const releasedKey = (sessions || []).filter((x) => x.results_released_at).map((x) => x.id).join(",");
+  useEffect(() => {
+    if (!releasedKey) { setBands(new Map()); return; }
+    let cancelled = false;
+    loadMyExamBands(userId, releasedKey.split(",")).then((m) => { if (!cancelled) setBands(m); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [releasedKey, userId]);
+
+  // ---------- livraison 80: when I handed each paper in ----------
+  // Read again only when a paper is handed in (not at every refresh).
+  const [handedAt, setHandedAt] = useState({});
+  const doneKey = status && status.items ? status.items.filter((i) => i.submitted).map((i) => i.assignment_id).join(",") : "";
+  useEffect(() => {
+    if (!doneKey) { setHandedAt({}); return; }
+    let cancelled = false;
+    supabase.from("exam_attempts").select("assignment_id, submitted_at").eq("student_id", userId).in("assignment_id", doneKey.split(","))
+      .then(({ data }) => {
+        if (cancelled) return;
+        const m = {};
+        for (const r of data || []) if (r.submitted_at) m[r.assignment_id] = r.submitted_at;
+        setHandedAt(m);
+      });
+    return () => { cancelled = true; };
+  }, [doneKey, userId]);
 
   const openPaperScreen = useCallback((assignmentId) => {
     setOpenPaper({ assignmentId });
-    setScreen({ name: "student-exam", paper: assignmentId });
-  }, [setScreen]);
+    setScreen(here({ paper: assignmentId }));
+  }, [setScreen, here]);
   const closePaperScreen = useCallback(() => {
     setOpenPaper(null);
-    setScreen({ name: "student-exam" });
-  }, [setScreen]);
+    setScreen(here());
+  }, [setScreen, here]);
 
   // The page has just loaded with a paper in the address (F5). Decide once.
   useEffect(() => {
@@ -155,7 +238,7 @@ export function StudentExamSession({ userId, screen, setScreen, showToast }) {
         if (data?.started_at && Date.now() > new Date(data.started_at).getTime() + it.minutes * 60000) ok = false;
       }
       if (ok) setOpenPaper({ assignmentId: pending });
-      else setScreen({ name: "student-exam" });
+      else setScreen(here());
       setResolvingAddress(false);
     })();
   }, [sessions, activeId, status, onPhone, userId, setScreen]);
@@ -171,7 +254,7 @@ export function StudentExamSession({ userId, screen, setScreen, showToast }) {
   useEffect(() => {
     if (pendingPaperRef.current || resolvingAddress) return;
     if (openPaper && !urlPaper) { setOpenPaper(null); loadStatus(); return; }
-    if (!openPaper && urlPaper) setScreen({ name: "student-exam" });
+    if (!openPaper && urlPaper) setScreen(here());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [screen]);
 
@@ -185,20 +268,28 @@ export function StudentExamSession({ userId, screen, setScreen, showToast }) {
   // Start, so the Start button appears quickly for everyone.
   const waitingRoom = Boolean(status && status.start_mode === "together" && !status.free_from && !status.closed_at && !status.results_released_at
     && (status.items || []).some((i) => i.type !== "Speaking" && !i.room_started_at && !i.submitted && !i.missed));
+  // (Livraison 80: not for an exam whose results are published — nothing
+  // changes there any more.)
+  const publishedNow = Boolean(status && status.results_released_at);
   useEffect(() => {
-    if (!activeId || openPaper) return;
+    if (!activeId || openPaper || publishedNow) return;
     const t = setInterval(() => statusRef.current(), waitingRoom ? 5000 : 10000);
     return () => clearInterval(t);
-  }, [activeId, openPaper, waitingRoom]);
+  }, [activeId, openPaper, waitingRoom, publishedNow]);
 
+  const codeText = code.join("");
+  const codeFull = code.every((c) => c);
+  const joiningRef = useRef(false);   // a second Enter / click before the re-render
   async function join() {
-    const c = code.trim();
-    if (!c) return;
+    const c = codeText;
+    if (!codeFull || joiningRef.current) return;
+    joiningRef.current = true;
     // Asked inside the click (or the Enter key), before anything is
     // awaited: a browser only grants full screen to a gesture.
     const askedFs = requestEnterFullscreen(onPhone);
     setErr(""); setJoining(true);
     const { data, error } = await supabase.rpc("join_exam", { p_code: c });
+    joiningRef.current = false;
     setJoining(false);
     if (error) {
       // Wrong code: back out of the full screen this click opened.
@@ -212,7 +303,7 @@ export function StudentExamSession({ userId, screen, setScreen, showToast }) {
       );
       return;
     }
-    setCode("");
+    setCode(Array(CODE_LEN).fill(""));
     showToast?.(`You are in: ${data?.name || "the exam"}`);
     await loadSessions();
     setActiveId(data?.session_id || null);
@@ -250,47 +341,72 @@ export function StudentExamSession({ userId, screen, setScreen, showToast }) {
   if (sessions === null || resolvingAddress) return <CenterSpinner />;
 
   const session = sessions.find((s) => s.id === activeId) || null;
+  const hm = (iso) => new Date(iso).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+
+  // Leaving an exam for the code page (« Exam » link, « Enter another exam »).
+  function leave() {
+    if (urlExam) { pastFromRef.current = null; setScreen({ name: "student-exam" }); }
+    else setActiveId(null);
+  }
 
   // ---------- not in an exam yet: the code ----------
   if (!session) {
     return (
-      <div className="page narrow">
-        <PageHeader eyebrow="Student" title="Exam" />
-        <p className="muted-p">
-          Your teacher gives you the exam code when everyone is seated. It is not
-          a class code — it opens the exam, and only on the day.
-        </p>
-        <label className="field-label">Exam code</label>
-        <input
-          className="field-input code-input"
-          placeholder="e.g. EX7K2M"
-          value={code}
-          onChange={(e) => { setCode(e.target.value.toUpperCase()); setErr(""); }}
-          onKeyDown={(e) => { if (e.key === "Enter" && code.trim() && !joining) join(); }}
-          maxLength={12}
-        />
-        {err && <div className="field-error">{err}</div>}
-        <button className="btn-primary" style={{ marginTop: 16 }} disabled={!code.trim() || joining} onClick={join}>
-          {joining ? "Entering…" : "Enter the exam"}
-        </button>
+      <div className="page page-wide">
+        <div className={`exc-grid ${sessions.length ? "" : "solo"}`}>
+          <div className="exc-card">
+            <div className="eyebrow">Exam</div>
+            <h1 className="ph-title exc-title">Enter the exam code</h1>
+            <p className="exc-sub">
+              Your teacher gives it when everyone is seated. It is not a class code — it opens the exam, and only on the day.
+            </p>
+            <CodeBoxes
+              length={CODE_LEN}
+              value={code}
+              onChange={(v) => { setCode(v); setErr(""); }}
+              onEnter={join}
+              disabled={joining}
+              bad={Boolean(err)}
+              label="Exam code"
+              autoFocus={!onPhone}
+            />
+            {err && <div className="field-error jc-err" role="alert">{err}</div>}
+            <button className="btn-primary jc-go" disabled={!codeFull || joining} onClick={join}>
+              {joining ? "Entering…" : "Enter the exam"}
+            </button>
+            <p className="exc-note"><Laptop size={14} /> A computer is needed — an exam cannot be sat on a phone.</p>
+          </div>
 
-        {sessions.length > 0 && (
-          <>
-            <div className="section-title" style={{ marginTop: 30 }}>My past exams</div>
-            <div className="ex-list">
-              {sessions.map((s) => (
-                <div key={s.id} className="ex-row" onClick={() => setActiveId(s.id)}>
-                  <div className="ex-row-main">
-                    <div className="ex-row-title">{s.name}</div>
-                    <div className="ex-row-sub">
-                      <span>{s.results_released_at ? "Results published" : s.closed_at ? "Finished" : "Open"}</span>
-                    </div>
-                  </div>
-                </div>
-              ))}
+          {sessions.length > 0 && (
+            <div className="exc-past">
+              <div className="exc-past-h">My past exams</div>
+              {sessions.map((s) => {
+                const st = examStage(s);
+                const b = bands.get(s.id);
+                const pill = st === 3 ? ["Results published", "teal"] : st === 2 ? ["Waiting for results", "wait"] : st === 1 ? ["Open now", "open"] : ["Not open yet", "wait"];
+                const skills = st === 3 && b ? [...b.papers.values()].filter((p) => p.type !== "Speaking") : [];
+                return (
+                  <button key={s.id} type="button" className="exc-past-row" onClick={() => openPast(s.id)}>
+                    <span className="exc-past-main">
+                      <span className="exc-past-name">{s.name}</span>
+                      <span className="exc-past-meta">
+                        <span className={`exc-pill exc-pill-${pill[1]}`}>{pill[0]}</span>
+                        <span>{fmtDate(s.opened_at || s.created_at)}</span>
+                      </span>
+                      {skills.length > 0 && (
+                        <span className="exc-skills">
+                          {skills.map((p, k) => <span key={k}>{p.type} {fmtBand(p.band)}</span>)}
+                        </span>
+                      )}
+                    </span>
+                    <span className="exc-past-band">{st === 3 ? (b && b.overall !== null ? `Band ${fmtBand(b.overall)}` : "—") : ""}</span>
+                    <span className="exc-see">See <ChevronRight size={14} /></span>
+                  </button>
+                );
+              })}
             </div>
-          </>
-        )}
+          )}
+        </div>
       </div>
     );
   }
@@ -299,9 +415,10 @@ export function StudentExamSession({ userId, screen, setScreen, showToast }) {
   if (status === false) {
     return (
       <div className="page narrow">
-        <PageHeader eyebrow="Student" title={session.name} />
+        <Breadcrumb items={[{ label: "Exam", onClick: leave }, { label: session.name }]} />
+        <h1 className="ph-title">{session.name}</h1>
         <p className="empty-inline">This exam is not available right now. Ask your teacher.</p>
-        <button className="back-link" onClick={() => setActiveId(null)}><ArrowLeft size={14} /> Another exam</button>
+        <button className="back-link" onClick={leave}><ArrowLeft size={14} /> Another exam</button>
       </div>
     );
   }
@@ -312,7 +429,6 @@ export function StudentExamSession({ userId, screen, setScreen, showToast }) {
   const roomFree = Boolean(status.free_from);
   const offsetMs = status.server_now ? new Date(status.server_now).getTime() - Date.now() : 0;
   const serverNow = Date.now() + offsetMs;
-  const hm = (iso) => new Date(iso).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
   const waitsForTeacher = (it) => together && !roomFree && it.type !== "Speaking" && !it.room_started_at && !it.submitted && !it.missed;
   const firstTimed = items.find((i) => i.type !== "Speaking");
   const noneStarted = together && !roomFree && firstTimed && !items.some((i) => i.room_started_at);
@@ -321,10 +437,38 @@ export function StudentExamSession({ userId, screen, setScreen, showToast }) {
   const allDone = items.length > 0 && items.every((i) => i.submitted);
   // The next paper to sit: the first unlocked one that is not handed in.
   const nextId = released ? null : (items.find((i) => i.readable && !i.submitted) || {}).assignment_id;
+  // Livraison 80.
+  // A Speaking paper is consulted, never handed in: it is not counted.
+  const toHand = items.filter((i) => i.type !== "Speaking");
+  const handedCount = toHand.filter((i) => i.submitted).length;
+  const canLeave = closed || released || allDone;
+  const myBands = released ? bands.get(session.id) : null;
+  const openUntil = !released && !closed && status.closes_at ? ` · open until ${hm(status.closes_at)}` : "";
+  // A locked paper waits for an earlier one: which.
+  const waitsFor = (idx) => {
+    for (let k = 0; k < idx; k++) {
+      const p = items[k];
+      if (p.type !== "Speaking" && !p.submitted && !p.missed) return k + 1;
+    }
+    return null;
+  };
 
   return (
     <div className="page page-wide">
-      <PageHeader eyebrow="Exam" title={session.name} />
+      <Breadcrumb items={[{ label: "Exam", onClick: canLeave ? leave : undefined }, { label: session.name }]} />
+      <div className="ph">
+        <div className="ph-main">
+          <div>
+            <div className="eyebrow">Exam{openUntil}</div>
+            <h1 className="ph-title">{session.name}</h1>
+          </div>
+        </div>
+        <div className="ph-actions">
+          {released && myBands && myBands.overall !== null
+            ? <span className="pill pill-teal exc-overall">Overall band {fmtBand(myBands.overall)}</span>
+            : toHand.length > 0 && <span className="pill pill-teal">{handedCount} of {toHand.length} handed in</span>}
+        </div>
+      </div>
 
       {/* ---------- the banner that says where we are ---------- */}
       {released ? (
@@ -332,7 +476,10 @@ export function StudentExamSession({ userId, screen, setScreen, showToast }) {
           <CheckCircle2 size={18} />
           <div>
             <strong>Results published.</strong>
-            <em>You can open each paper again to see your marks and your corrected answers.</em>
+            <em>
+              You can open each paper again to see your marks and your corrected answers.
+              {myBands && myBands.overall === null ? " Your overall band appears once every Listening, Reading and Writing paper has its band." : ""}
+            </em>
           </div>
         </div>
       ) : allDone || closed ? (
@@ -353,7 +500,11 @@ export function StudentExamSession({ userId, screen, setScreen, showToast }) {
           <span className="exs-wait-ic"><Hourglass size={26} /></span>
           <strong>Please wait — your teacher will start {firstTimed.type}</strong>
           <em>Everyone starts at the same time. The Start button appears here by itself; you don't need to refresh the page.</em>
-          {status.candidates > 0 && <span className="pill">{status.candidates} candidate{status.candidates === 1 ? "" : "s"} in the room</span>}
+          <span className="exs-wait-pills">
+            <span className="pill">{firstTimed.title}{firstTimed.minutes ? ` · ${firstTimed.minutes} min` : ""}</span>
+            {status.candidates > 0 && <span className="pill">{status.candidates} candidate{status.candidates === 1 ? "" : "s"} in the room</span>}
+          </span>
+          <span className="exs-live"><span className="exs-live-dot" aria-hidden="true" /> This page updates by itself</span>
         </div>
       ) : together && !roomFree ? (
         <div className="exs-banner">
@@ -395,7 +546,7 @@ export function StudentExamSession({ userId, screen, setScreen, showToast }) {
       )}
 
       <div className="section-title" style={{ marginTop: 26 }}>
-        Papers <span className="ex-count">({items.filter((i) => i.submitted).length}/{items.length} handed in)</span>
+        Papers {toHand.length > 0 && <span className="ex-count">({handedCount}/{toHand.length} handed in)</span>}
       </div>
 
       {items.length === 0 ? (
@@ -410,6 +561,8 @@ export function StudentExamSession({ userId, screen, setScreen, showToast }) {
               status.listening_start === "grouped" && it.type === "Listening" &&
               !it.audio_started_at && !it.submitted && !released;
             const isNext = it.assignment_id === nextId && !waitingForRoom;
+            const myBand = myBands ? myBands.papers.get(it.assignment_id) : null;
+            const after = waitsFor(i);
 
             return (
               <div key={it.item_id} className={`ex-item exs-item ${isNext ? "is-next" : ""} ${it.submitted && !released ? "is-done" : ""}`}>
@@ -420,6 +573,7 @@ export function StudentExamSession({ userId, screen, setScreen, showToast }) {
                   <div className="ex-item-sub">
                     {it.type}
                     {it.minutes ? ` · ${it.minutes} minutes` : ""}
+                    {it.submitted && handedAt[it.assignment_id] ? ` · handed in ${hm(handedAt[it.assignment_id])}` : ""}
                     {/* Livraison 79: a paper started for the room that I have not
                         started yet — when it ends, and how much time is left. */}
                     {together && it.room_started_at && !it.started && !it.submitted && !it.missed && it.minutes && it.readable && !released && !closed && (() => {
@@ -435,12 +589,19 @@ export function StudentExamSession({ userId, screen, setScreen, showToast }) {
                 {/* A paper that was never handed in has no result to show
                     and nothing to open — the exam is over. Offering it
                     would put the candidate back inside the paper. */}
-                {(released || closed) && !it.submitted ? (
+                {(released || closed) && it.type === "Speaking" ? (
+                  <span className="exs-state">Speaking — nothing to hand in</span>
+                ) : (released || closed) && !it.submitted ? (
                   <span className="exs-state"><MinusCircle size={14} /> Not handed in</span>
                 ) : released ? (
-                  <button className="btn-ghost" onClick={() => openPaperScreen(it.assignment_id)}>
-                    See my result
-                  </button>
+                  <span className="exs-result">
+                    {myBand && myBand.band !== null && myBand.band !== undefined
+                      ? <span className="exs-band">Band {fmtBand(myBand.band)}</span>
+                      : it.type === "Writing" ? <span className="exs-state">Not marked yet</span> : null}
+                    <button className="btn-ghost" onClick={() => openPaperScreen(it.assignment_id)}>
+                      See my result
+                    </button>
+                  </span>
                 ) : it.submitted ? (
                   <span className="exs-state exs-state-done"><CheckCircle2 size={14} /> Handed in</span>
                 ) : it.missed ? (
@@ -460,10 +621,10 @@ export function StudentExamSession({ userId, screen, setScreen, showToast }) {
                       openPaperScreen(it.assignment_id);
                     }}
                   >
-                    <Play size={14} /> {it.started ? "Continue" : "Start"}
+                    <Play size={14} /> {it.started ? "Continue" : "Start"} paper {i + 1}
                   </button>
                 ) : (
-                  <span className="exs-state"><Lock size={14} /> Locked</span>
+                  <span className="exs-state exs-state-lock"><Lock size={14} /> {after ? `After paper ${after}` : "Locked"}</span>
                 )}
               </div>
             );
@@ -476,6 +637,7 @@ export function StudentExamSession({ userId, screen, setScreen, showToast }) {
           <ShieldCheck size={13} style={{ verticalAlign: "-2px", marginRight: 5 }} />
           A locked paper is empty until its turn comes — not hidden, empty. There is
           nothing to find before your teacher's exam reaches it.
+          {status.strict_mode && !onPhone ? " Full screen starts with each Reading, Listening and Writing paper; leaving it pauses your exam until a teacher lets you back in." : ""}
         </p>
       )}
 
@@ -488,8 +650,8 @@ export function StudentExamSession({ userId, screen, setScreen, showToast }) {
           closes the exam: such an exam still opens by itself, and without
           this link the candidate could never reach the code box of the
           next one (livraison 49). */}
-      {(closed || released || allDone) && (
-        <button className="back-link" style={{ marginTop: 22 }} onClick={() => setActiveId(null)}>
+      {canLeave && (
+        <button className="back-link" style={{ marginTop: 22 }} onClick={leave}>
           <ArrowLeft size={14} /> Enter another exam
         </button>
       )}
