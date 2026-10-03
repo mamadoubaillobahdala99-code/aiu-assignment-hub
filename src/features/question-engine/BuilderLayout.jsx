@@ -14,7 +14,9 @@ import { confirmDialog } from "../../lib/confirmDialog";
 // hidden), so nothing typed in a Part can be lost by moving around.
 
 // Where the breadcrumb leads: the class (or the exam) the paper is built in.
-export function useBuilderCrumbs({ classId, returnTo, setScreen, here, guard }) {
+// middle: crumbs between the class (or exam) and this page — e.g. the
+// paper being edited.
+export function useBuilderCrumbs({ classId, returnTo, setScreen, here, guard, middle = [] }) {
   const [home, setHome] = useState(null);
   useEffect(() => {
     let off = false;
@@ -28,8 +30,8 @@ export function useBuilderCrumbs({ classId, returnTo, setScreen, here, guard }) 
   const inExam = returnTo?.name === "exam-session" || home?.kind === "exam";
   const back = returnTo || { name: "class", classId };
   return inExam
-    ? [{ label: "Exams", onClick: go({ name: "exams" }) }, { label: home?.name || "Exam", onClick: go(back) }, { label: here }]
-    : [{ label: "My classes", onClick: go({ name: "home" }) }, { label: home?.name || "Class", onClick: go(back) }, { label: here }];
+    ? [{ label: "Exams", onClick: go({ name: "exams" }) }, { label: home?.name || "Exam", onClick: go(back) }, ...middle, { label: here }]
+    : [{ label: "My classes", onClick: go({ name: "home" }) }, { label: home?.name || "Class", onClick: go(back) }, ...middle, { label: here }];
 }
 
 // Leaving a builder with something built asks first (nothing is published
@@ -116,5 +118,19 @@ export function BuilderLayout({ crumbs, eyebrow, heading, sub, actions, notice, 
         </aside>
       </div>
     </div>
+  );
+}
+
+// The steps of a multi-step page (the test import): done ✓, current, next.
+export function Stepper({ steps, current }) {
+  return (
+    <ol className="bl-steps" aria-label="Steps">
+      {steps.map((label, i) => (
+        <li key={label} className={`bl-step ${i < current ? "done" : i === current ? "now" : ""}`} aria-current={i === current ? "step" : undefined}>
+          <span className="bl-step-n">{i < current ? <Check size={12} /> : i + 1}</span>
+          <span>{label}</span>
+        </li>
+      ))}
+    </ol>
   );
 }
