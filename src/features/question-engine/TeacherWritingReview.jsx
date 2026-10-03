@@ -1,6 +1,6 @@
 
-import React, { useState, useEffect, useCallback, useMemo } from "react";
-import { ArrowLeft, CheckCircle2, Eye, PenLine, RotateCcw } from "lucide-react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { ArrowLeft, CheckCircle2, Eye, PenLine, RotateCcw, ChevronLeft, ChevronRight } from "lucide-react";
 import { supabase } from "../../supabaseClient";
 import { CenterSpinner } from "../../components/shared";
 import { WritingEditor } from "./WritingEditor";
@@ -8,6 +8,31 @@ import { WritingView } from "./WritingView";
 import { taskBandFrom, overallWritingBand } from "./writingHtml";
 import { StoredImg } from "../../lib/storageFiles";
 import { confirmDialog } from "../../lib/confirmDialog";
+import { Breadcrumb } from "../../components/DropMenu";
+import { listMarks, NotesList, fmtWhen } from "./ResultParts";
+
+// Livraison 74 — the criteria are chosen by clicking a band (5 → 9; lower
+// bands in the small list beside them; a second click clears), the notes of the red
+// marks are listed beside the text, and « ‹ Previous / Next › » /
+// « Next copy to mark » go from copy to copy (each asks first when
+// something is not saved). Saving, publishing and the rules are unchanged.
+const CHIPS = ["5", "5.5", "6", "6.5", "7", "7.5", "8", "8.5", "9"];
+const LOWER = ["0", "0.5", "1", "1.5", "2", "2.5", "3", "3.5", "4", "4.5"];
+function BandPicker({ value, onChange, label }) {
+  const v = value === "" || value === null || value === undefined ? "" : String(Number(value));
+  const lower = v !== "" && Number(v) < 5;
+  return (
+    <div className="rs-pick" role="group" aria-label={label}>
+      {CHIPS.map((c) => (
+        <button key={c} type="button" className={`rs-chip ${v === c ? "on" : ""}`} aria-pressed={v === c} onClick={() => onChange(v === c ? "" : c)}>{c}</button>
+      ))}
+      <select className={`rs-chip rs-lower ${lower ? "on" : ""}`} aria-label={`${label}: a band under 5`} value={lower ? v : ""} onChange={(e) => onChange(e.target.value)}>
+        <option value="">&lt;5</option>
+        {LOWER.map((x) => <option key={x} value={x}>{x}</option>)}
+      </select>
+    </div>
+  );
+}
 
 // Structured Writing — teacher correction screen (one student).
 // The teacher works on a CORRECTED COPY of each task: it starts as an
@@ -35,7 +60,7 @@ function isValidScore(v) {
 const toNum = (v) => (v === "" || v === null || v === undefined ? null : Number(v));
 const toStr = (v) => (v === null || v === undefined ? "" : String(Number(v)));
 
-export function TeacherWritingReview({ assignmentId, studentId, studentName, onBack, showToast }) {
+export function TeacherWritingReview({ assignmentId, studentId, studentName, onBack, showToast, crumbs, nav, onDirtyChange, handedAt }) {
   const [loading, setLoading] = useState(true);
   const [assignment, setAssignment] = useState(null);
   const [sections, setSections] = useState([]); // [{ id, title, taskNumber, prompt, imageUrl }]
@@ -52,6 +77,7 @@ export function TeacherWritingReview({ assignmentId, studentId, studentName, onB
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const editorBoxRef = useRef(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -140,9 +166,18 @@ export function TeacherWritingReview({ assignmentId, studentId, studentName, onB
     setError("");
   }
 
-  async function confirmLeave() {
-    if (!dirty || (await confirmDialog({ title: "Leave without saving?", message: "You have unsaved changes. Leave without saving?", confirmLabel: "Leave without saving", danger: true }))) onBack();
+  useEffect(() => { onDirtyChange?.(dirty); }, [dirty]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => () => onDirtyChange?.(false), []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Every way out of this copy asks first when something is not saved.
+  function guarded(fn) {
+    return async () => {
+      if (dirty && !(await confirmDialog({ title: "Leave without saving?", message: "You have unsaved changes. Leave without saving?", confirmLabel: "Leave without saving", danger: true }))) return;
+      onDirtyChange?.(false);
+      fn();
+    };
   }
+  const confirmLeave = guarded(onBack);
 
   async function resetToOriginal(sectionId) {
     if (!(await confirmDialog({ title: "Go back to the original text?", message: "Replace your corrected copy of this task with the student's original text? Your marks and edits on this task will be lost.", confirmLabel: "Replace my corrections", danger: true }))) return;
@@ -212,7 +247,7 @@ export function TeacherWritingReview({ assignmentId, studentId, studentName, onB
   if (sections.length === 0 || Object.keys(responses).length === 0) {
     return (
       <div className="page">
-        <button className="back-link" onClick={onBack}><ArrowLeft size={14} /> Back to submissions</button>
+        <button className="back-link" onClick={onBack}><ArrowLeft size={14} /> Back to the list of students</button>
         <p className="empty-inline">No writing found for this student.</p>
       </div>
     );
@@ -222,15 +257,35 @@ export function TeacherWritingReview({ assignmentId, studentId, studentName, onB
   const resp = responses[active.id];
   const sc = scores[active.id] || EMPTY_SCORES;
   const activeBand = bandsBySection[active.id];
+  const marks = listMarks(corrected[active.id] || "");
+  const totalWords = sections.reduce((n, s) => n + (responses[s.id]?.words || 0), 0);
 
   return (
-    <div className="grade-overlay qe-wrv">
-      <div className="grade-topbar">
-        <button className="back-link" onClick={confirmLeave}><ArrowLeft size={14} /> Back to submissions</button>
-        <div className="grade-title">{studentName} — {assignment.title}</div>
-        <span className={`qe-wrv-status ${releasedAt ? "published" : ""}`}>
-          {releasedAt ? <><CheckCircle2 size={13} /> Published</> : "Not published yet"}
-        </span>
+    <div className="grade-overlay qe-wrv rs-wrv">
+      <div className="rs-wrv-top">
+        {crumbs && <Breadcrumb items={crumbs.map((c) => (c.onClick ? { ...c, onClick: guarded(c.onClick) } : c))} />}
+        <div className="ph">
+          <div className="ph-main">
+            <div>
+              <div className="eyebrow">Writing{handedAt ? ` · handed in ${fmtWhen(handedAt)}` : ""}</div>
+              <h1 className="ph-title">{studentName}</h1>
+              <div className="ph-meta">
+                <span className={`pill ${releasedAt ? "pill-teal" : "pill-amber"}`}>
+                  {releasedAt ? <><CheckCircle2 size={13} /> Published</> : "To mark — not published yet"}
+                </span>
+                {sections.map((s) => <span key={s.id} className="pill">Task {s.taskNumber} · {responses[s.id]?.words || 0} words</span>)}
+              </div>
+            </div>
+          </div>
+          {nav && (
+            <div className="ph-actions rs-nav">
+              <span className="rs-nav-label">{nav.label}</span>
+              <button className="btn-ghost" disabled={!nav.prev} onClick={nav.prev ? guarded(nav.prev) : undefined}><ChevronLeft size={15} /> Previous</button>
+              <button className="btn-ghost" disabled={!nav.next} onClick={nav.next ? guarded(nav.next) : undefined}>Next <ChevronRight size={15} /></button>
+              {nav.nextToMark && <button className="btn-teal" onClick={guarded(nav.nextToMark)}>Next copy to mark <ChevronRight size={15} /></button>}
+            </div>
+          )}
+        </div>
       </div>
 
       {sections.length > 1 && (
@@ -264,7 +319,7 @@ export function TeacherWritingReview({ assignmentId, studentId, studentName, onB
 
           {view === "corrected" ? (
             <>
-              <div className="qe-wrv-editor">
+              <div className="qe-wrv-editor" ref={editorBoxRef}>
                 <WritingEditor
                   key={`${active.id}-${editorVersion}`}
                   initialHtml={corrected[active.id] || ""}
@@ -291,34 +346,27 @@ export function TeacherWritingReview({ assignmentId, studentId, studentName, onB
           )}
 
           <div className="sub-meta" style={{ marginTop: 8 }}>
-            {resp?.submittedAt ? `Submitted ${new Date(resp.submittedAt).toLocaleString()} · ` : ""}{resp?.words || 0} words (original)
+            {resp?.submittedAt ? `Submitted ${new Date(resp.submittedAt).toLocaleString()} · ` : ""}{resp?.words || 0} words (original) · {totalWords} words in all
           </div>
         </div>
 
-        <div className="grade-panel grade-panel-form">
-          <div className="field-label">Writing Task {active.taskNumber} — criteria (optional)</div>
-          {CRITERIA.map((c) => (
-            <div key={c.key} className="criteria-row">
-              <span className="criteria-label">{c.label(active.taskNumber)}</span>
-              <input
-                type="number"
-                min="0"
-                max="9"
-                step="0.5"
-                className={`field-input criteria-input ${isValidScore(sc[c.key]) ? "" : "qe-wrv-invalid"}`}
-                placeholder="—"
-                value={sc[c.key]}
-                onChange={(e) => setScore(active.id, c.key, e.target.value)}
-              />
+        <div className="grade-panel grade-panel-form rs-wrv-form">
+          <div className="panel">
+            <div className="panel-h"><h2>Task {active.taskNumber} — criteria</h2><span className="panel-note">optional · click again to clear</span></div>
+            {CRITERIA.map((c) => (
+              <div key={c.key} className="rs-crit-row">
+                <div className="rs-crit-h"><span>{c.label(active.taskNumber)}</span><b>{sc[c.key] === "" ? "—" : sc[c.key]}</b></div>
+                <BandPicker label={c.label(active.taskNumber)} value={sc[c.key]} onChange={(v) => setScore(active.id, c.key, v)} />
+              </div>
+            ))}
+            <div className="criteria-avg">
+              Task {active.taskNumber} band: <strong>{activeBand != null ? activeBand : "—"}</strong>
+              {activeBand == null && <span className="qe-wrv-small"> (choose the 4 criteria)</span>}
             </div>
-          ))}
-          <div className="criteria-avg">
-            Task {active.taskNumber} band: <strong>{activeBand != null ? activeBand : "—"}</strong>
-            {activeBand == null && <span className="qe-wrv-small"> (fill the 4 criteria)</span>}
           </div>
 
-          <div className="qe-wrv-overall">
-            <label className="field-label" style={{ margin: 0 }}>Overall Writing band (optional)</label>
+          <div className="panel">
+            <label className="field-label" style={{ marginTop: 0 }}>Overall Writing band</label>
             <input
               type="number"
               min="0"
@@ -338,35 +386,49 @@ export function TeacherWritingReview({ assignmentId, studentId, studentName, onB
             </p>
           </div>
 
-          <label className="field-label" style={{ marginTop: 16 }}>Feedback for the student</label>
-          <textarea
-            className="field-input textarea"
-            style={{ minHeight: 180 }}
-            placeholder="General comments…"
-            value={feedbackDraft}
-            onChange={(e) => { setFeedbackDraft(e.target.value); setDirty(true); }}
-          />
+          {view === "corrected" && (
+            <div className="panel">
+              <div className="panel-h"><h2>Errors marked</h2><span className="panel-note">{marks.length}</span></div>
+              <NotesList marks={marks} containerRef={editorBoxRef} empty="No error marked in this task yet." />
+            </div>
+          )}
 
-          {error && <div className="field-error" style={{ marginTop: 12 }}>{error}</div>}
+          <div className="panel">
+            <label className="field-label" style={{ marginTop: 0 }}>Feedback for the student</label>
+            <textarea
+              className="field-input textarea"
+              style={{ minHeight: 140 }}
+              placeholder="General comments…"
+              value={feedbackDraft}
+              onChange={(e) => { setFeedbackDraft(e.target.value); setDirty(true); }}
+            />
 
-          <div className="qe-wrv-actions">
-            {releasedAt ? (
-              <button className="btn-primary" disabled={saving} onClick={() => save(false)}>
-                {saving ? "Saving…" : "Save changes"}
-              </button>
-            ) : (
-              <>
-                <button className="btn-ghost" disabled={saving} onClick={() => save(false)}>{saving ? "Saving…" : "Save draft"}</button>
-                <button className="btn-primary" disabled={saving} onClick={() => save(true)}>{saving ? "Saving…" : "Publish to student"}</button>
-              </>
+            {error && <div className="field-error" style={{ marginTop: 12 }}>{error}</div>}
+
+            <div className="qe-wrv-actions">
+              {releasedAt ? (
+                <button className="btn-primary" disabled={saving} onClick={() => save(false)}>
+                  {saving ? "Saving…" : "Save changes"}
+                </button>
+              ) : (
+                <>
+                  <button className="btn-ghost" disabled={saving} onClick={() => save(false)}>{saving ? "Saving…" : "Save draft"}</button>
+                  <button className="btn-primary" disabled={saving} onClick={() => save(true)}>{saving ? "Saving…" : "Publish to student"}</button>
+                </>
+              )}
+            </div>
+            <p className="field-hint" style={{ marginTop: 6 }}>
+              {releasedAt
+                ? "Already published — every saved change is visible to the student right away."
+                : "Draft: the student sees nothing until you publish."}
+              {dirty ? " You have unsaved changes." : ""}
+            </p>
+            {releasedAt && !dirty && nav?.nextToMark && (
+              <button className="panel-link rs-next" onClick={guarded(nav.nextToMark)}>Next copy to mark{nav.nextToMarkName ? ` (${nav.nextToMarkName})` : ""} <ChevronRight size={14} /></button>
             )}
           </div>
-          <p className="field-hint" style={{ marginTop: 6 }}>
-            {releasedAt
-              ? "Already published — every saved change is visible to the student right away."
-              : "Draft: the student sees nothing until you publish."}
-            {dirty ? " You have unsaved changes." : ""}
-          </p>
+
+          <button className="back-link" onClick={confirmLeave}><ArrowLeft size={14} /> Back to the list of students</button>
         </div>
       </div>
     </div>
