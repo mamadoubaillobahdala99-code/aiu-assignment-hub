@@ -1,7 +1,11 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { ArrowLeft, FileText, Image as ImageIcon, Music, File, Download } from "lucide-react";
+import { ArrowLeft, FileText, Image as ImageIcon, Music, File, Download, Pencil, Check } from "lucide-react";
 import { supabase } from "../../supabaseClient";
-import { CenterSpinner, PageHeader } from "../../components/shared";
+import { CenterSpinner } from "../../components/shared";
+import { Breadcrumb } from "../../components/DropMenu";
+import { TYPES } from "../../lib/utils";
+import { buildSheet } from "./ResultParts";
+import { plainPrompt } from "../assignment-hub/assignmentWork";
 import { ReviewContent } from "./ReviewContent";
 import { formatAnswerValue } from "./answerFormat";
 import { numberQuestions } from "./bulkParse";
@@ -15,8 +19,9 @@ import { StoredImg, StoredLink } from "../../lib/storageFiles";
 // STUDENT'S COPY to open. Before the exam there is no student, so a
 // teacher had no way at all to proofread what he had built. This screen
 // fills that hole. It is read-only: no clock, no submit, nothing to save.
-export function TeacherPaperPreview({ assignmentId, onBack }) {
+export function TeacherPaperPreview({ assignmentId, onBack, crumbs, onEdit }) {
   const [loading, setLoading] = useState(true);
+  const [view, setView] = useState("paper");   // Reading / Listening: "paper" | "key"
   const [assignment, setAssignment] = useState(null);
   const [sections, setSections] = useState([]);
   const [correctByQ, setCorrectByQ] = useState({});
@@ -79,9 +84,10 @@ export function TeacherPaperPreview({ assignmentId, onBack }) {
   if (loading) return <CenterSpinner />;
   if (!assignment) {
     return (
-      <div className="page">
-        <button className="back-link" onClick={onBack}><ArrowLeft size={14} /> Back</button>
+      <div className="page page-wide">
+        {crumbs ? <Breadcrumb items={crumbs} /> : <button className="back-link" onClick={onBack}><ArrowLeft size={14} /> Back</button>}
         <p className="empty-inline">This paper no longer exists.</p>
+        <button className="btn-ghost" onClick={onBack}><ArrowLeft size={14} /> Back to the assignment</button>
       </div>
     );
   }
@@ -96,15 +102,50 @@ export function TeacherPaperPreview({ assignmentId, onBack }) {
       keyResults[q.id] = { isCorrect: true };
     }
   }
+  const isRL = assignment.type !== "Writing" && assignment.type !== "Speaking";
+  const sheet = isRL ? buildSheet(sections) : [];
+  const noKey = sheet.filter((r) => correctByQ[r.q.id] === undefined).length;
+  const typeKey = String(assignment.type || "").toLowerCase().startsWith("listening") ? "listening"
+    : String(assignment.type || "").toLowerCase().startsWith("writing") ? "writing"
+    : String(assignment.type || "").toLowerCase().startsWith("speaking") ? "speaking" : "reading";
+  const meta = TYPES[assignment.type] || TYPES.Other;
+  const Icon = meta.icon;
+  const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
+  const facts = assignment.type === "Writing"
+    ? [plural(writingTasks.length, "task")]
+    : assignment.type === "Speaking"
+      ? [plural(speakingParts.length, "part")]
+      : [plural(sections.length, "part"), plural(allQuestions.length, "question"), plural(totalPoints, "point")];
+  if (assignment.time_limit_minutes) facts.push(`${assignment.time_limit_minutes} min`);
 
+  // Livraison 77: the same header as the other teacher pages — breadcrumb,
+  // title, Back and Edit — and, for Reading / Listening, two views: the
+  // whole paper as the students see it, or the answer key in one table.
   const header = (
     <>
-      <button className="back-link" onClick={onBack}><ArrowLeft size={14} /> Back</button>
-      <PageHeader eyebrow={`${assignment.type} — preview`} title={assignment.title} />
-      <p className="muted-p" style={{ marginTop: -8 }}>
-        What your students will sit, with the answer key. Nothing here is saved or timed.
-        {assignment.time_limit_minutes ? ` Time limit: ${assignment.time_limit_minutes} minutes.` : ""}
-      </p>
+      {crumbs ? <Breadcrumb items={crumbs} /> : <button className="back-link" onClick={onBack}><ArrowLeft size={14} /> Back</button>}
+      <div className="ph">
+        <div className="ph-main">
+          <span className={`ph-icon type-ic ic-${typeKey}`}><Icon size={21} /></span>
+          <div>
+            <div className="eyebrow">{assignment.type} · Preview</div>
+            <h1 className="ph-title">{assignment.title}</h1>
+            <div className="ph-sub">
+              {isRL ? "What your students will sit, with the answer key." : "What your students will see."} Nothing here is saved or timed.
+            </div>
+            <div className="ph-meta">
+              {facts.map((f) => <span key={f} className="pill">{f}</span>)}
+              {isRL && sheet.length > 0 && (noKey > 0
+                ? <span className="pill pill-rose">{plural(noKey, "question")} without a correct answer</span>
+                : <span className="pill pill-teal"><Check size={13} /> Every question has its answer</span>)}
+            </div>
+          </div>
+        </div>
+        <div className="ph-actions">
+          <button className="btn-ghost" onClick={onBack}><ArrowLeft size={15} /> Back</button>
+          {onEdit && <button className="btn-ghost" onClick={onEdit}><Pencil size={15} /> Edit</button>}
+        </div>
+      </div>
     </>
   );
 
@@ -115,11 +156,11 @@ export function TeacherPaperPreview({ assignmentId, onBack }) {
         {writingTasks.length === 0 ? (
           <p className="empty-inline">This paper has no task yet.</p>
         ) : writingTasks.map((t) => (
-          <div key={t.id} className="qe-review-part">
-            <h3 className="section-title">Task {t.taskNumber}{t.title ? ` — ${t.title}` : ""}</h3>
+          <section key={t.id} className="panel pv-part">
+            <div className="panel-h"><h2>Writing Task {t.taskNumber}{t.title ? ` — ${t.title}` : ""}</h2></div>
             {t.imageUrl && <StoredImg className="qe-sp-doc-img" src={t.imageUrl} alt={`Task ${t.taskNumber}`} />}
-            <div className="qe-sp-questions">{t.prompt}</div>
-          </div>
+            {t.prompt.trim() ? <div className="qe-sp-questions">{t.prompt}</div> : <p className="empty-inline">No question written for this task.</p>}
+          </section>
         ))}
       </div>
     );
@@ -135,8 +176,8 @@ export function TeacherPaperPreview({ assignmentId, onBack }) {
         ) : speakingParts.map((p) => {
           const meta = SPEAKING_PARTS[p.part] || { label: `Part ${p.part}`, title: "" };
           return (
-            <div key={p.id} className="qe-review-part">
-              <h3 className="section-title">Speaking {meta.label} — {meta.title}</h3>
+            <section key={p.id} className="panel pv-part">
+              <div className="panel-h"><h2>Speaking {meta.label} — {meta.title}</h2></div>
               {p.text.trim() && (
                 p.part === 2 ? <div className="qe-sp-cuecard">{p.text}</div> : <div className="qe-sp-questions">{p.text}</div>
               )}
@@ -156,7 +197,8 @@ export function TeacherPaperPreview({ assignmentId, onBack }) {
                   </div>
                 );
               })}
-            </div>
+              {!p.text.trim() && p.documents.length === 0 && <p className="empty-inline">Nothing in this part yet.</p>}
+            </section>
           );
         })}
       </div>
@@ -170,23 +212,50 @@ export function TeacherPaperPreview({ assignmentId, onBack }) {
         <p className="empty-inline">This paper has no question yet.</p>
       ) : (
         <>
-          <p className="muted-p" style={{ marginTop: 0 }}>
-            {sections.length} part{sections.length > 1 ? "s" : ""} · {allQuestions.length} question
-            {allQuestions.length > 1 ? "s" : ""} · {totalPoints} point{totalPoints > 1 ? "s" : ""}
-          </p>
-          {/* The answer key is fed in as if it were the answers, so every
-              question shows its correct option filled in. answerKeyMode
-              then labels it for what it is instead of marking a copy. */}
-          <ReviewContent
-            sections={sections}
-            answersByQ={correctByQ}
-            resultsByQ={keyResults}
-            correctAnswersFormatted={correctAnswersFormatted}
-            correctAnswersRaw={correctByQ}
-            showCorrectAnswers
-            answerKeyMode
-            assignmentId={assignmentId}
-          />
+          <div className="dt-chips pv-views" role="group" aria-label="View">
+            {[["paper", "Full paper"], ["key", "Answer key"]].map(([k, l]) => (
+              <button key={k} type="button" className={`dt-chip ${view === k ? "on" : ""}`} aria-pressed={view === k} onClick={() => setView(k)}>{l}</button>
+            ))}
+          </div>
+          {view === "key" ? (
+            <div className="dt-wrap">
+              <table className="dt pv-key">
+                <thead>
+                  <tr><th>#</th><th>Question</th><th>Correct answer</th></tr>
+                </thead>
+                <tbody>
+                  {sheet.map((row, i) => {
+                    const newPart = i === 0 || sheet[i - 1].part !== row.part;
+                    const answer = correctAnswersFormatted[row.q.id];
+                    return (
+                      <React.Fragment key={row.q.id}>
+                        {newPart && sections.length > 1 && <tr className="pv-part-row"><td colSpan={3}>{row.part || "Part"}</td></tr>}
+                        <tr>
+                          <td className="dt-nowrap"><b>{row.label}</b></td>
+                          <td><span className="dt-q">{plainPrompt(row.q.prompt) || String(row.q.type || "").replace(/_/g, " ")}</span></td>
+                          <td>{answer ? <b>{answer}</b> : <span className="pill pill-rose">No correct answer</span>}</td>
+                        </tr>
+                      </React.Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            /* The answer key is fed in as if it were the answers, so every
+               question shows its correct option filled in. answerKeyMode
+               then labels it for what it is instead of marking a copy. */
+            <ReviewContent
+              sections={sections}
+              answersByQ={correctByQ}
+              resultsByQ={keyResults}
+              correctAnswersFormatted={correctAnswersFormatted}
+              correctAnswersRaw={correctByQ}
+              showCorrectAnswers
+              answerKeyMode
+              assignmentId={assignmentId}
+            />
+          )}
         </>
       )}
     </div>
