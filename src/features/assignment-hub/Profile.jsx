@@ -1,11 +1,19 @@
 
 import React, { useState, useEffect, useRef } from "react";
-import { User, ArrowLeft } from "lucide-react";
+import { ChevronRight, ShieldCheck } from "lucide-react";
 import { supabase } from "../../supabaseClient";
 import { fmtDate } from "../../lib/utils";
-import { PageHeader, CenterSpinner } from "../../components/shared";
+import { CenterSpinner } from "../../components/shared";
 import { PasswordField, passwordProblem, PASSWORD_RULE_TEXT } from "../../components/PasswordField";
+import { loadTeacherWork, loadTeacherExams } from "./teacherWork";
+import { loadStudentWork, isDone } from "./studentWork";
 
+// Livraison 77 — the Profile, for teachers and students: who you are and
+// your password on the left; on the right, a short summary of your
+// activity (each line opens the matching page), the teacher-access request
+// (students) and the way into the administration (administrator only).
+// Every write is the same as before: profiles.name, the password,
+// request_teacher_access.
 export function Profile({ profile, userId, setProfile, setScreen, showToast }) {
   const [email, setEmail] = useState("");
   const [createdAt, setCreatedAt] = useState(null);
@@ -19,10 +27,9 @@ export function Profile({ profile, userId, setProfile, setScreen, showToast }) {
   const [passwordError, setPasswordError] = useState("");
   const [savingPassword, setSavingPassword] = useState(false);
 
-  // Livraison 66: the way into the administrator's screen lives here, at
-  // the bottom of the administrator's own Profile, instead of in the
-  // menu. A convenience only: the database refuses the admin screen's
-  // content to everyone else.
+  // Livraison 66: the way into the administrator's screen lives here, in
+  // the administrator's own Profile, instead of in the menu. A convenience
+  // only: the database refuses the admin screen's content to everyone else.
   const [isAdmin, setIsAdmin] = useState(false);
   useEffect(() => {
     let cancelled = false;
@@ -35,6 +42,7 @@ export function Profile({ profile, userId, setProfile, setScreen, showToast }) {
   // Livraison 61: a student can ask for teacher access. The database
   // decides everything (one request at a time, 7 days after a refusal).
   const isStudent = profile?.role === "student";
+  const isTeacher = profile?.role === "teacher";
   const [teacherReq, setTeacherReq] = useState(null);   // null = not loaded / not available
   const [askingTeacher, setAskingTeacher] = useState(false);
   useEffect(() => {
@@ -45,6 +53,40 @@ export function Profile({ profile, userId, setProfile, setScreen, showToast }) {
     });
     return () => { cancelled = true; };
   }, [isStudent, userId]);
+
+  // Livraison 77: "My activity" — read with the account's own rights, with
+  // the same readers as the Dashboard / Home. If it fails, the card says so
+  // and the rest of the page works.
+  const [activity, setActivity] = useState(undefined);   // undefined = loading, null = failed
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        if (isTeacher) {
+          const [w, exams] = await Promise.all([loadTeacherWork(userId), loadTeacherExams()]);
+          if (cancelled) return;
+          setActivity([
+            { label: "Classes", value: w.classes.length, go: { name: "home" } },
+            { label: "Assignments", value: w.assignments.length, go: { name: "home" } },
+            { label: "Students", value: w.students ?? "—", go: { name: "dashboard" } },
+            { label: "Exams", value: exams.length, go: { name: "exams" } },
+          ]);
+        } else {
+          const w = await loadStudentWork(userId);
+          if (cancelled) return;
+          const done = w.items.filter(isDone).length;
+          setActivity([
+            { label: "Classes", value: w.classes.length, go: { name: "student-classes" } },
+            { label: "Assignments to do", value: w.items.length - done, go: { name: "student-assignments" } },
+            { label: "Assignments done", value: done, go: { name: "student-assignments" } },
+          ]);
+        }
+      } catch {
+        if (!cancelled) setActivity(null);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [isTeacher, userId]);
 
   const askingRef = useRef(false);   // a second click before the re-render
   async function askTeacherAccess() {
@@ -108,82 +150,113 @@ export function Profile({ profile, userId, setProfile, setScreen, showToast }) {
 
   if (loading) return <CenterSpinner />;
 
+  const nameChanged = nameDraft.trim() && nameDraft.trim() !== profile?.name;
+  const roleLabel = isTeacher ? "Teacher" : "Student";
+
   return (
-    <div className="page page-wide">
-      <button className="back-link" onClick={() => setScreen({ name: "home" })}><ArrowLeft size={14} /> Back</button>
-      <PageHeader eyebrow={profile?.role === "teacher" ? "Teacher" : "Student"} title="Profile" />
-
-      <div className="feedback-panel" style={{ maxWidth: 460, marginBottom: 20 }}>
-        <div className="avatar" style={{ marginBottom: 14 }}>{(profile?.name || "?").slice(0, 1).toUpperCase()}</div>
-
-        <label className="field-label">Name</label>
-        <input className="field-input" value={nameDraft} onChange={(e) => setNameDraft(e.target.value)} />
-        <button className="btn-primary" style={{ marginTop: 10 }} disabled={savingName || !nameDraft.trim() || nameDraft.trim() === profile?.name} onClick={saveName}>
-          {savingName ? "Saving…" : "Save name"}
-        </button>
-
-        <label className="field-label" style={{ marginTop: 18 }}>Role</label>
-        <p style={{ margin: "4px 0 0" }}>{profile?.role === "teacher" ? "Teacher" : "Student"}</p>
-
-        <label className="field-label" style={{ marginTop: 14 }}>Email</label>
-        <p style={{ margin: "4px 0 0" }}>{email || "—"}</p>
-
-        <label className="field-label" style={{ marginTop: 14 }}>Member since</label>
-        <p style={{ margin: "4px 0 0" }}>{createdAt ? fmtDate(createdAt) : "—"}</p>
-      </div>
-
-      <div className="feedback-panel" style={{ maxWidth: 460 }}>
-        <div className="field-label" style={{ marginBottom: 10 }}>Change password</div>
-        <label className="field-label">New password</label>
-        <PasswordField placeholder="8+ characters, a letter, a number" autoComplete="new-password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
-        <label className="field-label" style={{ marginTop: 12 }}>Confirm new password</label>
-        <PasswordField autoComplete="new-password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
-        {passwordError && <div className="field-error">{passwordError}</div>}
-        <button className="btn-primary" style={{ marginTop: 12 }} disabled={savingPassword || !newPassword || !confirmPassword} onClick={savePassword}>
-          {savingPassword ? "Saving…" : "Update password"}
-        </button>
-      </div>
-
-      {isStudent && teacherReq && (() => {
-        const again = teacherReq.again_at ? new Date(teacherReq.again_at) : null;
-        const tooSoon = teacherReq.status === "declined" && again && again > new Date();
-        return (
-          <div className="feedback-panel" style={{ maxWidth: 460 }}>
-            <div className="field-label" style={{ marginBottom: 8 }}>Teacher access</div>
-            {teacherReq.status === "pending" ? (
-              <p style={{ margin: 0 }}>
-                <span style={{ display: "inline-block", background: "var(--amber-soft)", color: "var(--amber)", fontWeight: 600, fontSize: 13, padding: "6px 12px", borderRadius: 999 }}>
-                  Request sent — waiting for approval
-                </span>
-              </p>
-            ) : tooSoon ? (
-              <p style={{ margin: 0, fontSize: 14 }}>
-                Your request was declined on {fmtDate(teacherReq.decided_at)}. You can ask again from {fmtDate(teacherReq.again_at)}.
-              </p>
-            ) : (
-              <>
-                <p style={{ margin: "0 0 10px", fontSize: 14, color: "var(--ink-soft)" }}>
-                  Are you a teacher? Ask the administrator for teacher access.
-                </p>
-                <button className="btn-ghost" disabled={askingTeacher} onClick={askTeacherAccess}>
-                  {askingTeacher ? "Sending…" : "Request teacher access"}
-                </button>
-              </>
-            )}
-          </div>
-        );
-      })()}
-
-      {isAdmin && (
-        <div className="feedback-panel" style={{ maxWidth: 460, marginTop: 20, background: "#fff", border: "1.2px dashed var(--sidebar)",
-                                                  display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14 }}>
+    <div className="page page-dash">
+      <div className="ph">
+        <div className="ph-main">
           <div>
-            <div style={{ fontWeight: 700, fontSize: 14.5, color: "var(--sidebar)" }}>Administration</div>
-            <div style={{ fontSize: 12.5, color: "var(--ink-soft)", marginTop: 3 }}>Teachers, students, teacher access requests.</div>
+            <div className="eyebrow">Account</div>
+            <h1 className="ph-title">Profile</h1>
           </div>
-          <button className="btn-ghost" style={{ whiteSpace: "nowrap" }} onClick={() => setScreen({ name: "admin" })}>Open →</button>
         </div>
-      )}
+      </div>
+
+      <div className="pf-grid">
+        <div>
+          <section className="panel">
+            <div className="pf-who">
+              <div className="avatar pf-avatar">{(profile?.name || "?").slice(0, 1).toUpperCase()}</div>
+              <div className="pf-who-main">
+                <b>{profile?.name}</b>
+                <span className="dt-sub">{roleLabel}{isAdmin ? " · Administrator" : ""}{createdAt ? ` · member since ${fmtDate(createdAt)}` : ""}</span>
+              </div>
+            </div>
+
+            <label className="field-label" htmlFor="pf-name">Name</label>
+            <div className="pf-inline">
+              <input id="pf-name" className="field-input" value={nameDraft} onChange={(e) => setNameDraft(e.target.value)}
+                     onKeyDown={(e) => { if (e.key === "Enter" && nameChanged && !savingName) saveName(); }} />
+              <button className="btn-ghost" disabled={savingName || !nameChanged} onClick={saveName}>
+                {savingName ? "Saving…" : "Save name"}
+              </button>
+            </div>
+            <p className="field-hint" style={{ marginTop: 6 }}>The name your {isTeacher ? "students" : "teachers"} see.</p>
+
+            <label className="field-label" style={{ marginTop: 14 }}>Email</label>
+            <div className="pf-readonly">{email || "—"}</div>
+            <p className="field-hint" style={{ marginTop: 6 }}>Your sign-in email. It cannot be changed here.</p>
+          </section>
+
+          <section className="panel">
+            <div className="panel-h"><h2>Change password</h2></div>
+            <label className="field-label">New password</label>
+            <PasswordField placeholder="8+ characters, a letter, a number" autoComplete="new-password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
+            <label className="field-label" style={{ marginTop: 12 }}>Confirm new password</label>
+            <PasswordField autoComplete="new-password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
+            {passwordError && <div className="field-error">{passwordError}</div>}
+            <button className="btn-primary" style={{ marginTop: 14 }} disabled={savingPassword || !newPassword || !confirmPassword} onClick={savePassword}>
+              {savingPassword ? "Saving…" : "Update password"}
+            </button>
+          </section>
+        </div>
+
+        <div>
+          <section className="panel">
+            <div className="panel-h"><h2>My activity</h2></div>
+            {activity === undefined ? (
+              <p className="empty-inline">Loading…</p>
+            ) : activity === null ? (
+              <p className="empty-inline">The figures could not be read. Check your connection.</p>
+            ) : (
+              <div className="pf-acts">
+                {activity.map((a) => (
+                  <button key={a.label} type="button" className="pf-act" onClick={() => setScreen(a.go)}>
+                    <span>{a.label}</span>
+                    <b>{a.value}</b>
+                    <ChevronRight size={15} className="pf-act-go" aria-hidden="true" />
+                  </button>
+                ))}
+              </div>
+            )}
+          </section>
+
+          {isStudent && teacherReq && (() => {
+            const again = teacherReq.again_at ? new Date(teacherReq.again_at) : null;
+            const tooSoon = teacherReq.status === "declined" && again && again > new Date();
+            return (
+              <section className="panel">
+                <div className="panel-h"><h2>Teacher access</h2></div>
+                {teacherReq.status === "pending" ? (
+                  <p style={{ margin: 0 }}><span className="pill pill-amber">Request sent — waiting for approval</span></p>
+                ) : tooSoon ? (
+                  <p className="panel-text" style={{ margin: 0 }}>
+                    Your request was declined on {fmtDate(teacherReq.decided_at)}. You can ask again from {fmtDate(teacherReq.again_at)}.
+                  </p>
+                ) : (
+                  <>
+                    <p className="panel-text">Are you a teacher? Ask the administrator for teacher access.</p>
+                    <button className="btn-ghost" disabled={askingTeacher} onClick={askTeacherAccess}>
+                      {askingTeacher ? "Sending…" : "Request teacher access"}
+                    </button>
+                  </>
+                )}
+              </section>
+            );
+          })()}
+
+          {isAdmin && (
+            <section className="panel pf-admin">
+              <div className="panel-h"><h2><ShieldCheck size={16} /> Administration</h2></div>
+              <p className="panel-text">Teachers, students, teacher access requests.</p>
+              <button className="btn-ghost" onClick={() => setScreen({ name: "admin" })}>Open the admin page →</button>
+              <p className="panel-note" style={{ margin: "8px 0 0" }}>Shown only to the administrator.</p>
+            </section>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
