@@ -2,17 +2,28 @@ import React, { useState, useEffect, useCallback } from "react";
 import {
   ArrowLeft, Copy, CheckCircle2, Plus, FileText, Users, Play, Square,
   Send, Trash2, ChevronUp, ChevronDown, UserPlus, X, Headphones, ShieldCheck,
-  ChevronRight, Pencil, Files, ShieldAlert, Unlock, RotateCcw,
+  ChevronRight, Pencil, Files, ShieldAlert, Unlock, RotateCcw, Download, Lock, Clock, Check,
 } from "lucide-react";
 import { supabase } from "../../supabaseClient";
-import { PageHeader, CenterSpinner, EmptyState, Modal } from "../../components/shared";
+import { CenterSpinner, EmptyState, Modal } from "../../components/shared";
 import { TYPES, fmtDate } from "../../lib/utils";
 import { ExamStateBadge } from "./ExamSessionsHome";
 import { confirmDialog } from "../../lib/confirmDialog";
+import { DropMenu, DropMenuItem, DropMenuSeparator, Breadcrumb } from "../../components/DropMenu";
+import { Stepper } from "../question-engine/BuilderLayout";
+import { fmtWhen } from "../question-engine/ResultParts";
+import { examStage, STAGE_NAMES, loadExamGrid, overallBand, average, fmtBand, resultsCsv, downloadText, left } from "./examWork";
 
 // The teacher's screen for one exam session: its code, its papers in
 // order, its settings, the other teachers, and the buttons that run the
 // exam on the day.
+//
+// Livraison 78: the page follows the exam's four steps (Prepared → Open →
+// Closed → Results published). Before: papers + « Ready to open? » +
+// settings + teachers. During: a table candidate × paper (who is where,
+// minutes left, who is suspended). After: the results with their bands,
+// the overall band, and « Export (CSV) ». Every action calls the database
+// exactly as before (same functions, same writes).
 export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
   const [session, setSession] = useState(null);
   const [items, setItems] = useState([]);
@@ -47,6 +58,15 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
   // Clicked earlier, its count said "Nobody is writing right now" even
   // while candidates were writing.
   const [loaded, setLoaded] = useState(false);
+  // Livraison 78: each candidate's attempts (start / hand-in, per paper),
+  // the papers that have content, the results grid, the tab shown, and a
+  // clock for the « minutes left ».
+  const [attempts, setAttempts] = useState([]);
+  const [withContent, setWithContent] = useState(null);   // Set(assignment_id) | null = unknown
+  const [grid, setGrid] = useState(null);                 // see examWork.loadExamGrid
+  const [tab, setTab] = useState(null);                   // null = the stage's default
+  const [now, setNow] = useState(Date.now());
+  const [filter, setFilter] = useState("all");
 
   const load = useCallback(async () => {
     const { data: s } = await supabase.from("exam_sessions").select("*").eq("id", sessionId).maybeSingle();
@@ -104,10 +124,12 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
     // Who has handed in what. One query for the whole room.
     const paperIds = (rows || []).map((x) => x.assignment_id);
     if (paperIds.length > 0) {
-      const { data: att } = await supabase
-        .from("exam_attempts")
-        .select("student_id, assignment_id, submitted_at")
-        .in("assignment_id", paperIds);
+      const [{ data: att }, { data: secs }] = await Promise.all([
+        supabase.from("exam_attempts").select("student_id, assignment_id, started_at, submitted_at").in("assignment_id", paperIds),
+        supabase.from("exam_sections").select("assignment_id").in("assignment_id", paperIds),
+      ]);
+      setAttempts(att || []);
+      setWithContent(new Set((secs || []).map((x) => x.assignment_id)));
       const done = {};
       for (const a of att || []) {
         if (!a.submitted_at) continue;
@@ -116,6 +138,8 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
       setProgress(done);
     } else {
       setProgress({});
+      setAttempts([]);
+      setWithContent(new Set());
     }
   }, [sessionId]);
 
@@ -134,14 +158,32 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
   }, [sessionId]);
 
   useEffect(() => { loadBoard(); }, [loadBoard]);
+
+  // Livraison 78: the results grid (scores, bands, Writing to mark), read
+  // with the class rules once the papers and candidates are known.
+  const loadGrid = useCallback(async () => {
+    if (!loaded || withContent === null) return;
+    const list = items.filter((it) => it.assignment).map((it) => ({ ...it, structured: withContent.has(it.assignment_id) }));
+    try { setGrid(await loadExamGrid(list, roster)); } catch { setGrid({}); }
+  }, [loaded, items, roster, withContent]);
+  useEffect(() => { loadGrid(); }, [loadGrid]);
   // Also keeps refreshing after Close while some papers are still left:
   // every refresh tries to hand them in again.
-  const keepRefreshing = (Boolean(session?.opened_at) && !session?.closed_at) || uncollected > 0;
+  // Livraison 78: also when the exam was opened by its opening time.
+  const keepRefreshing = (Boolean(session) && examStage(session) === 1) || uncollected > 0;
   useEffect(() => {
     if (!keepRefreshing) return;
     const id = setInterval(loadBoard, 8000);
     return () => clearInterval(id);
   }, [keepRefreshing, loadBoard]);
+  // While the exam runs, the candidates' table follows the room (every
+  // 20 s), and the « minutes left » follow the clock.
+  useEffect(() => {
+    if (!keepRefreshing) return;
+    const id = setInterval(() => { load(); setNow(Date.now()); }, 20000);
+    const tick = setInterval(() => setNow(Date.now()), 30000);
+    return () => { clearInterval(id); clearInterval(tick); };
+  }, [keepRefreshing, load]);
 
   async function allowResume(studentId) {
     setResuming(studentId);
@@ -321,9 +363,10 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
   if (session === null) return <CenterSpinner />;
   if (session === false) {
     return (
-      <div className="page">
-        <button className="back-link" onClick={() => setScreen({ name: "exams" })}><ArrowLeft size={14} /> All exams</button>
+      <div className="page page-dash">
+        <Breadcrumb items={[{ label: "Exams", onClick: () => setScreen({ name: "exams" }) }, { label: "Not found" }]} />
         <p className="empty-inline">This exam no longer exists.</p>
+        <button className="btn-ghost" style={{ marginTop: 12 }} onClick={() => setScreen({ name: "exams" })}><ArrowLeft size={14} /> All exams</button>
       </div>
     );
   }
@@ -331,9 +374,9 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
   // Suspended candidates first: they are sitting in front of a dead
   // screen waiting for this button.
   const frozen = board.filter((c) => c.frozen);
+  const frozenIds = new Set(frozen.map((c) => c.student_id));
   const watched = board.reduce((n, c) => n + (c.incidents || 0), 0);
   const isOwner = session.created_by === userId;
-  const isLive = Boolean(session.opened_at) && !session.closed_at;
   // Livraison 62 — the same rules as the database:
   //   examOpen   = the exam is running (Open button, or its opening time has come);
   //   notStarted = never opened, not closed, not published, opening time not reached.
@@ -348,151 +391,221 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
     && (opensMs === null || nowMs < opensMs);
   const sorted = [...items].sort((a, b) => a.order_index - b.order_index);
 
-  return (
-    <div className="page page-wide">
-      <button className="back-link" onClick={() => setScreen({ name: "exams" })}><ArrowLeft size={14} /> All exams</button>
+  // Livraison 78 — the step, and what each step shows.
+  const stage = examStage(session, nowMs);
+  const tabsOf = stage === 1 ? ["candidates", "papers", "settings", "teachers"] : ["results", "papers", "settings", "teachers"];
+  const shownTab = tab && tabsOf.includes(tab) ? tab : tabsOf[0];
+  const att = new Map(attempts.map((a) => [`${a.student_id}|${a.assignment_id}`, a]));
+  const cellOf = (studentId, it) => grid?.[`${studentId}|${it.assignment_id}`];
+  const timed = sorted.filter((it) => it.assignment && it.assignment.type !== "Speaking");
+  const hm = (iso) => new Date(iso).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+  const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
+  const toMarkCount = grid ? Object.values(grid).filter((c) => c.status === "to-mark").length : 0;
 
-      <PageHeader
-        eyebrow="Exam"
-        title={session.name}
-        action={<button className="btn-ghost" onClick={copyCode}>{copied ? <CheckCircle2 size={15} /> : <Copy size={15} />} Code: {session.code}</button>}
-      />
+  function openCopy(student, it) {
+    setScreen({ name: "assignment-teacher", classId: session.container_class_id, assignmentId: it.assignment_id, studentId: student.id, returnTo: { name: "exam-session", sessionId } });
+  }
 
-      <div className="ex-statusline">
-        <ExamStateBadge session={session} />
-        <span className="ex-status-note">
-          {session.results_released_at
-            ? "Students can see their results."
-            : session.closed_at
-            ? "Nobody can join or start a paper."
-            : isLive
-            ? "Students can join with the code and start the first paper."
-            : "Students cannot join yet. Press Open when everyone is seated."}
-        </span>
-      </div>
+  // During the exam: where each candidate is.
+  function liveCell(st, it, idx) {
+    const type = it.assignment?.type || "";
+    if (type === "Speaking") {
+      return cellOf(st.id, it)?.status === "viewed" ? { kind: "done", text: "✓ viewed" } : { kind: "none", text: "—" };
+    }
+    const t = att.get(`${st.id}|${it.assignment_id}`);
+    if (t?.submitted_at) return { kind: "done", text: `✓ ${hm(t.submitted_at)}` };
+    if (t?.started_at) {
+      const lim = it.assignment?.time_limit_minutes;
+      const end = lim ? new Date(t.started_at).getTime() + lim * 60000 : null;
+      return { kind: "work", text: `${type.toLowerCase()} · ${end ? `${left(end - now)} left` : "in progress"}` };
+    }
+    const ready = sorted.slice(0, idx).filter((p) => p.assignment && p.assignment.type !== "Speaking")
+      .every((p) => att.get(`${st.id}|${p.assignment_id}`)?.submitted_at);
+    return ready ? { kind: "next", text: "not started" } : { kind: "lock" };
+  }
+  function liveStatus(st) {
+    if (frozenIds.has(st.id)) return "suspended";
+    const mine = timed.map((it) => att.get(`${st.id}|${it.assignment_id}`));
+    if (timed.length > 0 && mine.every((t) => t?.submitted_at)) return "finished";
+    if (mine.some((t) => t?.started_at && !t.submitted_at)) return "working";
+    return mine.some((t) => t?.submitted_at) ? "working" : "waiting";
+  }
+  const STATUS = { working: ["Working", "pill-teal"], finished: ["Finished", ""], suspended: ["Suspended", "pill-rose"], waiting: ["Not started", "pill-plain"] };
+  const liveRows = roster.map((st) => ({ st, status: liveStatus(st) }));
+  const liveCount = (k) => liveRows.filter((r) => r.status === k).length;
+  const shownLive = liveRows.filter((r) => filter === "all" || r.status === filter);
 
-      <div className="ex-actions">
-        {!isLive && !session.closed_at && (
-          <button className="btn-primary" disabled={busy === "open" || sorted.length === 0} onClick={() => (sorted.some((it) => replayIds.has(it.assignment_id)) ? setOpenAsk(true) : act("open"))}>
-            <Play size={15} /> {busy === "open" ? "Opening…" : "Open now"}
-          </button>
-        )}
-        {isLive && (
-          <button className="btn-ghost" disabled={!loaded || busy === "close" || closeAsk === "counting"} onClick={askToClose}>
-            <Square size={14} /> {busy === "close" ? "Closing…" : !loaded ? "Loading…" : "Close the exam"}
-          </button>
-        )}
-        {!session.results_released_at && (session.closed_at || isLive) && (
-          <button className="btn-ghost" disabled={busy === "release"} onClick={async () => {
-            const message = "Publish the results to every candidate? They will see their marks and their corrected papers."
-              + (isLive ? " The exam is still open: every paper still being written will be handed in now, as it is." : "");
-            if (await confirmDialog({ title: "Publish the results?", message, confirmLabel: "Publish" })) act("release");
-          }}>
-            <Send size={14} /> {busy === "release" ? "Publishing…" : "Publish the results"}
-          </button>
-        )}
-      </div>
+  // After the exam: results.
+  const scoredPapers = sorted.filter((it) => ["Listening", "Reading", "Writing"].includes(it.assignment?.type));
+  const overallOf = (st) => overallBand(sorted.filter((it) => it.assignment), (it) => cellOf(st.id, it));
+  const overalls = roster.map(overallOf).filter((b) => b !== null);
+  function exportCsv() {
+    const csv = resultsCsv(session.name, sorted.filter((it) => it.assignment), roster, (sid, it) => cellOf(sid, it));
+    // A plain-ASCII file name: some browsers drop a name with accents or dashes like « — ».
+    const safe = session.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Za-z0-9 ._()-]+/g, "-").replace(/\s+/g, " ").trim() || "exam";
+    downloadText(`${safe} - results.csv`, csv);
+    showToast?.("Results exported (CSV)");
+  }
 
-      {uncollected > 0 && (
-        <div className="ex-frozen-row" role="alert" style={{ marginTop: 14 }}>
-          <ShieldAlert size={17} className="ex-frozen-icon" />
-          <div className="ex-frozen-main">
-            <div className="ex-item-title">
-              {uncollected} paper{uncollected > 1 ? "s" : ""} could not be collected
-            </div>
-            <div className="ex-item-sub">
-              We try again at every refresh (every 8 seconds). Keep this page open.
-            </div>
-          </div>
-        </div>
+  const copyPill = (
+    <button type="button" className="pill pill-btn" onClick={copyCode} title="Copy the code">
+      {copied ? <CheckCircle2 size={13} /> : <Copy size={13} />} Code: {session.code}
+    </button>
+  );
+  const windowPill = stage === 0
+    ? (session.opens_at ? <span className="pill"><Clock size={13} /> Opens {fmtWhen(session.opens_at)}</span> : null)
+    : stage === 1
+      ? (session.closes_at ? <span className="pill"><Clock size={13} /> Closes {hm(session.closes_at)} · {left(closesMs - now)} left</span> : null)
+      : <span className="pill">{session.closed_at ? `Closed ${fmtWhen(session.closed_at)}` : session.closes_at ? `Window ended ${fmtWhen(session.closes_at)}` : "Closed"}</span>;
+
+  const deleteLocked = examOpen && !session.results_released_at;
+  const moreMenu = (
+    <DropMenu label="•••" className="btn-ghost btn-dots" title="More actions">
+      <DropMenuItem icon={<Pencil size={15} />} title="Rename…" onClick={() => setRenaming(session.name)} />
+      <DropMenuItem icon={<Files size={15} />} title="Duplicate for another class…" hint="Same papers, new code, nobody in it." onClick={() => setDupOpen(`${session.name} (copy)`)} />
+      {stage === 1 && !session.results_released_at && (
+        <DropMenuItem icon={<Send size={15} />} title="Publish the results now…" hint="Every paper still being written is handed in." disabled={busy === "release"} onClick={askRelease} />
       )}
+      {isOwner && (
+        <>
+          <DropMenuSeparator />
+          {/* Livraison 64 — the same rule as the database (exam_running): locked while the
+              exam runs, whether it was opened by the button or by its opening time. */}
+          <DropMenuItem icon={<Trash2 size={15} />} title="Delete this exam…" danger disabled={deleteLocked}
+                        hint={deleteLocked ? "Close the exam first" : undefined}
+                        onClick={() => { setDelTyped(""); setDelOpen(true); }} />
+        </>
+      )}
+    </DropMenu>
+  );
+  async function askRelease() {
+    const message = "Publish the results to every candidate? They will see their marks and their corrected papers."
+      + (stage === 1 ? " The exam is still open: every paper still being written will be handed in now, as it is." : "");
+    if (await confirmDialog({ title: "Publish the results?", message, confirmLabel: "Publish" })) act("release");
+  }
 
-      {/* ---------- managing the exam itself ---------- */}
-      <div className="ex-actions ex-manage">
-        <button className="btn-ghost" onClick={() => setRenaming(session.name)}>
-          <Pencil size={13} /> Rename
+  const actions = (
+    <div className="ph-actions">
+      {stage >= 2 && (
+        <button className="btn-ghost" disabled={grid === null || roster.length === 0} onClick={exportCsv}><Download size={15} /> Export (CSV)</button>
+      )}
+      {stage === 1 && examOpen && session.closes_at && (
+        <DropMenu label={<><Plus size={14} /> Time ▾</>} className="btn-ghost" title="Need more time?">
+          <DropMenuSeparator label="Move the end later" />
+          {[5, 15, 30].map((m) => (
+            <DropMenuItem key={m} title={`+${m} min`} disabled={extending} onClick={() => extendEnd(m)} />
+          ))}
+          <DropMenuSeparator label="To end now, use Close" />
+        </DropMenu>
+      )}
+      {moreMenu}
+      {stage === 0 && (
+        <button className="btn-teal" disabled={busy === "open" || sorted.length === 0}
+                title={sorted.length === 0 ? "Add a paper first" : ""}
+                onClick={() => (sorted.some((it) => replayIds.has(it.assignment_id)) ? setOpenAsk(true) : act("open"))}>
+          <Play size={15} /> {busy === "open" ? "Opening…" : "Open the exam now"}
         </button>
-        <button className="btn-ghost" onClick={() => setDupOpen(`${session.name} (copy)`)}>
-          <Files size={13} /> Duplicate for another class
+      )}
+      {/* Livraison 78: also when the exam was opened by its opening time
+          (before, the teacher first had to press Open to get this button). */}
+      {stage === 1 && (
+        <button className="btn-primary ex-close-btn" disabled={!loaded || busy === "close" || closeAsk === "counting"} onClick={askToClose}>
+          <Square size={14} /> {busy === "close" ? "Closing…" : !loaded ? "Loading…" : "Close the exam"}
         </button>
-        {isOwner && (
-          // Livraison 64 — the same rule as the database (exam_running): locked while the
-          // exam runs, whether it was opened by the button or by its opening time.
-          <button className="btn-ghost ex-delete-btn" disabled={examOpen && !session.results_released_at}
-                  title={examOpen && !session.results_released_at ? "Close the exam first" : ""}
-                  onClick={() => { setDelTyped(""); setDelOpen(true); }}>
-            <Trash2 size={13} /> Delete this exam
-          </button>
-        )}
+      )}
+      {stage === 2 && !session.results_released_at && (
+        <button className="btn-teal" disabled={busy === "release"} onClick={askRelease}>
+          <Send size={14} /> {busy === "release" ? "Publishing…" : "Publish the results"}
+        </button>
+      )}
+    </div>
+  );
+
+  // ---------- panels ----------
+  const papersPanel = (
+    <section className="panel">
+      <div className="panel-h">
+        <h2>Papers, in order</h2>
+        {notStarted && <button className="panel-link" onClick={() => setAddOpen(true)}><Plus size={14} /> Add a paper</button>}
       </div>
-
-      {/* ---------- the papers, in order ---------- */}
-      <div className="section-title" style={{ marginTop: 28 }}>Papers, in order</div>
       {sorted.length === 0 ? (
         <EmptyState icon={<FileText size={24} />} title="No paper yet" body="Build the papers inside this exam. They will never appear in a class." />
       ) : (
-        <div className="ex-items">
+        <div className="exd-papers">
           {sorted.map((it, i) => {
             const meta = TYPES[it.assignment?.type] || {};
             const Icon = meta.icon || FileText;
+            const typeKey = String(it.assignment?.type || "").toLowerCase();
+            const empty = withContent && it.assignment && !withContent.has(it.assignment_id);
             return (
-              <div key={it.id} className="ex-item">
-                <div className="ex-item-order">{i + 1}</div>
-                <Icon size={17} className="ex-item-icon" />
-                {/* The whole row opens the paper: read it, correct it,
+              <div key={it.id} className="exd-paper">
+                <span className="exd-num">{i + 1}</span>
+                <span className={`type-ic ic-${typeKey}`}><Icon size={16} /></span>
+                {/* The whole title opens the paper: read it, correct it,
                     see who has handed it in. */}
-                <button className="ex-item-open" onClick={() => openPaper(it)}
-                        disabled={!it.assignment} title="Open this paper">
-                  <div>
-                    <div className="ex-item-title">{it.assignment?.title || "(paper deleted)"}</div>
-                    <div className="ex-item-sub">
-                      {it.assignment?.type}
-                      {it.assignment?.time_limit_minutes ? ` · ${it.assignment.time_limit_minutes} min` : " · no time limit"}
-                      {replayIds.has(it.assignment_id) && (
-                        <span className="ex-replay-badge" title="Practice setting: candidates can pause and replay the recording.">
-                          Replay allowed
-                        </span>
-                      )}
-                      {roster.length > 0 && (
-                        <> · {roster.filter((s) => progress[s.id]?.has(it.assignment_id)).length}/{roster.length} handed in</>
-                      )}
-                    </div>
-                  </div>
-                  <ChevronRight size={15} className="chev" />
+                <button className="exd-paper-open" onClick={() => openPaper(it)} disabled={!it.assignment} title="Open this paper">
+                  <span className="exd-paper-title">{it.assignment?.title || "(paper deleted)"}</span>
+                  <span className="dt-sub">
+                    {it.assignment?.type}
+                    {it.assignment?.time_limit_minutes ? ` · ${it.assignment.time_limit_minutes} min` : " · no time limit"}
+                    {roster.length > 0 && it.assignment?.type !== "Speaking" && <> · {roster.filter((s) => progress[s.id]?.has(it.assignment_id)).length}/{roster.length} handed in</>}
+                    {empty && <span className="ex-replay-badge exd-bad">No content yet</span>}
+                    {replayIds.has(it.assignment_id) && (
+                      <span className="ex-replay-badge" title="Practice setting: candidates can pause and replay the recording.">Replay allowed</span>
+                    )}
+                  </span>
                 </button>
-
-                {session.listening_start === "grouped" && it.assignment?.type === "Listening" && isLive && (
-                  <button
-                    className={`btn-ghost ex-audio-btn ${it.audio_started_at ? "is-done" : ""}`}
-                    disabled={Boolean(it.audio_started_at) || busy === "start_audio"}
-                    onClick={() => act("start_audio", it.id)}
-                  >
+                {session.listening_start === "grouped" && it.assignment?.type === "Listening" && stage === 1 && (
+                  <button className={`btn-ghost ex-audio-btn ${it.audio_started_at ? "is-done" : ""}`}
+                          disabled={Boolean(it.audio_started_at) || busy === "start_audio"} onClick={() => act("start_audio", it.id)}>
                     <Headphones size={14} /> {it.audio_started_at ? "Recording started" : "Start the recording"}
                   </button>
                 )}
-
-                {notStarted && (
+                {notStarted ? (
                   <div className="ex-item-tools">
                     <button className="ex-icon-btn" title="Move up" disabled={i === 0} onClick={() => move(it, -1)}><ChevronUp size={15} /></button>
                     <button className="ex-icon-btn" title="Move down" disabled={i === sorted.length - 1} onClick={() => move(it, 1)}><ChevronDown size={15} /></button>
                     <button className="ex-icon-btn ex-icon-danger" title="Remove" onClick={() => removeItem(it)}><Trash2 size={14} /></button>
                   </div>
-                )}
+                ) : <ChevronRight size={15} className="chev" />}
               </div>
             );
           })}
         </div>
       )}
+      {!notStarted && sorted.length > 0 && <p className="panel-note" style={{ margin: "10px 0 0" }}>The papers are locked once the exam has started: no paper can be added, removed or moved.</p>}
+    </section>
+  );
 
-      {notStarted && (
-        <button className="btn-ghost" style={{ marginTop: 12 }} onClick={() => setAddOpen(true)}>
-          <Plus size={15} /> Add a paper
-        </button>
-      )}
+  const listenings = sorted.filter((it) => it.assignment?.type === "Listening");
+  const emptyPapers = withContent ? sorted.filter((it) => it.assignment && !withContent.has(it.assignment_id)) : [];
+  const readyItems = [
+    { ok: sorted.length > 0, text: sorted.length > 0 ? `${plural(sorted.length, "paper")}, in order` : "Add at least one paper" },
+    { ok: withContent !== null && emptyPapers.length === 0, bad: emptyPapers.length > 0,
+      text: emptyPapers.length > 0 ? `No content yet: ${emptyPapers.map((it) => it.assignment.title).join(", ")}` : "Every paper has its content" },
+    ...(listenings.length ? [{ ok: !listenings.some((it) => replayIds.has(it.assignment_id)), warn: listenings.some((it) => replayIds.has(it.assignment_id)),
+      text: listenings.some((it) => replayIds.has(it.assignment_id)) ? "A Listening lets candidates replay the recording (practice setting)" : "Listening: one listening only, like the real test" }] : []),
+    { ok: true, info: !session.opens_at, text: session.opens_at ? `Opens by itself: ${fmtWhen(session.opens_at)}` : "No opening time — you open it with the button" },
+    { ok: true, info: true, text: `Candidates join with the code ${session.code} once it is open` },
+  ];
+  const readyPanel = (
+    <section className="panel">
+      <div className="panel-h"><h2>Ready to open?</h2></div>
+      {readyItems.map((r, i) => (
+        <div key={i} className={`bl-ck ${r.ok && !r.info ? "ok" : ""}`}>
+          <span className={`bl-ck-ic ${r.bad ? "bl-ck-bad" : ""} ${r.warn ? "exd-ck-warn" : ""} ${r.info ? "exd-ck-info" : ""}`}>
+            {r.bad ? "!" : r.warn ? "!" : r.info ? "i" : r.ok ? <Check size={11} /> : null}
+          </span>
+          {r.text}
+        </div>
+      ))}
+    </section>
+  );
 
-      {/* ---------- settings ---------- */}
-      <div className="section-title" style={{ marginTop: 30 }}>Settings</div>
-      <div className="ex-settings">
+  const settingsPanel = (
+    <section className="panel">
+      <div className="panel-h"><h2>Settings</h2>{examOpen && <span className="panel-note"><Lock size={12} /> locked while the exam runs</span>}</div>
+      <div className="ex-settings" style={{ marginTop: 4 }}>
         <label className="ex-setting">
           <input type="checkbox" checked={session.strict_mode} disabled={examOpen}
                  onChange={(e) => setSetting({ strict_mode: e.target.checked })} />
@@ -520,112 +633,247 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
                    value={toLocal(session.closes_at)} onChange={(e) => setSetting({ closes_at: fromLocal(e.target.value) })} />
           </div>
           {examOpen && session.closes_at && (
-            <div className="ex-time-row ex-extend" style={{ marginTop: 10 }}>
-              <span className="field-label">Need more time?</span>
-              {[5, 15, 30].map((m) => (
-                <button key={m} className="btn-ghost" disabled={extending} onClick={() => extendEnd(m)}>+{m} min</button>
-              ))}
-              <em style={{ fontSize: 12, color: "var(--ink-soft)" }}>The end time can only move later. To end now, use Close.</em>
-            </div>
+            <em style={{ fontSize: 12, color: "var(--ink-soft)" }}>Need more time? Use « Time » at the top: the end time can only move later. To end now, use Close.</em>
           )}
         </div>
       </div>
+    </section>
+  );
 
-      {/* ---------- teachers ---------- */}
-      <div className="section-title" style={{ marginTop: 30 }}>Teachers <span className="ex-count">({staff.length})</span></div>
-      <div className="ex-people">
-        {staff.map((t) => (
-          <div key={t.id} className="ex-person">
-            <div className="avatar small">{t.name.slice(0, 1).toUpperCase()}</div>
-            <span>{t.name}</span>
-            {t.role === "owner" ? <span className="ex-owner">creator</span> : isOwner && (
-              <button className="ex-icon-btn ex-icon-danger" title="Remove" onClick={() => removeStaff(t.id)}><X size={13} /></button>
-            )}
-          </div>
-        ))}
-        {isOwner && <button className="btn-ghost" onClick={openStaff}><UserPlus size={14} /> Invite a teacher</button>}
+  const teachersPanel = (
+    <section className="panel">
+      <div className="panel-h">
+        <h2>Teachers <span className="ex-count">({staff.length})</span></h2>
+        {isOwner && <button className="panel-link" onClick={openStaff}><UserPlus size={14} /> Invite a teacher</button>}
       </div>
-
-      {/* ---------- candidates ---------- */}
-      {/* ---------- invigilation ---------- */}
-      {board.length > 0 && (
-        <>
-          <div className="section-title" style={{ marginTop: 30 }}>
-            Invigilation
-            {frozen.length > 0 && <span className="ex-frozen-count">{frozen.length} suspended</span>}
-          </div>
-
-          {frozen.length === 0 ? (
-            <p className="empty-inline">
-              Nobody has left the exam screen{watched > 0 ? ` — ${watched} incident${watched > 1 ? "s" : ""} noted in all` : ""}.
-            </p>
-          ) : (
-            <div className="ex-frozen-list">
-              {frozen.map((c) => {
-                const listening = sorted.find((it) => it.assignment?.type === "Listening");
-                return (
-                  <div key={c.student_id} className="ex-frozen-row">
-                    <ShieldAlert size={17} className="ex-frozen-icon" />
-                    <div className="ex-frozen-main">
-                      <div className="ex-item-title">{c.name}</div>
-                      <div className="ex-item-sub">
-                        {c.kind === "fullscreen_exit" ? "Left full screen"
-                          : c.kind === "page_reload" ? "Refreshed or reopened the page"
-                          : "Left the exam screen"}
-                        {c.since ? ` · ${fmtDate(c.since)}` : ""}
-                        {c.incidents > 1 ? ` · ${c.incidents} incidents in all` : ""}
-                      </div>
-                      {c.reason ? (
-                        <div className="ex-frozen-reason">“{c.reason}”</div>
-                      ) : (
-                        <div className="ex-frozen-reason ex-frozen-nosay">Has not said what happened yet.</div>
-                      )}
-                    </div>
-                    <div className="ex-frozen-tools">
-                      {listening && (
-                        <button className="btn-ghost" title="Let this candidate play the recording again"
-                                onClick={() => resetAudio(c.student_id, listening.assignment_id)}>
-                          <RotateCcw size={13} /> Give the recording back
-                        </button>
-                      )}
-                      <button className="btn-primary" disabled={resuming === c.student_id}
-                              onClick={() => allowResume(c.student_id)}>
-                        <Unlock size={14} /> {resuming === c.student_id ? "Letting in…" : "Let back in"}
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+      {staff.map((t) => (
+        <div key={t.id} className="prow">
+          <div className="avatar small">{t.name.slice(0, 1).toUpperCase()}</div>
+          <div className="prow-main"><b>{t.name}</b><span className="dt-sub">{t.role === "owner" ? "creator" : "invited — watches, lets candidates back in, marks"}</span></div>
+          {t.role !== "owner" && isOwner && (
+            <button className="ex-icon-btn ex-icon-danger" title="Remove" onClick={() => removeStaff(t.id)}><X size={13} /></button>
           )}
-        </>
-      )}
+        </div>
+      ))}
+    </section>
+  );
 
-      <div className="section-title" style={{ marginTop: 30 }}>Candidates <span className="ex-count">({roster.length})</span></div>
-      {roster.length === 0 ? (
-        <p className="empty-inline">Nobody has joined yet. They join with the code once the exam is open.</p>
-      ) : (
-        <div className="ex-people">
-          {roster.map((s) => {
-            // How far this candidate has got — the only way to know,
-            // during the exam, whether the room has finished.
-            const done = sorted.filter((it) => progress[s.id]?.has(it.assignment_id)).length;
-            const all = done === sorted.length && sorted.length > 0;
-            return (
-              <div key={s.id} className="ex-person">
-                <div className="avatar small">{s.name.slice(0, 1).toUpperCase()}</div>
-                <span>{s.name}</span>
-                {sorted.length > 0 ? (
-                  <span className={`ex-progress ${all ? "is-done" : ""}`}>
-                    {all && <CheckCircle2 size={12} />} {done}/{sorted.length}
-                  </span>
-                ) : (
-                  <span className="ex-joined">joined {fmtDate(s.joined_at)}</span>
-                )}
+  const invigilation = frozen.length > 0 && (
+    <div className="ex-frozen-list" style={{ marginBottom: 16 }}>
+      {frozen.map((c) => {
+        const listening = sorted.find((it) => it.assignment?.type === "Listening");
+        return (
+          <div key={c.student_id} className="ex-frozen-row">
+            <ShieldAlert size={17} className="ex-frozen-icon" />
+            <div className="ex-frozen-main">
+              <div className="ex-item-title">{c.name} <span className="pill pill-rose" style={{ marginLeft: 6 }}>Suspended</span></div>
+              <div className="ex-item-sub">
+                {c.kind === "fullscreen_exit" ? "Left full screen"
+                  : c.kind === "page_reload" ? "Refreshed or reopened the page"
+                  : "Left the exam screen"}
+                {c.since ? ` · ${fmtDate(c.since)}` : ""}
+                {c.incidents > 1 ? ` · ${c.incidents} incidents in all` : ""}
               </div>
-            );
-          })}
+              {c.reason ? (
+                <div className="ex-frozen-reason">“{c.reason}”</div>
+              ) : (
+                <div className="ex-frozen-reason ex-frozen-nosay">Has not said what happened yet.</div>
+              )}
+            </div>
+            <div className="ex-frozen-tools">
+              {listening && (
+                <button className="btn-ghost" title="Let this candidate play the recording again"
+                        onClick={() => resetAudio(c.student_id, listening.assignment_id)}>
+                  <RotateCcw size={13} /> Give the recording back
+                </button>
+              )}
+              <button className="btn-primary" disabled={resuming === c.student_id}
+                      onClick={() => allowResume(c.student_id)}>
+                <Unlock size={14} /> {resuming === c.student_id ? "Letting in…" : "Let back in"}
+              </button>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+
+  const candidatesTab = roster.length === 0 ? (
+    <p className="empty-inline">Nobody has joined yet. Candidates join with the code {session.code}.</p>
+  ) : (
+    <>
+      <div className="dt-toolbar">
+        <div className="dt-chips" role="group" aria-label="Show">
+          {[["all", "All", roster.length], ["working", "Working", liveCount("working")], ["finished", "Finished", liveCount("finished")],
+            ["suspended", "Suspended", liveCount("suspended")], ["waiting", "Not started", liveCount("waiting")]]
+            .filter(([k, , n]) => k === "all" || n > 0 || filter === k)
+            .map(([k, l, n]) => (
+              <button key={k} type="button" className={`dt-chip ${filter === k ? "on" : ""}`} aria-pressed={filter === k} onClick={() => setFilter(k)}>{l} {n}</button>
+            ))}
         </div>
+        <span className="panel-note">{watched > 0 ? `${plural(watched, "incident")} noted · ` : ""}updated every 20 s</span>
+      </div>
+      <div className="dt-wrap exd-scroll">
+        <table className="dt exd-matrix">
+          <thead>
+            <tr>
+              <th>Candidate</th>
+              {sorted.map((it, i) => <th key={it.id} className="exd-c">{i + 1} · {it.assignment?.type || "Paper"}</th>)}
+              <th className="exd-c">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {shownLive.map(({ st, status }) => (
+              <tr key={st.id}>
+                <td><span className="exd-person"><span className="avatar small">{st.name.slice(0, 1).toUpperCase()}</span><b>{st.name}</b></span></td>
+                {sorted.map((it, i) => {
+                  const c = liveCell(st, it, i);
+                  return (
+                    <td key={it.id} className={`exd-c exd-${c.kind}`}>
+                      {c.kind === "lock" ? <Lock size={13} aria-label="locked" /> : c.text}
+                    </td>
+                  );
+                })}
+                <td className="exd-c"><span className={`pill ${STATUS[status][1]}`}>{STATUS[status][0]}</span></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+
+  const resultsTab = roster.length === 0 ? (
+    <p className="empty-inline">Nobody sat this exam.</p>
+  ) : grid === null ? <CenterSpinner /> : (
+    <>
+      <div className="stat-grid">
+        <div className="stat"><div className="stat-l">Average overall</div><div className="stat-v">{fmtBand(average(overalls))}</div>
+          <div className="stat-d">{overalls.length ? `band · ${overalls.length} complete of ${roster.length}` : "no complete result yet"}</div></div>
+        {scoredPapers.slice(0, 3).map((it) => {
+          const cells = roster.map((st) => cellOf(st.id, it)).filter(Boolean);
+          const handed = cells.filter((c) => c.open).length;
+          const isW = it.assignment.type === "Writing";
+          const marked = cells.filter((c) => c.band !== null && c.band !== undefined && c.band !== "").length;
+          return (
+            <div key={it.id} className="stat">
+              <div className="stat-l">{it.assignment.type}</div>
+              <div className="stat-v">{fmtBand(average(cells.filter((c) => c.open).map((c) => c.band)))}</div>
+              <div className="stat-d">{isW ? `${marked}/${handed} marked` : `average band · ${handed}/${roster.length} handed in`}</div>
+            </div>
+          );
+        })}
+      </div>
+      <div className="dt-wrap exd-scroll">
+        <table className="dt exd-matrix">
+          <thead>
+            <tr>
+              <th>Candidate</th>
+              {sorted.map((it) => <th key={it.id} className="exd-c">{it.assignment?.type || "Paper"}</th>)}
+              <th className="exd-c">Overall</th>
+              <th aria-label="Actions" />
+            </tr>
+          </thead>
+          <tbody>
+            {roster.map((st) => {
+              const o = overallOf(st);
+              const firstToMark = sorted.find((it) => cellOf(st.id, it)?.status === "to-mark" && cellOf(st.id, it)?.band == null);
+              const firstOpen = sorted.find((it) => it.assignment?.type !== "Speaking" && cellOf(st.id, it)?.open);
+              return (
+                <tr key={st.id}>
+                  <td><span className="exd-person"><span className="avatar small">{st.name.slice(0, 1).toUpperCase()}</span><b>{st.name}</b></span></td>
+                  {sorted.map((it) => {
+                    const c = cellOf(st.id, it);
+                    const type = it.assignment?.type;
+                    let body = <span className="dt-muted">—</span>;
+                    if (type === "Speaking") body = c?.status === "viewed" ? "✓ viewed" : body;
+                    else if (type === "Writing") {
+                      if (c?.open && c.band != null && c.band !== "") {
+                        body = <button type="button" className="dt-open" onClick={() => openCopy(st, it)}><b>{fmtBand(c.band)}</b>{!c.bandPublished && <span className="dt-sub" style={{ display: "block" }}>not published</span>}</button>;
+                      } else if (c?.open) body = <button type="button" className="pill pill-amber pill-btn" onClick={() => openCopy(st, it)}>To mark</button>;
+                      else if (c?.status === "in-progress") body = <span className="dt-muted">not handed in</span>;
+                    } else if (c?.score) {
+                      body = <button type="button" className="dt-open" onClick={() => openCopy(st, it)}>{c.score.earned}/{c.score.total ?? "?"} · <b>{fmtBand(c.band)}</b></button>;
+                    } else if (c?.status === "in-progress") body = <span className="dt-muted">not handed in</span>;
+                    return <td key={it.id} className="exd-c">{body}</td>;
+                  })}
+                  <td className="exd-c"><b>{o === null ? "—" : o.toFixed(1)}</b></td>
+                  <td style={{ textAlign: "right" }}>
+                    {firstToMark ? <button className="btn-ghost btn-go" onClick={() => openCopy(st, firstToMark)}>Mark →</button>
+                      : firstOpen ? <button className="btn-ghost btn-go" onClick={() => openCopy(st, firstOpen)}>Open →</button> : null}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <p className="panel-note" style={{ marginTop: 10 }}>
+        Click a score to open that copy (the same correction screen as in a class). Bands: the teacher's band if given, otherwise the IELTS estimate.
+        The overall band is the average of the Listening, Reading and Writing bands, rounded like IELTS.
+        {session.results_released_at ? " The candidates can see their results." : " Nothing is visible to candidates before « Publish the results »."}
+      </p>
+    </>
+  );
+
+  return (
+    <div className="page page-dash">
+      <Breadcrumb items={[{ label: "Exams", onClick: () => setScreen({ name: "exams" }) }, { label: session.name }]} />
+
+      <div className="ph">
+        <div className="ph-main">
+          <span className="ph-icon type-ic ic-dark"><ShieldCheck size={21} /></span>
+          <div>
+            <div className="eyebrow">Exam · {["prepared", "running", "closed", "results published"][stage]}</div>
+            <h1 className="ph-title">{session.name}</h1>
+            <div className="ph-meta">
+              <ExamStateBadge session={session} toMark={toMarkCount} />
+              {copyPill}
+              {windowPill}
+              {stage > 0 && <span className="pill"><Users size={13} /> {plural(roster.length, "candidate")}</span>}
+            </div>
+          </div>
+        </div>
+        {actions}
+      </div>
+
+      <Stepper steps={STAGE_NAMES} current={stage === 3 ? 4 : stage} />
+
+      {uncollected > 0 && (
+        <div className="ex-frozen-row" role="alert" style={{ marginBottom: 14 }}>
+          <ShieldAlert size={17} className="ex-frozen-icon" />
+          <div className="ex-frozen-main">
+            <div className="ex-item-title">
+              {uncollected} paper{uncollected > 1 ? "s" : ""} could not be collected
+            </div>
+            <div className="ex-item-sub">
+              We try again at every refresh (every 8 seconds). Keep this page open.
+            </div>
+          </div>
+        </div>
+      )}
+      {invigilation}
+
+      {stage === 0 ? (
+        <div className="exd-grid">
+          <div>{papersPanel}{readyPanel}</div>
+          <div>{settingsPanel}{teachersPanel}</div>
+        </div>
+      ) : (
+        <>
+          <div className="tabs" role="tablist">
+            {tabsOf.map((k) => (
+              <button key={k} role="tab" aria-selected={shownTab === k} className={`tab ${shownTab === k ? "active" : ""}`} onClick={() => setTab(k)}>
+                {k === "candidates" ? `Candidates (${roster.length})` : k === "results" ? `Results (${roster.length})` : k === "papers" ? `Papers (${sorted.length})` : k === "teachers" ? `Teachers (${staff.length})` : "Settings"}
+              </button>
+            ))}
+          </div>
+          {shownTab === "candidates" && candidatesTab}
+          {shownTab === "results" && resultsTab}
+          {shownTab === "papers" && papersPanel}
+          {shownTab === "settings" && settingsPanel}
+          {shownTab === "teachers" && teachersPanel}
+        </>
       )}
 
       {addOpen && (
