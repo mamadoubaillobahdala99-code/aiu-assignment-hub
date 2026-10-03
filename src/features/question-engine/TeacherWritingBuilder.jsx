@@ -5,6 +5,7 @@ import { supabase } from "../../supabaseClient";
 import { uid } from "../../lib/utils";
 import { StoredImg, fileRef } from "../../lib/storageFiles";
 import { confirmDialog } from "../../lib/confirmDialog";
+import { BuilderLayout, PartsNav, Checklist, useBuilderCrumbs, makeLeaveGuard } from "./BuilderLayout";
 
 // Structured Writing — teacher side.
 // One assignment = one or two Parts:
@@ -227,6 +228,12 @@ export function TeacherWritingBuilder({ classId, teacherId, setScreen, showToast
     setScreen(returnTo || { name: "class", classId });
   }
 
+  // Livraison 76 — the same page in the three-column layout (see
+  // BuilderLayout). Inputs, buttons and handlers are unchanged.
+  const hasWork = Boolean(task1.prompt.trim() || task2.prompt.trim() || task1.imageFile);
+  const guard = makeLeaveGuard(hasWork && !publishing);
+  const crumbs = useBuilderCrumbs({ classId, returnTo, setScreen, guard, here: editAssignmentId ? "Edit Writing assignment" : "New Writing assignment" });
+
   if (loadingExisting) {
     return (
       <div className="page page-wide">
@@ -237,96 +244,123 @@ export function TeacherWritingBuilder({ classId, teacherId, setScreen, showToast
 
   const shownImage = task1.imagePreview || task1.imageUrl;
 
+  const minutesOk = parseInt(timeLimit, 10) >= 1;
+  const checklist = [
+    { label: "At least one task ticked", ok: included.length > 0 },
+    ...(task1.include ? [{ label: "Task 1: question", ok: Boolean(task1.prompt.trim()) }] : []),
+    ...(task2.include ? [{ label: "Task 2: question", ok: Boolean(task2.prompt.trim()) }] : []),
+    { label: "Time limit set", ok: minutesOk },
+  ];
+  const publishButton = (
+    <button className="btn-primary" disabled={!canPublish || publishing} onClick={publish}>
+      {publishing ? "Saving…" : editAssignmentId ? "Save changes" : "Publish assignment"}
+    </button>
+  );
+
   return (
-    <div className="page page-wide">
-      <div className="eyebrow">Structured Writing</div>
-      <h1 className="page-title">{editAssignmentId ? "Edit Writing assignment" : "New Writing assignment"}</h1>
+    <BuilderLayout
+      crumbs={crumbs}
+      eyebrow={editAssignmentId ? "Structured Writing · editing" : "Structured Writing · not published yet"}
+      heading={editAssignmentId ? "Edit Writing assignment" : "New Writing assignment"}
+      sub={title.trim() ? title.trim() : "Name it in Settings — or a name is given automatically."}
+      actions={publishButton}
+      nav={
+        <PartsNav
+          items={[
+            ...(task1.include ? [{ id: "wtask-1", label: "Writing Task 1", sub: `${task1.prompt.trim() ? "question ✓" : "no question yet"}${shownImage ? " · image" : ""}`, ok: Boolean(task1.prompt.trim()) }] : []),
+            ...(task2.include ? [{ id: "wtask-2", label: "Writing Task 2", sub: task2.prompt.trim() ? "question ✓" : "no question yet", ok: Boolean(task2.prompt.trim()) }] : []),
+          ]}
+        />
+      }
+      settings={
+        <>
+          <label className="field-label">Title (optional)</label>
+          <input className="field-input" placeholder="e.g. IELTS Academic Writing — Practice Test 1" value={title} onChange={(e) => setTitle(e.target.value)} />
 
-      <label className="field-label" style={{ marginTop: 16 }}>Title (optional — auto-generated if left blank)</label>
-      <input className="field-input" placeholder="e.g. IELTS Academic Writing — Practice Test 1" value={title} onChange={(e) => setTitle(e.target.value)} />
-
-      <div style={{ display: "flex", gap: 16, marginTop: 14 }}>
-        <div style={{ flex: 1 }}>
-          <label className="field-label">Due date (optional)</label>
-          <input type="date" className="field-input" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
-        </div>
-        <div style={{ flex: 1 }}>
-          <label className="field-label">Due time (optional)</label>
-          <input type="time" className="field-input" value={dueTime} onChange={(e) => setDueTime(e.target.value)} />
-        </div>
-        <div style={{ flex: 1 }}>
+          <div className="bl-row2">
+            <div>
+              <label className="field-label">Due date (optional)</label>
+              <input type="date" className="field-input" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+            </div>
+            <div>
+              <label className="field-label">Due time (optional)</label>
+              <input type="time" className="field-input" value={dueTime} onChange={(e) => setDueTime(e.target.value)} />
+            </div>
+          </div>
           <label className="field-label">Time limit, minutes</label>
           <input type="number" min="1" className="field-input" placeholder="e.g. 60" value={timeLimit} onChange={(e) => setTimeLimit(e.target.value)} />
-        </div>
-      </div>
 
-      <label className="field-label" style={{ marginTop: 18 }}>Tasks in this assignment</label>
-      <label className="checkbox-row">
-        <input type="checkbox" checked={task1.include} onChange={(e) => setTask1((t) => ({ ...t, include: e.target.checked }))} />
-        Writing Task 1
-      </label>
-      <label className="checkbox-row" style={{ marginTop: 6 }}>
-        <input type="checkbox" checked={task2.include} onChange={(e) => setTask2((t) => ({ ...t, include: e.target.checked }))} />
-        Writing Task 2
-      </label>
-      <p className="field-hint" style={{ marginTop: 2 }}>
-        {included.length === 0
-          ? "Tick at least one task."
-          : included.length === 2
-          ? "Students will see two parts (Part 1 = Task 1, Part 2 = Task 2) with a bar to switch between them."
-          : `Students will see a single screen with Writing Task ${included[0]} only.`}
-      </p>
+          <label className="field-label" style={{ marginTop: 14 }}>Tasks in this assignment</label>
+          <label className="checkbox-row">
+            <input type="checkbox" checked={task1.include} onChange={(e) => setTask1((t) => ({ ...t, include: e.target.checked }))} />
+            Writing Task 1
+          </label>
+          <label className="checkbox-row" style={{ marginTop: 6 }}>
+            <input type="checkbox" checked={task2.include} onChange={(e) => setTask2((t) => ({ ...t, include: e.target.checked }))} />
+            Writing Task 2
+          </label>
+          <p className="field-hint" style={{ marginTop: 2 }}>
+            {included.length === 0
+              ? "Tick at least one task."
+              : included.length === 2
+              ? "Students will see two parts (Part 1 = Task 1, Part 2 = Task 2) with a bar to switch between them."
+              : `Students will see a single screen with Writing Task ${included[0]} only.`}
+          </p>
+        </>
+      }
+      checklist={<Checklist items={checklist} />}
+      footer={
+        <>
+          {error && <div className="field-error" style={{ marginTop: 12 }}>{error}</div>}
+          <div className="qe-builder-actions">{publishButton}</div>
+        </>
+      }
+    >
+        {task1.include && (
+          <div id="wtask-1" className="feedback-panel qe-writing-task-block">
+            <h3 className="section-title" style={{ margin: 0 }}>Writing Task 1</h3>
 
-      {task1.include && (
-        <div className="feedback-panel qe-writing-task-block">
-          <h3 className="section-title" style={{ margin: 0 }}>Writing Task 1</h3>
+            <label className="field-label" style={{ marginTop: 14 }}>Question shown to students</label>
+            <textarea
+              className="field-input textarea"
+              style={{ minHeight: 140 }}
+              placeholder={"e.g. You should spend about 20 minutes on this task.\n\nThe chart below shows… Summarise the information by selecting and reporting the main features, and make comparisons where relevant.\n\nWrite at least 150 words."}
+              value={task1.prompt}
+              onChange={(e) => setTask1((t) => ({ ...t, prompt: e.target.value }))}
+            />
 
-          <label className="field-label" style={{ marginTop: 14 }}>Question shown to students</label>
-          <textarea
-            className="field-input textarea"
-            style={{ minHeight: 140 }}
-            placeholder={"e.g. You should spend about 20 minutes on this task.\n\nThe chart below shows… Summarise the information by selecting and reporting the main features, and make comparisons where relevant.\n\nWrite at least 150 words."}
-            value={task1.prompt}
-            onChange={(e) => setTask1((t) => ({ ...t, prompt: e.target.value }))}
-          />
+            <label className="field-label" style={{ marginTop: 14 }}>Image (chart, graph, map, diagram…)</label>
+            {shownImage ? (
+              <div className="qe-writing-image-preview">
+                <StoredImg src={shownImage} alt="Writing Task 1" />
+                <button type="button" className="btn-ghost" onClick={removeImage}><X size={13} /> Remove image</button>
+              </div>
+            ) : (
+              <label className="qe-writing-image-drop">
+                <ImagePlus size={18} />
+                <span>Upload image</span>
+                <input key={fileInputKey} type="file" accept="image/*" onChange={pickImage} style={{ display: "none" }} />
+              </label>
+            )}
+            <p className="field-hint" style={{ marginTop: 6 }}>Optional. The image fills the left side of the student's screen; they can zoom in and out.</p>
+          </div>
+        )}
 
-          <label className="field-label" style={{ marginTop: 14 }}>Image (chart, graph, map, diagram…)</label>
-          {shownImage ? (
-            <div className="qe-writing-image-preview">
-              <StoredImg src={shownImage} alt="Writing Task 1" />
-              <button type="button" className="btn-ghost" onClick={removeImage}><X size={13} /> Remove image</button>
-            </div>
-          ) : (
-            <label className="qe-writing-image-drop">
-              <ImagePlus size={18} />
-              <span>Upload image</span>
-              <input key={fileInputKey} type="file" accept="image/*" onChange={pickImage} style={{ display: "none" }} />
-            </label>
-          )}
-          <p className="field-hint" style={{ marginTop: 6 }}>Optional. The image fills the left side of the student's screen; they can zoom in and out.</p>
-        </div>
-      )}
+        {task2.include && (
+          <div id="wtask-2" className="feedback-panel qe-writing-task-block">
+            <h3 className="section-title" style={{ margin: 0 }}>Writing Task 2</h3>
 
-      {task2.include && (
-        <div className="feedback-panel qe-writing-task-block">
-          <h3 className="section-title" style={{ margin: 0 }}>Writing Task 2</h3>
-
-          <label className="field-label" style={{ marginTop: 14 }}>Question shown to students</label>
-          <textarea
-            className="field-input textarea"
-            style={{ minHeight: 140 }}
-            placeholder={"e.g. You should spend about 40 minutes on this task.\n\nSome people believe that… To what extent do you agree or disagree?\n\nGive reasons for your answer and include any relevant examples from your own knowledge or experience.\n\nWrite at least 250 words."}
-            value={task2.prompt}
-            onChange={(e) => setTask2((t) => ({ ...t, prompt: e.target.value }))}
-          />
-        </div>
-      )}
-
-      {error && <div className="field-error" style={{ marginTop: 16 }}>{error}</div>}
-
-      <button className="btn-primary" style={{ marginTop: 24 }} disabled={!canPublish || publishing} onClick={publish}>
-        {publishing ? "Saving…" : editAssignmentId ? "Save changes" : "Publish assignment"}
-      </button>
-    </div>
+            <label className="field-label" style={{ marginTop: 14 }}>Question shown to students</label>
+            <textarea
+              className="field-input textarea"
+              style={{ minHeight: 140 }}
+              placeholder={"e.g. You should spend about 40 minutes on this task.\n\nSome people believe that… To what extent do you agree or disagree?\n\nGive reasons for your answer and include any relevant examples from your own knowledge or experience.\n\nWrite at least 250 words."}
+              value={task2.prompt}
+              onChange={(e) => setTask2((t) => ({ ...t, prompt: e.target.value }))}
+            />
+          </div>
+        )}
+      {included.length === 0 && <p className="empty-inline">Tick at least one task in Settings.</p>}
+    </BuilderLayout>
   );
 }
