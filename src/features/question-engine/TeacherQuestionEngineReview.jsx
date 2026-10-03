@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, ChevronLeft, ChevronRight, CheckCircle2 } from "lucide-react";
 import { supabase } from "../../supabaseClient";
 import { CenterSpinner } from "../../components/shared";
 import { ScoreRing } from "./ScoreRing";
@@ -7,8 +7,16 @@ import { ReviewContent } from "./ReviewContent";
 import { formatAnswerValue } from "./answerFormat";
 import { numberQuestions, questionSlotCount } from "./bulkParse";
 import { computeIeltsBand } from "./bandConversion";
+import { Breadcrumb } from "../../components/DropMenu";
+import { confirmDialog } from "../../lib/confirmDialog";
+import { buildSheet, sheetCounts, QuestionDots, AnswerSheet, goToQuestion, fmtWhen } from "./ResultParts";
 
-export function TeacherQuestionEngineReview({ assignmentId, studentId, studentName, onBack, showToast }) {
+// Livraison 74 — one Reading / Listening copy, for the teacher: the
+// answer sheet (or the whole paper) on the left; on the right, always in
+// view, the score, the band, the comment and « Publish ». « ‹ Previous /
+// Next › » go through the handed-in copies without going back to the list.
+// crumbs / nav / onDirtyChange come from the assignment page.
+export function TeacherQuestionEngineReview({ assignmentId, studentId, studentName, onBack, showToast, crumbs, nav, onDirtyChange, handedAt }) {
   const [loading, setLoading] = useState(true);
   const [assignment, setAssignment] = useState(null);
   const [sections, setSections] = useState([]);
@@ -19,6 +27,7 @@ export function TeacherQuestionEngineReview({ assignmentId, studentId, studentNa
   const [bandDraft, setBandDraft] = useState("");
   const [feedbackDraft, setFeedbackDraft] = useState("");
   const [saving, setSaving] = useState(false);
+  const [view, setView] = useState("sheet");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -146,87 +155,110 @@ export function TeacherQuestionEngineReview({ assignmentId, studentId, studentNa
     showToast?.(release ? "Score published to student" : "Feedback saved");
   }
 
-  // Choice questions carry "review-question-N", gap-fill and matching
-  // ones "question-N": whichever exists.
-  function goToQuestion(num) {
-    const el = document.getElementById(`review-question-${num}`) || document.getElementById(`question-${num}`);
-    el?.scrollIntoView({ behavior: "smooth", block: "center" });
+
+  const dirty = !loading && (String(bandDraft ?? "").trim() !== String(feedbackRow?.band ?? "").trim() || String(feedbackDraft ?? "").trim() !== String(feedbackRow?.feedback ?? "").trim());
+  useEffect(() => { onDirtyChange?.(dirty); }, [dirty]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => () => onDirtyChange?.(false), []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Every way out of this copy asks first when the band or the comment
+  // has not been saved.
+  function guarded(fn) {
+    return async () => {
+      if (dirty && !(await confirmDialog({ title: "Leave without saving?", message: "The band or the comment for this copy is not saved. Leave without saving?", confirmLabel: "Leave without saving", danger: true }))) return;
+      onDirtyChange?.(false);
+      fn();
+    };
   }
 
   if (loading || !assignment) return <CenterSpinner />;
 
   const needsManualRelease = !assignment.auto_release_score && !feedbackRow?.released_at;
+  const published = Boolean(assignment.auto_release_score || feedbackRow?.released_at);
+  const rows = buildSheet(sections);
+  const counts = sheetCounts(rows, resultsByQ);
 
   return (
-    <div className="qe-review-shell">
-      <button className="back-link" onClick={onBack}><ArrowLeft size={14} /> Back to submissions</button>
+    <div className="page page-wide rs-page">
+      {crumbs && <Breadcrumb items={crumbs.map((c) => (c.onClick ? { ...c, onClick: guarded(c.onClick) } : c))} />}
 
-      <div className="qe-review-header">
-        <div>
-          <div className="eyebrow">{assignment.type}</div>
-          <h1 className="page-title" style={{ marginBottom: 2 }}>{studentName}</h1>
-          <p className="field-hint" style={{ margin: 0 }}>{assignment.title}</p>
+      <div className="ph">
+        <div className="ph-main">
+          <div>
+            <div className="eyebrow">{assignment.type}{handedAt ? ` · handed in ${fmtWhen(handedAt)}` : ""}</div>
+            <h1 className="ph-title">{studentName}</h1>
+            <div className="ph-meta">
+              {published
+                ? <span className="pill pill-teal"><CheckCircle2 size={13} /> {assignment.auto_release_score ? "Score shown automatically" : "Published"}</span>
+                : <span className="pill pill-amber">Not published yet</span>}
+              <span className="pill">{assignment.title}</span>
+            </div>
+          </div>
         </div>
-        <ScoreRing score={earnedPoints} total={totalPoints} band={displayBand} />
+        {nav && (
+          <div className="ph-actions rs-nav">
+            <span className="rs-nav-label">{nav.label}</span>
+            <button className="btn-ghost" disabled={!nav.prev} onClick={nav.prev ? guarded(nav.prev) : undefined}><ChevronLeft size={15} /> Previous</button>
+            <button className="btn-ghost" disabled={!nav.next} onClick={nav.next ? guarded(nav.next) : undefined}>Next copy <ChevronRight size={15} /></button>
+          </div>
+        )}
       </div>
 
-      <div className="qe-review-counts">
-        <span className="qe-result-correct">{correctCount} correct</span>
-        <span className="qe-result-incorrect">{incorrectCount} incorrect</span>
-        {autoBand != null && <span className="field-hint">Auto-estimated band — approximate, scaled to a 40-question test.</span>}
-      </div>
-
-      {/* One pill per answer-sheet number. Buttons, not links: the site
-          keeps its screen in the address, so a "#…" link used to throw the
-          teacher out of the copy (livraison 53). A "choose TWO letters"
-          question has two pills (21 and 22), green for each letter right. */}
-      <div className="qe-review-nav">
-        {allQuestions.flatMap((q, i) => {
-          const first = allQuestionNumbers[i];
-          const slots = questionSlotCount(q);
-          const r = resultsByQ[q.id];
-          return Array.from({ length: slots }, (_, k) => {
-            const right = slots > 1 ? k < (r?.earned ?? 0) : Boolean(r?.isCorrect);
-            return (
-              <button type="button" key={`${q.id}-${k}`} className={`qe-review-nav-pill ${right ? "correct" : "incorrect"}`} onClick={() => goToQuestion(first)}>
-                {first + k}
-              </button>
-            );
-          });
-        })}
-      </div>
-
-      <ReviewContent
-        sections={sections}
-        answersByQ={answersByQ}
-        resultsByQ={resultsByQ}
-        correctAnswersFormatted={correctAnswersFormatted}
-        correctAnswersRaw={correctByQ}
-        showCorrectAnswers
-        assignmentId={assignmentId}
-        viewerUserId={studentId}
-      />
-
-      <div className="qe-review-feedback-panel">
-        <label className="field-label">Band (optional override)</label>
-        <input className="field-input" style={{ maxWidth: 160 }} placeholder={autoBand != null ? String(autoBand) : "—"} value={bandDraft} onChange={(e) => setBandDraft(e.target.value)} />
-
-        <label className="field-label" style={{ marginTop: 14 }}>Feedback (optional)</label>
-        <textarea className="field-input textarea" style={{ minHeight: 120 }} placeholder="Comments for the student…" value={feedbackDraft} onChange={(e) => setFeedbackDraft(e.target.value)} />
-
-        <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
-          <button className="btn-ghost" disabled={saving} onClick={() => saveFeedback(false)}>
-            {saving ? "Saving…" : "Save feedback"}
-          </button>
-          {needsManualRelease && (
-            <button className="btn-primary" disabled={saving} onClick={() => saveFeedback(true)}>
-              {saving ? "Publishing…" : "Publish score to student"}
-            </button>
-          )}
-          {feedbackRow?.released_at && (
-            <span className="field-hint" style={{ alignSelf: "center" }}>Released {new Date(feedbackRow.released_at).toLocaleString()}</span>
+      <div className="rs-two">
+        <div className="rs-main">
+          <div className="rs-viewbar">
+            <div className="rs-seg" role="tablist">
+              <button type="button" role="tab" aria-selected={view === "sheet"} className={view === "sheet" ? "on" : ""} onClick={() => setView("sheet")}>Answer sheet</button>
+              <button type="button" role="tab" aria-selected={view === "paper"} className={view === "paper" ? "on" : ""} onClick={() => setView("paper")}>Full paper</button>
+            </div>
+          </div>
+          {view === "sheet" ? (
+            <AnswerSheet rows={rows} answersByQ={answersByQ} resultsByQ={resultsByQ} correctFormatted={correctAnswersFormatted} showCorrect />
+          ) : (
+            <ReviewContent
+              sections={sections}
+              answersByQ={answersByQ}
+              resultsByQ={resultsByQ}
+              correctAnswersFormatted={correctAnswersFormatted}
+              correctAnswersRaw={correctByQ}
+              showCorrectAnswers
+              assignmentId={assignmentId}
+              viewerUserId={studentId}
+            />
           )}
         </div>
+
+        <div className="rs-side">
+          <div className="panel rs-mark-panel">
+            <div className="rs-ring"><ScoreRing score={earnedPoints} total={totalPoints} band={displayBand} size={120} /></div>
+            {autoBand != null && !feedbackRow?.band && <p className="rs-hint rs-center">Estimated band (scaled to 40 questions)</p>}
+            <div className="rs-counts"><span className="rs-ok">{counts.right} correct</span><span className="rs-ko">{counts.wrong + counts.partial} wrong</span></div>
+            <QuestionDots rows={rows} resultsByQ={resultsByQ} onPick={(row) => goToQuestion(row)} />
+
+            <label className="field-label" style={{ marginTop: 14 }}>Band (optional — replaces the estimate)</label>
+            <input className="field-input" placeholder={autoBand != null ? String(autoBand) : "—"} value={bandDraft} onChange={(e) => setBandDraft(e.target.value)} />
+
+            <label className="field-label" style={{ marginTop: 12 }}>Feedback for the student</label>
+            <textarea className="field-input textarea" style={{ minHeight: 110 }} placeholder="Comments for the student…" value={feedbackDraft} onChange={(e) => setFeedbackDraft(e.target.value)} />
+
+            <div className="rs-actions">
+              <button className="btn-ghost" disabled={saving} onClick={() => saveFeedback(false)}>{saving ? "Saving…" : "Save"}</button>
+              {needsManualRelease && (
+                <button className="btn-primary" disabled={saving} onClick={() => saveFeedback(true)}>{saving ? "Publishing…" : "Publish to student"}</button>
+              )}
+            </div>
+            <p className="rs-hint">
+              {feedbackRow?.released_at ? `Published ${fmtWhen(feedbackRow.released_at)}. ` : needsManualRelease ? "The student sees nothing until you publish. " : "The student already sees the score. "}
+              {dirty ? "You have unsaved changes." : ""}
+            </p>
+            {nav?.next && (
+              <button className="panel-link rs-next" onClick={guarded(nav.next)}>Next copy <ChevronRight size={14} /></button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="rs-foot">
+        <button className="back-link" onClick={guarded(onBack)}><ArrowLeft size={14} /> Back to the list of students</button>
       </div>
     </div>
   );
