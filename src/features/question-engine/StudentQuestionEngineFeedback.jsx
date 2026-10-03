@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, MessageSquare } from "lucide-react";
 import { supabase } from "../../supabaseClient";
 import { CenterSpinner } from "../../components/shared";
 import { ScoreRing } from "./ScoreRing";
@@ -7,8 +7,16 @@ import { ReviewContent } from "./ReviewContent";
 import { formatAnswerValue } from "./answerFormat";
 import { numberQuestions } from "./bulkParse";
 import { computeIeltsBand } from "./bandConversion";
+import { Breadcrumb } from "../../components/DropMenu";
+import { buildSheet, sheetCounts, QuestionDots, AnswerSheet, goToQuestion, fmtWhen } from "./ResultParts";
 
-export function StudentQuestionEngineFeedback({ assignmentId, userId, setScreen }) {
+// Livraison 74 — the student's result for a Reading / Listening paper:
+// score + band, the teacher's comment, then the answer sheet ("My
+// answers", with "My mistakes") or the whole paper ("Full paper").
+// Everything shown is what the database lets the student read once the
+// result is published; nothing is computed earlier than that.
+// inExam: the paper belongs to an exam — "Back" returns to the exam.
+export function StudentQuestionEngineFeedback({ assignmentId, userId, setScreen, inExam = false }) {
   const [loading, setLoading] = useState(true);
   const [assignment, setAssignment] = useState(null);
   const [sections, setSections] = useState([]);
@@ -16,6 +24,8 @@ export function StudentQuestionEngineFeedback({ assignmentId, userId, setScreen 
   const [resultsByQ, setResultsByQ] = useState({});
   const [correctByQ, setCorrectByQ] = useState({});
   const [feedbackRow, setFeedbackRow] = useState(null);
+  const [handedAt, setHandedAt] = useState(null);
+  const [view, setView] = useState("sheet");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -94,6 +104,15 @@ export function StudentQuestionEngineFeedback({ assignmentId, userId, setScreen 
       .maybeSingle();
     setFeedbackRow(fb || null);
 
+    // When it was handed in (the student's own copy row).
+    const { data: att } = await supabase
+      .from("exam_attempts")
+      .select("submitted_at")
+      .eq("assignment_id", assignmentId)
+      .eq("student_id", userId)
+      .maybeSingle();
+    setHandedAt(att?.submitted_at || null);
+
     setLoading(false);
   }, [assignmentId, userId]);
 
@@ -120,41 +139,72 @@ export function StudentQuestionEngineFeedback({ assignmentId, userId, setScreen 
   if (loading || !assignment) return <CenterSpinner />;
 
   const canSeeAnswers = Boolean(assignment.show_answer_review);
+  const showCorrect = canSeeAnswers && Object.keys(correctByQ).length > 0;
+  const rows = buildSheet(sections);
+  const counts = sheetCounts(rows, resultsByQ);
+  const back = () => setScreen(inExam ? { name: "home" } : { name: "student-assignments" });
+  const backLabel = inExam ? "Exam" : "My assignments";
+  const estimated = autoBand != null && !feedbackRow?.band;
 
   return (
-    <div className="qe-feedback-shell">
-      <button className="back-link" onClick={() => setScreen({ name: "home" })}><ArrowLeft size={14} /> Back to assignments</button>
+    <div className="page page-wide rs-page">
+      <Breadcrumb items={[{ label: backLabel, onClick: back }, { label: assignment.title }]} />
 
-      <div className="qe-feedback-top">
-        <div className="eyebrow">{assignment.type}</div>
-        <h1 className="page-title" style={{ margin: 0 }}>{assignment.title}</h1>
-        <ScoreRing score={earnedPoints} total={totalPoints} band={displayBand} />
-        {autoBand != null && !feedbackRow?.band && (
-          <p className="field-hint" style={{ maxWidth: 360 }}>Estimated band, scaled to a 40-question test — an approximation, not an official score.</p>
-        )}
+      <div className="rs-hero">
+        <ScoreRing score={earnedPoints} total={totalPoints} band={null} size={124} />
+        <div className="rs-hero-main">
+          <div className="eyebrow">{assignment.type} · your result</div>
+          <div className="rs-hero-band">
+            <span className="rs-big">{displayBand != null ? `Band ${displayBand}` : `${earnedPoints}/${totalPoints}`}</span>
+            {estimated && <span className="pill" title="Scaled to a 40-question test — an approximation, not an official score.">estimated</span>}
+          </div>
+          <div className="rs-hero-meta">
+            {earnedPoints}/{totalPoints} points
+            {canSeeAnswers ? ` · ${counts.right} correct · ${counts.wrong + counts.partial} to review` : ""}
+            {handedAt ? ` · handed in ${fmtWhen(handedAt)}` : ""}
+          </div>
+          {canSeeAnswers && <QuestionDots rows={rows} resultsByQ={resultsByQ} onPick={(row) => { if (view !== "sheet" && view !== "paper") setView("sheet"); setTimeout(() => goToQuestion(row), 50); }} />}
+        </div>
       </div>
 
       {feedbackRow?.feedback && (
-        <div className="qe-feedback-teacher-note">
-          <div className="field-label">Feedback from your teacher</div>
-          <p style={{ margin: "6px 0 0", whiteSpace: "pre-wrap" }}>{feedbackRow.feedback}</p>
+        <div className="rs-teacher-note">
+          <div className="rs-teacher-note-h"><MessageSquare size={14} /> Feedback from your teacher</div>
+          <p>{feedbackRow.feedback}</p>
         </div>
       )}
 
       {canSeeAnswers ? (
-        <ReviewContent
-          sections={sections}
-          answersByQ={answersByQ}
-          resultsByQ={resultsByQ}
-          correctAnswersFormatted={correctAnswersFormatted}
-          correctAnswersRaw={correctByQ}
-          showCorrectAnswers
-          assignmentId={assignmentId}
-          viewerUserId={userId}
-        />
+        <>
+          <div className="rs-viewbar">
+            <div className="rs-seg" role="tablist">
+              <button type="button" role="tab" aria-selected={view === "sheet"} className={view === "sheet" ? "on" : ""} onClick={() => setView("sheet")}>My answers</button>
+              <button type="button" role="tab" aria-selected={view === "paper"} className={view === "paper" ? "on" : ""} onClick={() => setView("paper")}>Full paper</button>
+            </div>
+            {estimated && <span className="rs-hint">Band estimated on a 40-question scale.</span>}
+          </div>
+          {view === "sheet" ? (
+            <AnswerSheet rows={rows} answersByQ={answersByQ} resultsByQ={resultsByQ} correctFormatted={correctAnswersFormatted} showCorrect={showCorrect} mine />
+          ) : (
+            <ReviewContent
+              sections={sections}
+              answersByQ={answersByQ}
+              resultsByQ={resultsByQ}
+              correctAnswersFormatted={correctAnswersFormatted}
+              correctAnswersRaw={correctByQ}
+              showCorrectAnswers
+              assignmentId={assignmentId}
+              viewerUserId={userId}
+            />
+          )}
+        </>
       ) : (
         <div className="qe-feedback-locked">Your teacher has kept the answer breakdown private for this assignment — only your overall score is shown.</div>
       )}
+
+      <div className="rs-foot">
+        <button className="back-link" onClick={back}><ArrowLeft size={14} /> {inExam ? "Back to the exam" : "Back to my assignments"}</button>
+      </div>
     </div>
   );
 }
