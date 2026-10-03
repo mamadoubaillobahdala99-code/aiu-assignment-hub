@@ -165,3 +165,32 @@
 }
 .panel .ex-time-row { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 8px 10px; align-items: center; }
 .panel .ex-time-row .field-input { min-width: 0; width: 100%; }
+
+/* ---------- Livraison 79 — « Everyone together » ---------- */
+.exd-room { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; border-radius: 14px; padding: 14px 18px; margin-bottom: 16px; }
+.exd-room-wait { background: #E8F1EE; }
+.exd-room-run { background: #fff; border: 1.5px solid var(--teal); }
+.exd-room-free { background: var(--info-soft); }
+.exd-room-ic { width: 42px; height: 42px; border-radius: 11px; background: #fff; display: inline-flex; align-items: center; justify-content: center; color: var(--teal); font-size: 20px; flex-shrink: 0; }
+.exd-room-main { flex: 1; min-width: 200px; display: flex; flex-direction: column; gap: 2px; }
+.exd-room-main b { font-size: 15.5px; }
+.exd-room-num { width: 32px; height: 32px; font-size: 14px; background: var(--teal); }
+.exd-room-left { font-family: 'IBM Plex Mono', monospace; font-size: 20px; margin-right: 4px; }
+.ex-replay-badge.exd-ok { background: var(--teal-soft); color: var(--teal); }
+.ex-replay-badge.exd-wait { background: var(--amber-soft); color: #8A5414; }
+.ex-replay-badge.exd-free { background: var(--info-soft); color: var(--info); }
+.exd-matrix td.exd-late { color: #8A5414; font-weight: 700; }
+.exd-extra { display: inline-block; margin-left: 6px; font-size: 11px; font-weight: 700; color: var(--info); background: var(--info-soft); border-radius: 999px; padding: 1px 7px; }
+.exd-plus { margin-left: 8px; font-family: inherit; font-size: 11.5px; font-weight: 700; padding: 3px 8px; border-radius: 7px; border: 1px solid var(--line); background: #fff; color: var(--ink); cursor: pointer; }
+.exd-plus:hover { border-color: var(--teal); color: var(--teal); }
+.exd-other { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; color: var(--ink-soft); }
+.exd-other .field-input { width: 72px; padding: 6px 8px; }
+.exd-ends { display: flex; justify-content: space-between; gap: 10px; padding: 12px 0 4px; font-size: 13.5px; border-bottom: 1px solid #EFECE3; margin-top: 12px; }
+.exd-ends span { color: var(--ink-soft); }
+.exs-wait { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 8px; background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 30px 20px; }
+.exs-wait-ic { width: 60px; height: 60px; border-radius: 50%; background: var(--amber-soft); color: #8A5414; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 4px; }
+.exs-wait strong { font-family: 'Fraunces', serif; font-size: 22px; font-weight: 600; }
+.exs-wait em { font-style: normal; font-size: 13.5px; color: var(--ink-soft); max-width: 520px; }
+.exs-late { color: var(--teal); font-weight: 600; }
+.exs-state-wait { color: #8A5414; background: var(--amber-soft); padding: 4px 10px; border-radius: 999px; }
+@media (max-width: 760px) { .exs-state { white-space: normal; text-align: right; } }
