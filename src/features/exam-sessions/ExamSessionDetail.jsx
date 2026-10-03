@@ -24,6 +24,12 @@ import { examStage, STAGE_NAMES, loadExamGrid, overallBand, average, fmtBand, re
 // minutes left, who is suspended). After: the results with their bands,
 // the overall band, and « Export (CSV) ». Every action calls the database
 // exactly as before (same functions, same writes).
+//
+// Livraison 79 — « Everyone together » (script 46): a setting of the exam.
+// In that mode « Open » opens the waiting room and the teacher starts each
+// paper for everyone (exam_session_action 'start_item'), can let the room
+// continue on its own ('free'), and can give a candidate extra minutes
+// (exam_give_extra_time). The database checks every rule.
 export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
   const [session, setSession] = useState(null);
   const [items, setItems] = useState([]);
@@ -67,6 +73,10 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
   const [tab, setTab] = useState(null);                   // null = the stage's default
   const [now, setNow] = useState(Date.now());
   const [filter, setFilter] = useState("all");
+  // Livraison 79: minutes given to candidates, and the « extra time » window.
+  const [extras, setExtras] = useState([]);
+  const [extraFor, setExtraFor] = useState(null);   // null | { st, it, minutes }
+  const [giving, setGiving] = useState(false);
 
   const load = useCallback(async () => {
     const { data: s } = await supabase.from("exam_sessions").select("*").eq("id", sessionId).maybeSingle();
@@ -83,7 +93,7 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
       .order("created_at");
     const { data: rows } = await supabase
       .from("exam_session_items")
-      .select("id, assignment_id, order_index, audio_started_at")
+      .select("id, assignment_id, order_index, audio_started_at, room_started_at")
       .eq("session_id", sessionId)
       .order("order_index");
 
@@ -94,7 +104,7 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
       const toAdd = orphans.map((a) => ({ session_id: sessionId, assignment_id: a.id, order_index: ++next }));
       await supabase.from("exam_session_items").insert(toAdd);
       const { data: again } = await supabase
-        .from("exam_session_items").select("id, assignment_id, order_index, audio_started_at")
+        .from("exam_session_items").select("id, assignment_id, order_index, audio_started_at, room_started_at")
         .eq("session_id", sessionId).order("order_index");
       rows.splice(0, rows.length, ...(again || []));
     }
@@ -124,11 +134,13 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
     // Who has handed in what. One query for the whole room.
     const paperIds = (rows || []).map((x) => x.assignment_id);
     if (paperIds.length > 0) {
-      const [{ data: att }, { data: secs }] = await Promise.all([
+      const [{ data: att }, { data: secs }, { data: xt }] = await Promise.all([
         supabase.from("exam_attempts").select("student_id, assignment_id, started_at, submitted_at").in("assignment_id", paperIds),
         supabase.from("exam_sections").select("assignment_id").in("assignment_id", paperIds),
+        supabase.from("exam_extra_time").select("assignment_id, student_id, minutes").eq("session_id", sessionId),
       ]);
       setAttempts(att || []);
+      setExtras(xt || []);
       setWithContent(new Set((secs || []).map((x) => x.assignment_id)));
       const done = {};
       for (const a of att || []) {
@@ -217,6 +229,44 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
     if (action === "close") showToast?.("Exam closed" + handed);
     if (action === "release") showToast?.("Results published" + handed);
     if (action === "start_audio") showToast?.("Recording started for everyone");
+    if (action === "start_item") showToast?.("Started for everyone");
+    if (action === "free") showToast?.("Candidates now continue on their own");
+  }
+
+  // Livraison 79 — « Everyone together ».
+  async function startForEveryone(it, roomSize) {
+    const lim = it.assignment?.time_limit_minutes;
+    const ends = lim ? new Date(Date.now() + lim * 60000) : null;
+    const t = (d) => d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+    const ok = await confirmDialog({
+      title: `Start ${it.assignment?.type || "this paper"} for everyone?`,
+      message: `${roomSize} candidate${roomSize === 1 ? " is" : "s are"} in the room. ${it.assignment?.title || "The paper"} starts now`
+        + (ends ? ` and ends for everyone at ${t(ends)}.` : ".")
+        + " A candidate who arrives later has the time left; you can give extra minutes.",
+      confirmLabel: "Start now",
+    });
+    if (ok) act("start_item", it.id);
+  }
+  async function letContinue() {
+    const ok = await confirmDialog({
+      title: "Let candidates continue on their own?",
+      message: "From now on, each candidate who hands in a paper can start the next one when ready, with its full time. "
+        + "You will no longer press « Start » for the next papers. This cannot be undone for this exam. « Close the exam » still ends everything.",
+      confirmLabel: "Let them continue",
+    });
+    if (ok) act("free");
+  }
+  async function giveExtra() {
+    if (!extraFor || giving) return;
+    setGiving(true);
+    const { error } = await supabase.rpc("exam_give_extra_time", {
+      p_session_id: sessionId, p_student_id: extraFor.st.id, p_assignment_id: extraFor.it.assignment_id, p_minutes: extraFor.minutes,
+    });
+    setGiving(false);
+    if (error) { showToast?.("Could not give extra time: " + error.message); return; }
+    showToast?.(`${extraFor.minutes} extra minute${extraFor.minutes === 1 ? "" : "s"} for ${extraFor.st.name}`);
+    setExtraFor(null);
+    load();
   }
 
   // Who is still writing right now: a paper started, not yet handed in.
@@ -393,6 +443,9 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
 
   // Livraison 78 — the step, and what each step shows.
   const stage = examStage(session, nowMs);
+  // Livraison 79.
+  const together = session.start_mode === "together";
+  const free = Boolean(session.free_from);
   const tabsOf = stage === 1 ? ["candidates", "papers", "settings", "teachers"] : ["results", "papers", "settings", "teachers"];
   const shownTab = tab && tabsOf.includes(tab) ? tab : tabsOf[0];
   const att = new Map(attempts.map((a) => [`${a.student_id}|${a.assignment_id}`, a]));
@@ -413,11 +466,19 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
       return cellOf(st.id, it)?.status === "viewed" ? { kind: "done", text: "✓ viewed" } : { kind: "none", text: "—" };
     }
     const t = att.get(`${st.id}|${it.assignment_id}`);
-    if (t?.submitted_at) return { kind: "done", text: `✓ ${hm(t.submitted_at)}` };
+    const extra = extraOf(st.id, it.assignment_id);
+    if (t?.submitted_at) return { kind: "done", text: `✓ ${hm(t.submitted_at)}`, extra };
     if (t?.started_at) {
       const lim = it.assignment?.time_limit_minutes;
       const end = lim ? new Date(t.started_at).getTime() + lim * 60000 : null;
-      return { kind: "work", text: `${type.toLowerCase()} · ${end ? `${left(end - now)} left` : "in progress"}` };
+      return { kind: "work", text: `${type.toLowerCase()} · ${end ? `${left(end - now)} left` : "in progress"}`, extra,
+               canExtend: Boolean(end && end > now) };
+    }
+    // Livraison 79: not started for the room yet, or missed.
+    if (together && !free && !it.room_started_at) return { kind: "next", text: "waits for your start" };
+    if (together && it.room_started_at && it.assignment?.time_limit_minutes
+        && new Date(it.room_started_at).getTime() + it.assignment.time_limit_minutes * 60000 <= now) {
+      return { kind: "none", text: "missed" };
     }
     const ready = sorted.slice(0, idx).filter((p) => p.assignment && p.assignment.type !== "Speaking")
       .every((p) => att.get(`${st.id}|${p.assignment_id}`)?.submitted_at);
@@ -429,6 +490,9 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
     if (timed.length > 0 && mine.every((t) => t?.submitted_at)) return "finished";
     if (mine.some((t) => t?.started_at && !t.submitted_at)) return "working";
     return mine.some((t) => t?.submitted_at) ? "working" : "waiting";
+  }
+  function extraOf(studentId, assignmentId) {
+    return extras.filter((x) => x.student_id === studentId && x.assignment_id === assignmentId).reduce((n, x) => n + x.minutes, 0);
   }
   const STATUS = { working: ["Working", "pill-teal"], finished: ["Finished", ""], suspended: ["Suspended", "pill-rose"], waiting: ["Not started", "pill-plain"] };
   const liveRows = roster.map((st) => ({ st, status: liveStatus(st) }));
@@ -553,6 +617,11 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
                     {replayIds.has(it.assignment_id) && (
                       <span className="ex-replay-badge" title="Practice setting: candidates can pause and replay the recording.">Replay allowed</span>
                     )}
+                    {together && it.assignment && it.assignment.type !== "Speaking" && (
+                      it.room_started_at ? <span className="ex-replay-badge exd-ok">Started {hm(it.room_started_at)}</span>
+                        : free ? <span className="ex-replay-badge exd-free">Each candidate when ready</span>
+                        : <span className="ex-replay-badge exd-wait">You start it</span>
+                    )}
                   </span>
                 </button>
                 {session.listening_start === "grouped" && it.assignment?.type === "Listening" && stage === 1 && (
@@ -586,6 +655,9 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
     ...(listenings.length ? [{ ok: !listenings.some((it) => replayIds.has(it.assignment_id)), warn: listenings.some((it) => replayIds.has(it.assignment_id)),
       text: listenings.some((it) => replayIds.has(it.assignment_id)) ? "A Listening lets candidates replay the recording (practice setting)" : "Listening: one listening only, like the real test" }] : []),
     { ok: true, info: !session.opens_at, text: session.opens_at ? `Opens by itself: ${fmtWhen(session.opens_at)}` : "No opening time — you open it with the button" },
+    { ok: true, info: true, text: together
+        ? "Everyone together: « Open » opens the waiting room, then you start each paper"
+        : "Each candidate starts each paper when ready" },
     { ok: true, info: true, text: `Candidates join with the code ${session.code} once it is open` },
   ];
   const readyPanel = (
@@ -614,6 +686,14 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
             <em>If a candidate leaves the exam, it freezes until a teacher lets them back in. Turn this off for practice at home.</em>
           </span>
         </label>
+        <div className="ex-setting ex-setting-radio">
+          <span><strong>How candidates start each paper</strong>
+            <em>Together: candidates wait in the room and you press « Start » for each paper — same start, same end for everyone.</em></span>
+          <label><input type="radio" name="sm" checked={(session.start_mode || "individual") === "individual"} disabled={examOpen}
+                        onChange={() => setSetting({ start_mode: "individual" })} /> each candidate starts when ready</label>
+          <label><input type="radio" name="sm" checked={session.start_mode === "together"} disabled={examOpen}
+                        onChange={() => setSetting({ start_mode: "together" })} /> everyone together — you start each paper</label>
+        </div>
         <div className="ex-setting ex-setting-radio">
           <span><strong>The Listening recording starts…</strong></span>
           <label><input type="radio" name="ls" checked={session.listening_start === "individual"} disabled={examOpen}
@@ -698,6 +778,61 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
     </div>
   );
 
+  // Livraison 79 — the room, in « Everyone together » mode.
+  const roomStarted = timed.filter((it) => it.room_started_at);
+  const current = roomStarted[roomStarted.length - 1] || null;
+  const nextItem = timed.find((it) => !it.room_started_at) || null;
+  const endOf = (it) => (it?.room_started_at && it.assignment?.time_limit_minutes
+    ? new Date(it.room_started_at).getTime() + it.assignment.time_limit_minutes * 60000 : null);
+  const curEnd = endOf(current);
+  const allHandedCurrent = current && roster.length > 0 && roster.every((st) => att.get(`${st.id}|${current.assignment_id}`)?.submitted_at);
+  const canStartNext = !current || (curEnd !== null && now >= curEnd) || allHandedCurrent;
+  const curCount = current ? {
+    working: roster.filter((st) => { const t = att.get(`${st.id}|${current.assignment_id}`); return t?.started_at && !t.submitted_at; }).length,
+    handed: roster.filter((st) => att.get(`${st.id}|${current.assignment_id}`)?.submitted_at).length,
+  } : null;
+  const roomBanner = stage === 1 && together && (
+    free ? (
+      <div className="exd-room exd-room-free" role="status">
+        <span className="exd-room-ic">➜</span>
+        <div className="exd-room-main">
+          <b>Candidates continue on their own</b>
+          <span className="dt-sub">Since {hm(session.free_from)}, each candidate who hands in a paper can start the next one when ready, with its full time.</span>
+        </div>
+      </div>
+    ) : !current ? (
+      <div className="exd-room exd-room-wait" role="status">
+        <span className="exd-room-ic"><Clock size={20} /></span>
+        <div className="exd-room-main">
+          <b>Waiting room — {plural(roster.length, "candidate")} here</b>
+          <span className="dt-sub">Nobody can see a paper yet. Start {nextItem?.assignment?.type || "the first paper"} when the room is ready.</span>
+        </div>
+        {nextItem && (
+          <button className="btn-teal" disabled={busy === "start_item"} onClick={() => startForEveryone(nextItem, roster.length)}>
+            <Play size={15} /> Start {nextItem.assignment?.type} for everyone
+          </button>
+        )}
+      </div>
+    ) : (
+      <div className="exd-room exd-room-run" role="status">
+        <span className="exd-num exd-room-num">{sorted.indexOf(current) + 1}</span>
+        <div className="exd-room-main">
+          <b>{current.assignment?.type} — started {hm(current.room_started_at)}{curEnd ? ` · ends ${hm(new Date(curEnd).toISOString())}` : ""}</b>
+          <span className="dt-sub">{curCount.working} working · {curCount.handed} handed in · {roster.length - curCount.working - curCount.handed} not started</span>
+        </div>
+        {curEnd && <b className="exd-room-left">{curEnd > now ? left(curEnd - now) : "time over"}</b>}
+        <button className="btn-ghost" disabled={busy === "free"} onClick={letContinue}>Let candidates continue on their own</button>
+        {nextItem && (
+          <button className="btn-teal" disabled={!canStartNext || busy === "start_item"}
+                  title={canStartNext ? "" : "Available when this paper is over, or when everyone has handed it in"}
+                  onClick={() => startForEveryone(nextItem, roster.length)}>
+            <Play size={15} /> Start {nextItem.assignment?.type}{!canStartNext && curEnd ? ` · from ${hm(new Date(curEnd).toISOString())}` : ""}
+          </button>
+        )}
+      </div>
+    )
+  );
+
   const candidatesTab = roster.length === 0 ? (
     <p className="empty-inline">Nobody has joined yet. Candidates join with the code {session.code}.</p>
   ) : (
@@ -718,6 +853,7 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
           <thead>
             <tr>
               <th>Candidate</th>
+              {together && <th className="exd-c">Arrived</th>}
               {sorted.map((it, i) => <th key={it.id} className="exd-c">{i + 1} · {it.assignment?.type || "Paper"}</th>)}
               <th className="exd-c">Status</th>
             </tr>
@@ -726,11 +862,21 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
             {shownLive.map(({ st, status }) => (
               <tr key={st.id}>
                 <td><span className="exd-person"><span className="avatar small">{st.name.slice(0, 1).toUpperCase()}</span><b>{st.name}</b></span></td>
+                {together && (() => {
+                  const first = timed.find((it) => it.room_started_at);
+                  const late = first && st.joined_at && new Date(st.joined_at) > new Date(first.room_started_at);
+                  return <td className={`exd-c ${late ? "exd-late" : ""}`}>{st.joined_at ? hm(st.joined_at) : "—"}{late ? " · late" : ""}</td>;
+                })()}
                 {sorted.map((it, i) => {
                   const c = liveCell(st, it, i);
                   return (
                     <td key={it.id} className={`exd-c exd-${c.kind}`}>
                       {c.kind === "lock" ? <Lock size={13} aria-label="locked" /> : c.text}
+                      {c.extra > 0 && <span className="exd-extra" title="Extra minutes given">+{c.extra} min</span>}
+                      {c.canExtend && (
+                        <button type="button" className="exd-plus" title={`Give ${st.name} extra minutes`}
+                                onClick={() => setExtraFor({ st, it, minutes: 5 })}>+ min</button>
+                      )}
                     </td>
                   );
                 })}
@@ -853,6 +999,7 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
         </div>
       )}
       {invigilation}
+      {roomBanner}
 
       {stage === 0 ? (
         <div className="exd-grid">
@@ -875,6 +1022,45 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
           {shownTab === "teachers" && teachersPanel}
         </>
       )}
+
+      {extraFor && (() => {
+        const t = attempts.find((a) => a.student_id === extraFor.st.id && a.assignment_id === extraFor.it.assignment_id);
+        const lim = extraFor.it.assignment?.time_limit_minutes || 0;
+        const end = t?.started_at ? new Date(t.started_at).getTime() + lim * 60000 : null;
+        const first = sorted.filter((it) => it.assignment && it.assignment.type !== "Speaking").find((it) => it.room_started_at);
+        const delay = first && extraFor.st.joined_at ? Math.round((new Date(extraFor.st.joined_at) - new Date(first.room_started_at)) / 60000) : 0;
+        const fmt = (ms) => new Date(ms).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+        const choices = [...new Set([5, 10, 15, ...(delay > 0 && delay <= 60 ? [delay] : [])])].sort((a, b) => a - b);
+        return (
+          <Modal title={`Extra time for ${extraFor.st.name}`} onClose={() => setExtraFor(null)}>
+            <p className="muted-p" style={{ marginTop: 0 }}>
+              {extraFor.it.assignment?.type} · {extraFor.it.assignment?.title}
+              {delay > 0 ? ` · arrived ${delay} min after the start` : ""}
+            </p>
+            <div className="dt-chips" role="group" aria-label="Minutes">
+              {choices.map((m) => (
+                <button key={m} type="button" className={`dt-chip ${extraFor.minutes === m ? "on" : ""}`} aria-pressed={extraFor.minutes === m}
+                        onClick={() => setExtraFor({ ...extraFor, minutes: m })}>+ {m} min{m === delay ? " (delay)" : ""}</button>
+              ))}
+              <label className="exd-other">Other
+                <input type="number" min="1" max="60" className="field-input" value={extraFor.minutes}
+                       onChange={(e) => setExtraFor({ ...extraFor, minutes: Math.max(1, Math.min(60, Number(e.target.value) || 1)) })} />
+              </label>
+            </div>
+            {end && (
+              <div className="set exd-ends"><span>Ends for {extraFor.st.name}</span>
+                <b>{fmt(end + extraFor.minutes * 60000)} instead of {fmt(end)}</b></div>
+            )}
+            <p className="field-hint">Only for this paper and this candidate. « Close the exam » still ends everything, extra time included.</p>
+            <div className="ex-actions" style={{ marginTop: 16 }}>
+              <button className="btn-ghost" onClick={() => setExtraFor(null)}>Cancel</button>
+              <button className="btn-primary" disabled={giving} onClick={giveExtra}>
+                {giving ? "Saving…" : `Give ${extraFor.minutes} minute${extraFor.minutes === 1 ? "" : "s"}`}
+              </button>
+            </div>
+          </Modal>
+        );
+      })()}
 
       {addOpen && (
         <Modal title="Add a paper to this exam" onClose={() => setAddOpen(false)}>
