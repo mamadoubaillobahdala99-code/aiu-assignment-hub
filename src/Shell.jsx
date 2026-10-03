@@ -236,7 +236,7 @@ export function Shell({ profile, setProfile, userId, onSignOut, screen: rawScree
         {screen.name === "student-exam" && !isTeacher && <StudentExamSession userId={userId} screen={screen} setScreen={setScreen} showToast={showToast} />}
         {screen.name === "class" && isTeacher && <ClassDetail classId={screen.classId} setScreen={setScreen} showToast={showToast} />}
         {screen.name === "assignment-teacher" && isTeacher && (
-          <AssignmentTeacher classId={screen.classId} assignmentId={screen.assignmentId} teacherId={userId} setScreen={setScreen} showToast={showToast} returnTo={screen.returnTo} examLocked={screen.examLocked} openDuplicate={screen.dup === "1"} />
+          <AssignmentTeacher classId={screen.classId} assignmentId={screen.assignmentId} teacherId={userId} setScreen={setScreen} showToast={showToast} returnTo={screen.returnTo} examLocked={screen.examLocked} openDuplicate={screen.dup === "1"} studentId={screen.studentId} />
         )}
         {screen.name === "assignment-student" && !isTeacher && (
           <AssignmentOpenBridge userId={userId} classId={screen.classId} assignmentId={screen.assignmentId} setScreen={setScreen} showToast={showToast} />
