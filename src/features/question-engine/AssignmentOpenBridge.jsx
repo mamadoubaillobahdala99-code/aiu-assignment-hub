@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { ArrowLeft, Clock } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { supabase } from "../../supabaseClient";
 import { StudentExamRunner, PaperUnavailable, PaperLoadError } from "./StudentExamRunner";
 import { StudentWritingRunner } from "./StudentWritingRunner";
@@ -7,6 +7,7 @@ import { StudentWritingFeedback } from "./StudentWritingFeedback";
 import { StudentSpeakingViewer } from "./StudentSpeakingViewer";
 import { StudentQuestionEngineFeedback } from "./StudentQuestionEngineFeedback";
 import { CenterSpinner } from "../../components/shared";
+import { WritingWaiting, PaperWaiting } from "./ResultWaiting";
 
 // Decides, invisibly, which experience the student sees:
 // - No exam_sections (an assignment whose builder was interrupted
@@ -194,7 +195,7 @@ export function AssignmentOpenBridge({ userId, classId, assignmentId, setScreen,
   }
 
   if (isWriting && isReleased) {
-    return <StudentWritingFeedback assignmentId={assignmentId} userId={userId} setScreen={setScreen} />;
+    return <StudentWritingFeedback assignmentId={assignmentId} userId={userId} setScreen={setScreen} inExam={Boolean(onSubmitted)} />;
   }
 
   if (!hasSubmitted) {
@@ -215,16 +216,12 @@ export function AssignmentOpenBridge({ userId, classId, assignmentId, setScreen,
   }
 
   if (isReleased) {
-    return <StudentQuestionEngineFeedback assignmentId={assignmentId} userId={userId} setScreen={setScreen} />;
+    return <StudentQuestionEngineFeedback assignmentId={assignmentId} userId={userId} setScreen={setScreen} inExam={Boolean(onSubmitted)} />;
   }
 
-  return (
-    <div className="page">
-      <button className="back-link" onClick={() => setScreen({ name: "home" })}><ArrowLeft size={14} /> Back to assignments</button>
-      <div className="qe-feedback-locked">
-        <Clock size={22} style={{ marginBottom: 10 }} />
-        <p>Submitted — waiting for teacher feedback.</p>
-      </div>
-    </div>
-  );
+  // Handed in, result not published yet (livraison 74: the hand-in time,
+  // and for Writing the student's own text, read only).
+  return isWriting
+    ? <WritingWaiting assignmentId={assignmentId} userId={userId} setScreen={setScreen} inExam={Boolean(onSubmitted)} />
+    : <PaperWaiting assignmentId={assignmentId} userId={userId} setScreen={setScreen} inExam={Boolean(onSubmitted)} />;
 }
