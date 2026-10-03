@@ -2,6 +2,8 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { ArrowLeft, CheckCircle2, AlertTriangle, XCircle, FileText, Pencil, ImagePlus, Upload, Loader2 } from "lucide-react";
 import { supabase } from "../../supabaseClient";
+import { BuilderLayout, PartsNav, Checklist, Stepper, useBuilderCrumbs, makeLeaveGuard } from "./BuilderLayout";
+import { Breadcrumb } from "../../components/DropMenu";
 import { parseTest, analyseGroup, parseAnswerKey, resolveAnswers, buildGroupRows, defaultImportInstruction, IMPORT_TYPES, analysisSlots } from "./importParse";
 import { QuestionRenderer } from "./QuestionRenderer";
 import { MatchingGrid } from "./MatchingGrid";
@@ -401,15 +403,30 @@ export function TestImporter({ classId, teacherId, skill: initialSkill = "readin
     setScreen(returnTo || { name: "class", classId });
   }
 
+  // Livraison 76 — the same import, shown as 3 steps, the check step in
+  // the three-column layout (see BuilderLayout). Parsing, checking and
+  // creating are unchanged.
+  const STEPS = ["Your test", "Check what was found", "Create the assignment"];
+  const hasWork = Boolean(testText.trim() || keyText.trim());
+  const guard = makeLeaveGuard(hasWork && !creating);
+  const crumbs = useBuilderCrumbs({ classId, returnTo, setScreen, guard, here: "Import a test" });
+  const leave = guard(() => setScreen(returnTo || { name: "class", classId }));
+
   // ------------------------------------------------------------------
   // Step 1 — paste
   // ------------------------------------------------------------------
   if (step === "input") {
     return (
-      <div className="page page-wide">
-        <button className="btn-ghost" onClick={() => setScreen(returnTo || { name: "class", classId })}><ArrowLeft size={14} /> {returnTo?.name === "exam-session" ? "Back to the exam" : "Back to class"}</button>
-        <div className="eyebrow" style={{ marginTop: 12 }}>Import a test</div>
-        <h1 className="page-title">Import a {skill === "reading" ? "Reading" : "Listening"} test</h1>
+      <div className="page page-wide bl-page bl-import">
+        <Breadcrumb items={crumbs} />
+        <div className="ph">
+          <div className="ph-main"><div><div className="eyebrow">Import a test</div><h1 className="ph-title">Import a {skill === "reading" ? "Reading" : "Listening"} test</h1></div></div>
+          <div className="ph-actions">
+            <button className="btn-ghost" onClick={leave}><ArrowLeft size={14} /> {returnTo?.name === "exam-session" ? "Back to the exam" : "Back to class"}</button>
+          </div>
+        </div>
+        <Stepper steps={STEPS} current={0} />
+        <div className="panel bl-import-panel">
 
         <label className="field-label" style={{ marginTop: 16 }}>Skill</label>
         <div className="type-row">
@@ -450,6 +467,7 @@ export function TestImporter({ classId, teacherId, skill: initialSkill = "readin
         <button className="btn-primary" style={{ marginTop: 20 }} disabled={!testText.trim()} onClick={analyse}>
           <FileText size={15} /> Analyse the test
         </button>
+        </div>
       </div>
     );
   }
@@ -457,240 +475,286 @@ export function TestImporter({ classId, teacherId, skill: initialSkill = "readin
   // ------------------------------------------------------------------
   // Step 2 — preview, fix, create
   // ------------------------------------------------------------------
+  const partState = (pi) => {
+    const v = view[pi];
+    const bad = v.partIssues.length > 0 || v.groups.some((g) => g.status === "error");
+    const warn = v.groups.filter((g) => g.status === "warn").length;
+    const fix = v.partIssues.length + v.groups.filter((g) => g.status === "error").length;
+    return { bad, warn, fix };
+  };
+  const createButton = (
+    <button className="btn-primary" disabled={!canCreate} onClick={create}>
+      {creating ? progress || "Saving…" : `Create assignment (${totalQuestions} questions)`}
+    </button>
+  );
+
   return (
-    <div className="page page-wide">
-      <button className="btn-ghost" onClick={() => setStep("input")} disabled={creating}><ArrowLeft size={14} /> Back to the pasted text</button>
-      <div className="eyebrow" style={{ marginTop: 12 }}>Import a test — preview</div>
-      <h1 className="page-title">Check the {skill === "reading" ? "Reading" : "Listening"} test</h1>
-
-      <div className="qe-imp-summary">
-        <span><strong>{view.length}</strong> part{view.length > 1 ? "s" : ""}</span>
-        <span><strong>{allGroups.length}</strong> group{allGroups.length > 1 ? "s" : ""}</span>
-        <span><strong>{totalQuestions}</strong> question{totalQuestions > 1 ? "s" : ""}</span>
-        <span className="qe-imp-chip qe-imp-chip-ok"><CheckCircle2 size={13} /> {counts.ok} ready</span>
-        <span className="qe-imp-chip qe-imp-chip-warn"><AlertTriangle size={13} /> {counts.warn} to check</span>
-        <span className="qe-imp-chip qe-imp-chip-error"><XCircle size={13} /> {counts.error} to fix</span>
-      </div>
-      <p className="field-hint">Nothing is saved yet. Fix every red item, check the orange ones, then create the assignment at the bottom of the page.</p>
-
-      <label className="field-label" style={{ marginTop: 16 }}>Title</label>
-      <input className="field-input" placeholder="e.g. IELTS Practice Test 1" value={title} onChange={(e) => setTitle(e.target.value)} />
-      <div style={{ display: "flex", gap: 16, marginTop: 14, flexWrap: "wrap" }}>
-        <div style={{ flex: "1 1 200px" }}>
-          <label className="field-label">Due date (optional)</label>
-          <input type="date" className="field-input" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
-        </div>
-        <div style={{ flex: "1 1 200px" }}>
-          <label className="field-label">Due time (optional)</label>
-          <input type="time" className="field-input" value={dueTime} onChange={(e) => setDueTime(e.target.value)} />
-        </div>
-        <div style={{ flex: "1 1 200px" }}>
-          <label className="field-label">Time limit, minutes</label>
-          <input type="number" min="1" className="field-input" placeholder="e.g. 60" value={timeLimit} onChange={(e) => setTimeLimit(e.target.value)} />
-        </div>
-      </div>
-      <label className="checkbox-row" style={{ marginTop: 14 }}>
-        <input type="checkbox" checked={autoReleaseScore} onChange={(e) => setAutoReleaseScore(e.target.checked)} />
-        Show students their score right after they submit
-      </label>
-      <label className="checkbox-row" style={{ marginTop: 8 }}>
-        <input type="checkbox" checked={showAnswerReview} onChange={(e) => setShowAnswerReview(e.target.checked)} />
-        Let students see which answers were correct/incorrect, with the correct answer
-      </label>
-
-      {skill === "listening" && (
+    <BuilderLayout
+      crumbs={crumbs}
+      eyebrow="Import a test — not saved yet"
+      heading={`Check the ${skill === "reading" ? "Reading" : "Listening"} test`}
+      sub="Nothing is saved yet. Fix every red item, check the orange ones, then create the assignment."
+      actions={
         <>
-          <label className="field-label" style={{ marginTop: 18 }}>Audio</label>
-          <div className="type-row">
-            <button type="button" className={`type-chip ${audioMode === "single" ? "active" : ""}`} onClick={() => setAudioMode("single")}>One audio for the whole test</button>
-            <button type="button" className={`type-chip ${audioMode === "parts" ? "active" : ""}`} onClick={() => setAudioMode("parts")}>One audio per section</button>
-          </div>
-          {audioMode === "single" ? (
-            <div className="feedback-panel" style={{ marginTop: 10 }}>
-              <label className="field-label" style={{ marginTop: 0 }}>Recording for the whole test</label>
-              <AudioFilePicker teacherId={teacherId} value={singleAudio} onChange={(f) => setSingleAudio(f || null)} />
-              {audioMissing && <div className="qe-imp-issue qe-imp-issue-error"><XCircle size={13} /> Add the recording for this test.</div>}
-              <label className="checkbox-row" style={{ marginTop: 14 }}>
-                <input type="checkbox" checked={examMode} onChange={(e) => setExamMode(e.target.checked)} />
-                Exam mode: one listening only, no pause and no rewind
-              </label>
-              {inExam && !examMode && (
-                <p className="qe-exam-warn">This paper is part of an exam, but candidates will be able to pause and replay the recording.</p>
-              )}
-              <label className="field-label" style={{ marginTop: 14 }}>Checking time after the recording (minutes)</label>
-              <input type="number" min="0" max="30" className="field-input" style={{ maxWidth: 160 }} value={checkMinutes} onChange={(e) => setCheckMinutes(e.target.value)} />
-              <p className="field-hint" style={{ marginTop: 2 }}>0 = students submit when they want.</p>
-            </div>
-          ) : (
-            <p className="field-hint" style={{ marginTop: 2 }}>Each section has its own file, added below.</p>
-          )}
+          <button className="btn-ghost" onClick={() => setStep("input")} disabled={creating}><ArrowLeft size={14} /> Back to the pasted text</button>
+          {createButton}
         </>
-      )}
-
-      {view.map(({ part, partIssues, groups }, pi) => (
-        <div key={part.id} className="qe-imp-part">
-          <div className="qe-imp-part-head">
-            <h3 className="section-title" style={{ margin: 0 }}>Part {pi + 1}</h3>
-            {part.heading && <span className="qe-imp-muted">{part.heading}</span>}
-          </div>
-          {partIssues.map((i, k) => <div key={k} className="qe-imp-issue qe-imp-issue-error"><XCircle size={13} /> {i.msg}</div>)}
-
-          {skill === "reading" ? (
-            <>
-              <label className="field-label" style={{ marginTop: 12 }}>Passage title</label>
-              <input className="field-input" value={part.passageTitle} onChange={(e) => patchPart(part.id, { passageTitle: e.target.value })} />
-              <label className="field-label" style={{ marginTop: 12 }}>Passage</label>
-              <textarea id={`imp-passage-${part.id}`} className="field-input textarea qe-imp-passage" value={part.passageText} onChange={(e) => patchPart(part.id, { passageText: e.target.value })} />
-              <PassageImageTools
-                teacherId={teacherId}
-                text={part.passageText}
-                textareaId={`imp-passage-${part.id}`}
-                onChange={(text) => patchPart(part.id, { passageText: text })}
-                resolveImage={resolveImage}
-              />
-              {imageUrlsIn(part.passageText).length > 0 && (
-                <div className="qe-builder-preview">
-                  <div className="qe-builder-preview-tag">Passage preview</div>
-                  <PassageView text={part.passageText} resolveImage={resolveImage} />
-                </div>
-              )}
-            </>
-          ) : (
-            audioMode === "parts" && (
-            <>
-              <label className="field-label" style={{ marginTop: 12 }}>Audio file</label>
-              <AudioFilePicker
-                teacherId={teacherId}
-                value={part.audioUrl ? { url: part.audioUrl, filename: part.audioFilename } : null}
-                onChange={(f) => patchPart(part.id, { audioUrl: f?.url || "", audioFilename: f?.filename || "" })}
-              />
-              <label className="field-label" style={{ marginTop: 12 }}>Plays allowed (leave blank for unlimited)</label>
-              <input type="number" min="1" className="field-input" style={{ maxWidth: 160 }} placeholder="Unlimited" value={part.maxPlays} onChange={(e) => patchPart(part.id, { maxPlays: e.target.value })} />
-              {inExam && !part.maxPlays && (
-                <p className="qe-exam-warn">This paper is part of an exam, but candidates will be able to replay this section as often as they like.</p>
-              )}
-            </>
-            )
-          )}
-
-          {groups.map(({ group, analysis, resolved, issues, status }) => {
-            const instrValue = instructions[group.id] !== undefined ? instructions[group.id] : analysis.instruction || defaultImportInstruction(analysis);
-            const numbers = [];
-            for (let n = group.start; n <= group.end; n++) numbers.push(n);
-            const errorByNumber = Object.fromEntries(resolved.map((r) => [r.number, r.error]));
-            const multi = analysis.type === "multi";
-            return (
-              <div key={group.id} className={`qe-imp-group qe-imp-group-${status}`}>
-                <div className="qe-imp-group-head">
-                  <strong>{group.start === group.end ? `Question ${group.start}` : `Questions ${group.start}–${group.end}`}</strong>
-                  <StatusChip status={status} />
-                  <select
-                    className="field-input qe-imp-type"
-                    value={analysis.type}
-                    onChange={(e) => patchGroup(part.id, group.id, { type: e.target.value === analysis.detectedType ? null : e.target.value })}
-                    aria-label="Question type"
-                  >
-                    {IMPORT_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}{t.value === analysis.detectedType && t.value !== "unknown" ? " (detected)" : ""}</option>)}
-                  </select>
-                  <button type="button" className="btn-ghost qe-imp-remove" onClick={() => removeGroup(part.id, group.id)}>Remove</button>
-                </div>
-
-                {issues.length > 0 && (
-                  <div className="qe-imp-issues">
-                    {issues.map((i, k) => (
-                      <div key={k} className={`qe-imp-issue qe-imp-issue-${i.level}`}>
-                        {i.level === "error" ? <XCircle size={13} /> : <AlertTriangle size={13} />} {i.msg}
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                <label className="field-label" style={{ marginTop: 10 }}>Instructions shown to students</label>
-                <textarea className="field-input textarea" style={{ minHeight: 70 }} value={instrValue} onChange={(e) => setInstructions((prev) => ({ ...prev, [group.id]: e.target.value }))} />
-
-                {(analysis.type === "info" || analysis.type === "map") && (
-                  <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                    <span className="field-label" style={{ margin: 0 }}>Letters: A to</span>
-                    <select className="field-input" style={{ maxWidth: 80 }} value={analysis.letters?.[analysis.letters.length - 1] || "H"} onChange={(e) => patchGroup(part.id, group.id, { lastLetter: e.target.value })}>
-                      {LAST_LETTERS.map((l) => <option key={l} value={l}>{l}</option>)}
-                    </select>
-                  </div>
-                )}
-
-                {analysis.needsImage || group.imageUrl || group.showImagePicker ? (
-                  <GroupImagePicker
-                    teacherId={teacherId}
-                    value={group.imageUrl}
-                    previewUrl={resolveImage(group.imageUrl)}
-                    onChange={(url) => patchGroup(part.id, group.id, { imageUrl: url, extraImages: 0 })}
-                    label={analysis.needsImage ? "Map / plan / diagram image" : "Image for this group (optional)"}
-                    required={analysis.needsImage}
-                    hint="Take a screenshot of the image in your file and upload it here."
-                  />
-                ) : (
-                  <button type="button" className="btn-ghost" style={{ marginTop: 8 }} onClick={() => patchGroup(part.id, group.id, { showImagePicker: true })}>
-                    <ImagePlus size={13} /> Add an image to this group
-                  </button>
-                )}
-
-                <div className="qe-builder-preview">
-                  <div className="qe-builder-preview-tag">Student preview</div>
-                  {group.imageUrl && resolveImage(group.imageUrl) && <GroupImage url={resolveImage(group.imageUrl)} allowBlob />}
-                  <GroupPreview analysis={analysis} groupId={group.id} />
-                </div>
-
-                <div className="qe-imp-answers">
-                  <div className="field-label" style={{ marginTop: 0 }}>Answers {multi ? `(${analysis.questions[0]?.options?.required_count || 2} letters in total)` : ""}</div>
-                  <div className="qe-imp-answer-grid">
-                    {numbers.map((n) => (
-                      <label key={n} className={`qe-imp-answer ${!multi && errorByNumber[n] ? "has-error" : ""}`}>
-                        <span className="qe-imp-answer-num">{n}</span>
-                        <input
-                          className="field-input"
-                          value={answers[n] ?? ""}
-                          onChange={(e) => setAnswers((prev) => ({ ...prev, [n]: e.target.value }))}
-                          placeholder="answer"
-                          spellCheck={false}
-                        />
-                        {!multi && errorByNumber[n] && <span className="qe-imp-answer-err">{errorByNumber[n]}</span>}
-                      </label>
-                    ))}
-                  </div>
-                  {multi && errorByNumber[group.start] && <div className="qe-imp-answer-err">{errorByNumber[group.start]}</div>}
-                  <p className="field-hint" style={{ marginBottom: 0 }}>
-                    {analysis.questions[0]?.dbType === "gap_fill" && !analysis.questions[0]?.options?.word_bank
-                      ? "Several accepted answers: separate them with / (e.g. river/the river). Words in brackets are optional: (the) river."
-                      : analysis.type === "tfng" || analysis.type === "ynng"
-                      ? `Write ${analysis.type === "ynng" ? "YES, NO" : "TRUE, FALSE"} or NOT GIVEN (short forms like T, F, NG also work).`
-                      : analysis.type === "headings"
-                      ? "Write the heading number: i, ii, iii…"
-                      : "Write the correct letter."}
-                  </p>
-                </div>
-
-                <button type="button" className="btn-ghost" style={{ marginTop: 10 }} onClick={() => setEditing((prev) => ({ ...prev, [group.id]: !prev[group.id] }))}>
-                  <Pencil size={13} /> {editing[group.id] ? "Hide the text of this group" : "Edit the text of this group"}
-                </button>
-                {editing[group.id] && (
-                  <>
-                    <p className="field-hint" style={{ marginBottom: 6 }}>Fix a line here and the preview updates immediately. Keep the question numbers (e.g. "5 …………").</p>
-                    <textarea className="field-input textarea qe-imp-source" value={group.source} onChange={(e) => patchGroup(part.id, group.id, { source: e.target.value })} />
-                  </>
-                )}
-              </div>
-            );
+      }
+      notice={<Stepper steps={STEPS} current={1} />}
+      nav={
+        <PartsNav
+          items={view.map(({ part, groups }, pi) => {
+            const st = partState(pi);
+            return {
+              id: `imp-part-${part.id}`,
+              label: `Part ${pi + 1}${part.heading ? ` · ${part.heading}` : ""}`,
+              sub: `${groups.length} group${groups.length === 1 ? "" : "s"}${st.fix ? ` · ${st.fix} to fix` : st.warn ? ` · ${st.warn} to check` : " · ready"}`,
+              ok: !st.bad,
+            };
           })}
+        />
+      }
+      settings={
+        <>
+          <label className="field-label">Title</label>
+          <input className="field-input" placeholder="e.g. IELTS Practice Test 1" value={title} onChange={(e) => setTitle(e.target.value)} />
+          <div className="bl-row2">
+            <div>
+              <label className="field-label">Due date (optional)</label>
+              <input type="date" className="field-input" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+            </div>
+            <div>
+              <label className="field-label">Due time (optional)</label>
+              <input type="time" className="field-input" value={dueTime} onChange={(e) => setDueTime(e.target.value)} />
+            </div>
+            <div>
+              <label className="field-label">Time limit, minutes</label>
+              <input type="number" min="1" className="field-input" placeholder="e.g. 60" value={timeLimit} onChange={(e) => setTimeLimit(e.target.value)} />
+            </div>
+          </div>
+          <label className="checkbox-row" style={{ marginTop: 14 }}>
+            <input type="checkbox" checked={autoReleaseScore} onChange={(e) => setAutoReleaseScore(e.target.checked)} />
+            Show students their score right after they submit
+          </label>
+          <label className="checkbox-row" style={{ marginTop: 8 }}>
+            <input type="checkbox" checked={showAnswerReview} onChange={(e) => setShowAnswerReview(e.target.checked)} />
+            Let students see which answers were correct/incorrect, with the correct answer
+          </label>
+        </>
+      }
+      checklist={
+        <Checklist items={[
+          { label: `${counts.ok} group${counts.ok === 1 ? "" : "s"} ready (${totalQuestions} questions)`, ok: allGroups.length > 0 && counts.ok > 0 },
+          { label: counts.warn ? `${counts.warn} to check (orange)` : "Nothing to check", ok: counts.warn === 0 },
+          { label: counts.error ? `${counts.error} to fix (red)` : "Nothing to fix", ok: counts.error === 0 },
+          ...(skill === "listening" && audioMode === "single" ? [{ label: "Recording for the whole test", ok: !audioMissing }] : []),
+        ]} />
+      }
+      footer={
+        <>
+          {error && <div className="field-error" style={{ marginTop: 12 }}>{error}</div>}
+
+          <div className="qe-imp-footer">
+            <button className="btn-primary" disabled={!canCreate} onClick={create}>
+              {creating ? progress || "Saving…" : `Create assignment (${totalQuestions} questions)`}
+            </button>
+            {!creating && counts.error > 0 && <span className="qe-imp-muted">Fix the {counts.error} red item{counts.error > 1 ? "s" : ""} first.</span>}
+          </div>
+        </>
+      }
+    >
+        <div className="qe-imp-summary">
+          <span><strong>{view.length}</strong> part{view.length > 1 ? "s" : ""}</span>
+          <span><strong>{allGroups.length}</strong> group{allGroups.length > 1 ? "s" : ""}</span>
+          <span><strong>{totalQuestions}</strong> question{totalQuestions > 1 ? "s" : ""}</span>
+          <span className="qe-imp-chip qe-imp-chip-ok"><CheckCircle2 size={13} /> {counts.ok} ready</span>
+          <span className="qe-imp-chip qe-imp-chip-warn"><AlertTriangle size={13} /> {counts.warn} to check</span>
+          <span className="qe-imp-chip qe-imp-chip-error"><XCircle size={13} /> {counts.error} to fix</span>
         </div>
-      ))}
+        <p className="field-hint">Nothing is saved yet. Fix every red item, check the orange ones, then create the assignment at the bottom of the page.</p>
+        {skill === "listening" && (
+          <>
+            <label className="field-label" style={{ marginTop: 0 }}>Audio</label>
+            <div className="type-row">
+              <button type="button" className={`type-chip ${audioMode === "single" ? "active" : ""}`} onClick={() => setAudioMode("single")}>One audio for the whole test</button>
+              <button type="button" className={`type-chip ${audioMode === "parts" ? "active" : ""}`} onClick={() => setAudioMode("parts")}>One audio per section</button>
+            </div>
+            {audioMode === "single" ? (
+              <div className="feedback-panel" style={{ marginTop: 10 }}>
+                <label className="field-label" style={{ marginTop: 0 }}>Recording for the whole test</label>
+                <AudioFilePicker teacherId={teacherId} value={singleAudio} onChange={(f) => setSingleAudio(f || null)} />
+                {audioMissing && <div className="qe-imp-issue qe-imp-issue-error"><XCircle size={13} /> Add the recording for this test.</div>}
+                <label className="checkbox-row" style={{ marginTop: 14 }}>
+                  <input type="checkbox" checked={examMode} onChange={(e) => setExamMode(e.target.checked)} />
+                  Exam mode: one listening only, no pause and no rewind
+                </label>
+                {inExam && !examMode && (
+                  <p className="qe-exam-warn">This paper is part of an exam, but candidates will be able to pause and replay the recording.</p>
+                )}
+                <label className="field-label" style={{ marginTop: 14 }}>Checking time after the recording (minutes)</label>
+                <input type="number" min="0" max="30" className="field-input" style={{ maxWidth: 160 }} value={checkMinutes} onChange={(e) => setCheckMinutes(e.target.value)} />
+                <p className="field-hint" style={{ marginTop: 2 }}>0 = students submit when they want.</p>
+              </div>
+            ) : (
+              <p className="field-hint" style={{ marginTop: 2 }}>Each section has its own file, added below.</p>
+            )}
+          </>
+        )}
+        {view.map(({ part, partIssues, groups }, pi) => (
+          <div key={part.id} id={`imp-part-${part.id}`} className="qe-imp-part">
+            <div className="qe-imp-part-head">
+              <h3 className="section-title" style={{ margin: 0 }}>Part {pi + 1}</h3>
+              {part.heading && <span className="qe-imp-muted">{part.heading}</span>}
+            </div>
+            {partIssues.map((i, k) => <div key={k} className="qe-imp-issue qe-imp-issue-error"><XCircle size={13} /> {i.msg}</div>)}
 
-      {error && <div className="field-error" style={{ marginTop: 16 }}>{error}</div>}
+            {skill === "reading" ? (
+              <>
+                <label className="field-label" style={{ marginTop: 12 }}>Passage title</label>
+                <input className="field-input" value={part.passageTitle} onChange={(e) => patchPart(part.id, { passageTitle: e.target.value })} />
+                <label className="field-label" style={{ marginTop: 12 }}>Passage</label>
+                <textarea id={`imp-passage-${part.id}`} className="field-input textarea qe-imp-passage" value={part.passageText} onChange={(e) => patchPart(part.id, { passageText: e.target.value })} />
+                <PassageImageTools
+                  teacherId={teacherId}
+                  text={part.passageText}
+                  textareaId={`imp-passage-${part.id}`}
+                  onChange={(text) => patchPart(part.id, { passageText: text })}
+                  resolveImage={resolveImage}
+                />
+                {imageUrlsIn(part.passageText).length > 0 && (
+                  <div className="qe-builder-preview">
+                    <div className="qe-builder-preview-tag">Passage preview</div>
+                    <PassageView text={part.passageText} resolveImage={resolveImage} />
+                  </div>
+                )}
+              </>
+            ) : (
+              audioMode === "parts" && (
+              <>
+                <label className="field-label" style={{ marginTop: 12 }}>Audio file</label>
+                <AudioFilePicker
+                  teacherId={teacherId}
+                  value={part.audioUrl ? { url: part.audioUrl, filename: part.audioFilename } : null}
+                  onChange={(f) => patchPart(part.id, { audioUrl: f?.url || "", audioFilename: f?.filename || "" })}
+                />
+                <label className="field-label" style={{ marginTop: 12 }}>Plays allowed (leave blank for unlimited)</label>
+                <input type="number" min="1" className="field-input" style={{ maxWidth: 160 }} placeholder="Unlimited" value={part.maxPlays} onChange={(e) => patchPart(part.id, { maxPlays: e.target.value })} />
+                {inExam && !part.maxPlays && (
+                  <p className="qe-exam-warn">This paper is part of an exam, but candidates will be able to replay this section as often as they like.</p>
+                )}
+              </>
+              )
+            )}
 
-      <div className="qe-imp-footer">
-        <button className="btn-primary" disabled={!canCreate} onClick={create}>
-          {creating ? progress || "Saving…" : `Create assignment (${totalQuestions} questions)`}
-        </button>
-        {!creating && counts.error > 0 && <span className="qe-imp-muted">Fix the {counts.error} red item{counts.error > 1 ? "s" : ""} first.</span>}
-      </div>
-    </div>
+            {groups.map(({ group, analysis, resolved, issues, status }) => {
+              const instrValue = instructions[group.id] !== undefined ? instructions[group.id] : analysis.instruction || defaultImportInstruction(analysis);
+              const numbers = [];
+              for (let n = group.start; n <= group.end; n++) numbers.push(n);
+              const errorByNumber = Object.fromEntries(resolved.map((r) => [r.number, r.error]));
+              const multi = analysis.type === "multi";
+              return (
+                <div key={group.id} className={`qe-imp-group qe-imp-group-${status}`}>
+                  <div className="qe-imp-group-head">
+                    <strong>{group.start === group.end ? `Question ${group.start}` : `Questions ${group.start}–${group.end}`}</strong>
+                    <StatusChip status={status} />
+                    <select
+                      className="field-input qe-imp-type"
+                      value={analysis.type}
+                      onChange={(e) => patchGroup(part.id, group.id, { type: e.target.value === analysis.detectedType ? null : e.target.value })}
+                      aria-label="Question type"
+                    >
+                      {IMPORT_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}{t.value === analysis.detectedType && t.value !== "unknown" ? " (detected)" : ""}</option>)}
+                    </select>
+                    <button type="button" className="btn-ghost qe-imp-remove" onClick={() => removeGroup(part.id, group.id)}>Remove</button>
+                  </div>
+
+                  {issues.length > 0 && (
+                    <div className="qe-imp-issues">
+                      {issues.map((i, k) => (
+                        <div key={k} className={`qe-imp-issue qe-imp-issue-${i.level}`}>
+                          {i.level === "error" ? <XCircle size={13} /> : <AlertTriangle size={13} />} {i.msg}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <label className="field-label" style={{ marginTop: 10 }}>Instructions shown to students</label>
+                  <textarea className="field-input textarea" style={{ minHeight: 70 }} value={instrValue} onChange={(e) => setInstructions((prev) => ({ ...prev, [group.id]: e.target.value }))} />
+
+                  {(analysis.type === "info" || analysis.type === "map") && (
+                    <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                      <span className="field-label" style={{ margin: 0 }}>Letters: A to</span>
+                      <select className="field-input" style={{ maxWidth: 80 }} value={analysis.letters?.[analysis.letters.length - 1] || "H"} onChange={(e) => patchGroup(part.id, group.id, { lastLetter: e.target.value })}>
+                        {LAST_LETTERS.map((l) => <option key={l} value={l}>{l}</option>)}
+                      </select>
+                    </div>
+                  )}
+
+                  {analysis.needsImage || group.imageUrl || group.showImagePicker ? (
+                    <GroupImagePicker
+                      teacherId={teacherId}
+                      value={group.imageUrl}
+                      previewUrl={resolveImage(group.imageUrl)}
+                      onChange={(url) => patchGroup(part.id, group.id, { imageUrl: url, extraImages: 0 })}
+                      label={analysis.needsImage ? "Map / plan / diagram image" : "Image for this group (optional)"}
+                      required={analysis.needsImage}
+                      hint="Take a screenshot of the image in your file and upload it here."
+                    />
+                  ) : (
+                    <button type="button" className="btn-ghost" style={{ marginTop: 8 }} onClick={() => patchGroup(part.id, group.id, { showImagePicker: true })}>
+                      <ImagePlus size={13} /> Add an image to this group
+                    </button>
+                  )}
+
+                  <div className="qe-builder-preview">
+                    <div className="qe-builder-preview-tag">Student preview</div>
+                    {group.imageUrl && resolveImage(group.imageUrl) && <GroupImage url={resolveImage(group.imageUrl)} allowBlob />}
+                    <GroupPreview analysis={analysis} groupId={group.id} />
+                  </div>
+
+                  <div className="qe-imp-answers">
+                    <div className="field-label" style={{ marginTop: 0 }}>Answers {multi ? `(${analysis.questions[0]?.options?.required_count || 2} letters in total)` : ""}</div>
+                    <div className="qe-imp-answer-grid">
+                      {numbers.map((n) => (
+                        <label key={n} className={`qe-imp-answer ${!multi && errorByNumber[n] ? "has-error" : ""}`}>
+                          <span className="qe-imp-answer-num">{n}</span>
+                          <input
+                            className="field-input"
+                            value={answers[n] ?? ""}
+                            onChange={(e) => setAnswers((prev) => ({ ...prev, [n]: e.target.value }))}
+                            placeholder="answer"
+                            spellCheck={false}
+                          />
+                          {!multi && errorByNumber[n] && <span className="qe-imp-answer-err">{errorByNumber[n]}</span>}
+                        </label>
+                      ))}
+                    </div>
+                    {multi && errorByNumber[group.start] && <div className="qe-imp-answer-err">{errorByNumber[group.start]}</div>}
+                    <p className="field-hint" style={{ marginBottom: 0 }}>
+                      {analysis.questions[0]?.dbType === "gap_fill" && !analysis.questions[0]?.options?.word_bank
+                        ? "Several accepted answers: separate them with / (e.g. river/the river). Words in brackets are optional: (the) river."
+                        : analysis.type === "tfng" || analysis.type === "ynng"
+                        ? `Write ${analysis.type === "ynng" ? "YES, NO" : "TRUE, FALSE"} or NOT GIVEN (short forms like T, F, NG also work).`
+                        : analysis.type === "headings"
+                        ? "Write the heading number: i, ii, iii…"
+                        : "Write the correct letter."}
+                    </p>
+                  </div>
+
+                  <button type="button" className="btn-ghost" style={{ marginTop: 10 }} onClick={() => setEditing((prev) => ({ ...prev, [group.id]: !prev[group.id] }))}>
+                    <Pencil size={13} /> {editing[group.id] ? "Hide the text of this group" : "Edit the text of this group"}
+                  </button>
+                  {editing[group.id] && (
+                    <>
+                      <p className="field-hint" style={{ marginBottom: 6 }}>Fix a line here and the preview updates immediately. Keep the question numbers (e.g. "5 …………").</p>
+                      <textarea className="field-input textarea qe-imp-source" value={group.source} onChange={(e) => patchGroup(part.id, group.id, { source: e.target.value })} />
+                    </>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        ))}
+    </BuilderLayout>
   );
 }
