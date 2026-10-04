@@ -98,15 +98,39 @@ export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen,
     })();
   }, [studentId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Livraison 82: the page's reads are asked at the same time (before:
+  // up to 12 requests one after the other). Same reads, same rights, same
+  // results; the class name and the students' work follow right after.
   const load = useCallback(async () => {
-    const { data: a } = await supabase.from("assignments").select("*").eq("id", assignmentId).single();
+    const [{ data: a }, { data: item }, { data: r }, { count: sectionCount }, targetsRes] = await Promise.all([
+      supabase.from("assignments").select("*").eq("id", assignmentId).single(),
+      // Livraison 69: its exam, if any, and the names for the breadcrumb.
+      supabase
+        .from("exam_session_items")
+        .select("session_id, exam_sessions(name, opened_at, closed_at, opens_at, closes_at, results_released_at)")
+        .eq("assignment_id", assignmentId)
+        .maybeSingle(),
+      supabase.from("roster").select("student_id, profiles(name)").eq("class_id", classId),
+      // Reliable check: assignment.type alone can't tell a Question Engine
+      // assignment apart from an old-style one — "Reading"/"Listening" are
+      // valid types in both systems. Presence of exam_sections is what
+      // actually distinguishes them (same check AssignmentOpenBridge uses).
+      supabase
+        .from("exam_sections")
+        .select("id", { count: "exact", head: true })
+        .eq("assignment_id", assignmentId),
+      // Where this paper can be copied: my classes, and the exams I am on
+      // the team of that have not started yet (the database decides).
+      teacherId ? supabase.rpc("duplicate_targets") : Promise.resolve(null),
+    ]);
     setAssignment(a || null);
-    // Livraison 69: its exam, if any, and the names for the breadcrumb.
-    const { data: item } = await supabase
-      .from("exam_session_items")
-      .select("session_id, exam_sessions(name, opened_at, closed_at, opens_at, closes_at, results_released_at)")
-      .eq("assignment_id", assignmentId)
-      .maybeSingle();
+    const people = (r || []).map((x) => ({ id: x.student_id, name: x.profiles?.name || "Unknown" }));
+    setRoster(people);
+    const structured = (sectionCount || 0) > 0;
+    setIsStructured(structured);
+    if (targetsRes) setMyClasses(Array.isArray(targetsRes.data) ? targetsRes.data : []);
+
+    let className = null;
     if (item?.session_id) {
       const e = item.exam_sessions || {};
       const now = Date.now();
@@ -119,39 +143,19 @@ export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen,
       setHomeName(e.name || "Exam");
     } else {
       setExam(null);
-      if (a?.class_id) {
-        const { data: c } = await supabase.from("classes").select("name").eq("id", a.class_id).maybeSingle();
-        setHomeName(c?.name || "Class");
-      }
+      if (a?.class_id) className = supabase.from("classes").select("name").eq("id", a.class_id).maybeSingle();
     }
-    const { data: r } = await supabase.from("roster").select("student_id, profiles(name)").eq("class_id", classId);
-    const people = (r || []).map((x) => ({ id: x.student_id, name: x.profiles?.name || "Unknown" }));
-    setRoster(people);
-
-    // Reliable check: assignment.type alone can't tell a Question Engine
-    // assignment apart from an old-style one — "Reading"/"Listening" are
-    // valid types in both systems. Presence of exam_sections is what
-    // actually distinguishes them (same check AssignmentOpenBridge uses).
-    const { count: sectionCount } = await supabase
-      .from("exam_sections")
-      .select("id", { count: "exact", head: true })
-      .eq("assignment_id", assignmentId);
-    const structured = (sectionCount || 0) > 0;
-    setIsStructured(structured);
 
     // Livraison 73: one reader for the statuses, times and results (same
     // "handed in" rules as before and as the class page).
-    if (a) {
-      const w = await loadAssignmentWork({ assignment: a, roster: people, structured });
+    const [cls, w] = await Promise.all([
+      className,
+      a ? loadAssignmentWork({ assignment: a, roster: people, structured }) : null,
+    ]);
+    if (cls) setHomeName(cls.data?.name || "Class");
+    if (w) {
       setWork(w);
       setStructuredStudentIds(new Set(w.rows.filter((x) => x.open).map((x) => x.id)));
-    }
-
-    // Where this paper can be copied: my classes, and the exams I am on
-    // the team of that have not started yet (the database decides).
-    if (teacherId) {
-      const { data: targets } = await supabase.rpc("duplicate_targets");
-      setMyClasses(Array.isArray(targets) ? targets : []);
     }
   }, [classId, assignmentId, teacherId]);
 
