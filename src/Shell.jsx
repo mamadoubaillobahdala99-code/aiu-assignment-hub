@@ -1,33 +1,38 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, Suspense } from "react";
 import { BookOpen, Users, Plus, Check, Clock, AlertTriangle, LogOut, GraduationCap, FileText, ChevronRight, X, Copy, CheckCircle2, Headphones, PenLine, Mic, ListChecks, ArrowLeft, Loader2, Timer, Highlighter, Maximize, Minimize, User, Menu, ShieldCheck, Home, LayoutDashboard } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import { TeacherHome } from "./features/assignment-hub/TeacherHome";
 import { TeacherDashboard } from "./features/assignment-hub/TeacherDashboard";
-import { ClassDetail } from "./features/assignment-hub/ClassDetail";
-import { AssignmentTeacher } from "./features/assignment-hub/AssignmentTeacher";
 import { JoinClass } from "./features/assignment-hub/JoinClass";
 import { StudentAssignments } from "./features/assignment-hub/StudentHome";
 import { StudentDashboard } from "./features/assignment-hub/StudentDashboard";
 import { StudentClasses } from "./features/assignment-hub/StudentClasses";
 import { StudentClassDetail } from "./features/assignment-hub/StudentClassDetail";
 import { Profile } from "./features/assignment-hub/Profile";
-import { AdminConsole } from "./features/admin/AdminConsole";
 import { AssignmentOpenBridge } from "./features/question-engine/AssignmentOpenBridge";
-import { TeacherReadingBuilder } from "./features/question-engine/TeacherReadingBuilder";
-import { TeacherListeningBuilder } from "./features/question-engine/TeacherListeningBuilder";
-import { TestImporter } from "./features/question-engine/TestImporter";
-import { PaperEditor } from "./features/question-engine/PaperEditor";
-import { ExamSessionsHome } from "./features/exam-sessions/ExamSessionsHome";
-import { ExamSessionDetail } from "./features/exam-sessions/ExamSessionDetail";
 import { StudentExamSession } from "./features/exam-sessions/StudentExamSession";
 import { useIsCompact } from "./features/question-engine/useViewport";
-import { TeacherWritingBuilder } from "./features/question-engine/TeacherWritingBuilder";
-import { TeacherSpeakingBuilder } from "./features/question-engine/TeacherSpeakingBuilder";
 import "./features/question-engine/reading-builder.css";
 import "./features/question-engine/listening.css";
 import "./features/question-engine/writing.css";
 import "./features/question-engine/speaking.css";
 import "./features/exam-sessions/exam-sessions.css";
+import { lazyScreen } from "./lib/lazyScreen";
+import { CenterSpinner } from "./components/shared";
+
+// Livraison 83: the teacher's screens are fetched when first opened (see lazyScreen).
+const ClassDetail = lazyScreen(() => import("./features/assignment-hub/ClassDetail"), "ClassDetail");
+const AssignmentTeacher = lazyScreen(() => import("./features/assignment-hub/AssignmentTeacher"), "AssignmentTeacher");
+const AdminConsole = lazyScreen(() => import("./features/admin/AdminConsole"), "AdminConsole");
+const TeacherReadingBuilder = lazyScreen(() => import("./features/question-engine/TeacherReadingBuilder"), "TeacherReadingBuilder");
+const TeacherListeningBuilder = lazyScreen(() => import("./features/question-engine/TeacherListeningBuilder"), "TeacherListeningBuilder");
+const TestImporter = lazyScreen(() => import("./features/question-engine/TestImporter"), "TestImporter");
+const PaperEditor = lazyScreen(() => import("./features/question-engine/PaperEditor"), "PaperEditor");
+const ExamSessionsHome = lazyScreen(() => import("./features/exam-sessions/ExamSessionsHome"), "ExamSessionsHome");
+const ExamSessionDetail = lazyScreen(() => import("./features/exam-sessions/ExamSessionDetail"), "ExamSessionDetail");
+const TeacherWritingBuilder = lazyScreen(() => import("./features/question-engine/TeacherWritingBuilder"), "TeacherWritingBuilder");
+const TeacherSpeakingBuilder = lazyScreen(() => import("./features/question-engine/TeacherSpeakingBuilder"), "TeacherSpeakingBuilder");
+const TEACHER_SCREENS = [ClassDetail, AssignmentTeacher, AdminConsole, TeacherReadingBuilder, TeacherListeningBuilder, TestImporter, PaperEditor, ExamSessionsHome, ExamSessionDetail, TeacherWritingBuilder, TeacherSpeakingBuilder];
 
 // Every screen the app can show, and who is allowed on it. Since the
 // screen now travels in the address bar (see App.jsx), anyone can type a
@@ -75,6 +80,14 @@ export function Shell({ profile, setProfile, userId, onSignOut, screen: rawScree
   const allowed = role === "both" || (role === "teacher") === isTeacher;
   const screen = role && allowed ? rawScreen : { name: "home" };
   const [isFullscreen, setIsFullscreen] = useState(false);
+  // Livraison 83: a teacher's screens are fetched quietly in the background
+  // a moment after sign-in, so opening them later is instant. A student
+  // never downloads them.
+  useEffect(() => {
+    if (!isTeacher) return;
+    const t = setTimeout(() => TEACHER_SCREENS.forEach((x) => x.preload()), 2000);
+    return () => clearTimeout(t);
+  }, [isTeacher]);
 
   // Livraison 66: no "Admin" entry in the menu any more — the
   // administrator reaches that screen from the bottom of their Profile
@@ -203,6 +216,7 @@ export function Shell({ profile, setProfile, userId, onSignOut, screen: rawScree
             Assignment Hub
           </div>
         )}
+        <Suspense fallback={<CenterSpinner />}>
         {screen.name === "dashboard" && isTeacher && <TeacherDashboard userId={userId} profile={profile} setScreen={setScreen} showToast={showToast} />}
         {screen.name === "reading-builder" && isTeacher && (
           <TeacherReadingBuilder classId={screen.classId} teacherId={userId} setScreen={setScreen} showToast={showToast} editAssignmentId={screen.editAssignmentId} returnTo={screen.returnTo} />
@@ -244,6 +258,7 @@ export function Shell({ profile, setProfile, userId, onSignOut, screen: rawScree
         {screen.name === "assignment-student" && !isTeacher && (
           <AssignmentOpenBridge userId={userId} classId={screen.classId} assignmentId={screen.assignmentId} setScreen={setScreen} showToast={showToast} />
         )}
+        </Suspense>
       </main>
     </div>
   );
