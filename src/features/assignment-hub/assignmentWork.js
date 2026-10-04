@@ -1,6 +1,7 @@
 import { supabase } from "../../supabaseClient";
 import { numberQuestions } from "../question-engine/bulkParse";
 import { computeIeltsBand } from "../question-engine/bandConversion";
+import { loadPaperTree } from "../question-engine/paperTree";
 
 // Livraison 73 — what the teacher's page of ONE assignment shows about
 // its students: status, when, result — and, for Reading / Listening,
@@ -34,11 +35,16 @@ export async function loadAssignmentWork({ assignment, roster, structured }) {
     return out;
   }
 
-  const { data: fb } = await supabase.from("assignment_feedback").select("student_id, band, released_at").eq("assignment_id", id);
-  const feedback = new Map((fb || []).map((f) => [f.student_id, f]));
+  // Livraison 82: everything this page needs is asked at the same time
+  // (before: up to 6 requests one after the other). Same reads, same rights.
+  const feedbackQuery = supabase.from("assignment_feedback").select("student_id, band, released_at").eq("assignment_id", id);
 
   if (type === "Writing") {
-    const { data: wr } = await supabase.from("writing_responses").select("student_id, created_at, submitted_at").eq("assignment_id", id);
+    const [{ data: fb }, { data: wr }] = await Promise.all([
+      feedbackQuery,
+      supabase.from("writing_responses").select("student_id, created_at, submitted_at").eq("assignment_id", id),
+    ]);
+    const feedback = new Map((fb || []).map((f) => [f.student_id, f]));
     for (const w of wr || []) {
       const r = byStudent.get(w.student_id); if (!r) continue;
       if (w.submitted_at) {
@@ -59,33 +65,29 @@ export async function loadAssignmentWork({ assignment, roster, structured }) {
   }
 
   // Reading / Listening: the paper's questions, in the paper's order and
-  // with its numbers (a multi-answer question takes several numbers).
-  const { data: secs } = await supabase.from("exam_sections").select("id, order_index").eq("assignment_id", id);
-  const secIds = (secs || []).map((s) => s.id);
-  const { data: groups } = secIds.length
-    ? await supabase.from("question_groups").select("id, section_id, order_index").in("section_id", secIds)
-    : { data: [] };
-  const gIds = (groups || []).map((g) => g.id);
-  const { data: links } = gIds.length
-    ? await supabase.from("assignment_questions").select("group_id, order_index, question_id, questions(id, type, prompt, points, options)").in("group_id", gIds)
-    : { data: [] };
-  const secOrder = new Map((secs || []).map((s) => [s.id, s.order_index ?? 0]));
-  const orderedGroups = [...(groups || [])].sort((a, b) => (secOrder.get(a.section_id) - secOrder.get(b.section_id)) || ((a.order_index ?? 0) - (b.order_index ?? 0)));
+  // with its numbers (a multi-answer question takes several numbers) —
+  // the whole paper in one call (get_paper, the teacher's own rights),
+  // with the feedback, the answers and the copies, all at once.
+  const [{ data: fb }, paper, { data: sa }, { data: att }] = await Promise.all([
+    feedbackQuery,
+    loadPaperTree(id, { withKeys: false }),
+    supabase.from("student_answers").select("student_id, question_id, is_correct, points_earned, answered_at").eq("assignment_id", id),
+    supabase.from("exam_attempts").select("student_id, started_at, submitted_at").eq("assignment_id", id),
+  ]);
+  const feedback = new Map((fb || []).map((f) => [f.student_id, f]));
   const questions = [];
   let next = 1;
-  for (const g of orderedGroups) {
-    const qs = (links || []).filter((l) => l.group_id === g.id && l.questions).sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0)).map((l) => l.questions);
-    const { numbers, nextStart } = numberQuestions(qs, next);
-    qs.forEach((q, i) => questions.push({ ...q, number: numbers[i], correct: 0 }));
-    next = nextStart;
+  for (const s of paper.status === "ok" ? paper.sections : []) {
+    for (const g of s.groups) {
+      const qs = g.questions;
+      const { numbers, nextStart } = numberQuestions(qs, next);
+      qs.forEach((q, i) => questions.push({ ...q, number: numbers[i], correct: 0 }));
+      next = nextStart;
+    }
   }
   const total = questions.reduce((s, q) => s + (q.points || 1), 0);
   out.total = total || null;
 
-  const [{ data: sa }, { data: att }] = await Promise.all([
-    supabase.from("student_answers").select("student_id, question_id, is_correct, points_earned, answered_at").eq("assignment_id", id),
-    supabase.from("exam_attempts").select("student_id, started_at, submitted_at").eq("assignment_id", id),
-  ]);
   const earned = new Map();
   const lastAnswer = new Map();
   const qById = new Map(questions.map((q) => [q.id, q]));
