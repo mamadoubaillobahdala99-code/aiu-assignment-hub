@@ -1,7 +1,7 @@
 -- =====================================================================
 --  AIU Assignment Hub — 00_etat_actuel.sql
---  PHOTO de la base Supabase telle qu'elle est le 26 septembre 2026
---  (apres les scripts 09 a 32). Lue en lecture seule, verifiee par
+--  PHOTO de la base Supabase telle qu'elle est le 4 octobre 2026
+--  (apres les scripts 09 a 48). Lue en lecture seule, verifiee par
 --  empreintes (md5) contre la base : voir sql/README.md.
 --
 --  NE PAS EXECUTER SUR LA BASE ACTUELLE : elle contient deja tout ceci.
@@ -18,12 +18,17 @@ do $$ begin
   raise exception 'Photo de reference : ne pas executer sur la base actuelle (voir sql/README.md).';
 end $$;
 
--- Extensions presentes : plpgsql, pgcrypto, uuid-ossp, pg_stat_statements, supabase_vault
+-- Extensions presentes : pg_stat_statements, pgcrypto, plpgsql, supabase_vault, uuid-ossp
 -- (installees par Supabase ; gen_random_uuid() vient de Postgres).
 
 -- =====================================================================
--- 1. TABLES (23) — toutes avec la RLS activee
+-- 1. TABLES (26) — toutes avec la RLS activee
 -- =====================================================================
+
+create table public.app_admins (
+  user_id uuid not null,
+  added_at timestamp with time zone not null default now()
+);
 
 create table public.assignment_feedback (
   id uuid not null default gen_random_uuid(),
@@ -75,6 +80,13 @@ create table public.classes (
   kind text not null default 'class'::text
 );
 
+create table public.exam_answer_drafts (
+  assignment_id uuid not null,
+  student_id uuid not null,
+  answers jsonb not null default '{}'::jsonb,
+  updated_at timestamp with time zone not null default now()
+);
+
 create table public.exam_attempt_pages (
   assignment_id uuid not null,
   student_id uuid not null,
@@ -88,6 +100,16 @@ create table public.exam_attempts (
   started_at timestamp with time zone not null default now(),
   submitted_at timestamp with time zone,
   audio_started_at timestamp with time zone
+);
+
+create table public.exam_extra_time (
+  id uuid not null default gen_random_uuid(),
+  session_id uuid not null,
+  assignment_id uuid not null,
+  student_id uuid not null,
+  minutes integer not null,
+  given_by uuid,
+  given_at timestamp with time zone not null default now()
 );
 
 create table public.exam_incidents (
@@ -126,7 +148,8 @@ create table public.exam_session_items (
   assignment_id uuid not null,
   order_index integer not null default 0,
   audio_started_at timestamp with time zone,
-  created_at timestamp with time zone not null default now()
+  created_at timestamp with time zone not null default now(),
+  room_started_at timestamp with time zone
 );
 
 create table public.exam_session_staff (
@@ -149,7 +172,9 @@ create table public.exam_sessions (
   strict_mode boolean not null default true,
   listening_start text not null default 'individual'::text,
   results_released_at timestamp with time zone,
-  created_at timestamp with time zone not null default now()
+  created_at timestamp with time zone not null default now(),
+  start_mode text not null default 'individual'::text,
+  free_from timestamp with time zone
 );
 
 create table public.listening_plays (
@@ -229,20 +254,12 @@ create table public.student_answers (
   points_earned numeric
 );
 
-create table public.submissions (
-  id uuid not null default gen_random_uuid(),
-  assignment_id uuid not null,
-  student_id uuid not null,
-  content text not null default ''::text,
-  started_at timestamp with time zone,
-  submitted_at timestamp with time zone,
-  grade text,
-  feedback text,
-  graded_at timestamp with time zone,
-  score_task_achievement numeric(3,1),
-  score_coherence_cohesion numeric(3,1),
-  score_lexical_resource numeric(3,1),
-  score_grammar_accuracy numeric(3,1)
+create table public.teacher_requests (
+  user_id uuid not null,
+  status text not null default 'pending'::text,
+  requested_at timestamp with time zone not null default now(),
+  decided_at timestamp with time zone,
+  decided_by uuid
 );
 
 create table public.writing_grades (
@@ -276,12 +293,15 @@ create table public.writing_responses (
 -- 2. CONTRAINTES (cles, unicite, verifications, liens)
 -- =====================================================================
 
+alter table public.app_admins add constraint app_admins_pkey PRIMARY KEY (user_id);
 alter table public.assignment_feedback add constraint assignment_feedback_pkey PRIMARY KEY (id);
 alter table public.assignment_questions add constraint assignment_questions_pkey PRIMARY KEY (id);
 alter table public.assignments add constraint assignments_pkey PRIMARY KEY (id);
 alter table public.classes add constraint classes_pkey PRIMARY KEY (id);
+alter table public.exam_answer_drafts add constraint exam_answer_drafts_pkey PRIMARY KEY (assignment_id, student_id);
 alter table public.exam_attempt_pages add constraint exam_attempt_pages_pkey PRIMARY KEY (assignment_id, student_id);
 alter table public.exam_attempts add constraint exam_attempts_pkey PRIMARY KEY (assignment_id, student_id);
+alter table public.exam_extra_time add constraint exam_extra_time_pkey PRIMARY KEY (id);
 alter table public.exam_incidents add constraint exam_incidents_pkey PRIMARY KEY (id);
 alter table public.exam_sections add constraint exam_sections_pkey PRIMARY KEY (id);
 alter table public.exam_session_items add constraint exam_session_items_pkey PRIMARY KEY (id);
@@ -296,7 +316,7 @@ alter table public.reading_highlights add constraint reading_highlights_pkey PRI
 alter table public.roster add constraint roster_pkey PRIMARY KEY (id);
 alter table public.speaking_views add constraint speaking_views_pkey PRIMARY KEY (assignment_id, student_id);
 alter table public.student_answers add constraint student_answers_pkey PRIMARY KEY (id);
-alter table public.submissions add constraint submissions_pkey PRIMARY KEY (id);
+alter table public.teacher_requests add constraint teacher_requests_pkey PRIMARY KEY (user_id);
 alter table public.writing_grades add constraint writing_grades_pkey PRIMARY KEY (id);
 alter table public.writing_responses add constraint writing_responses_pkey PRIMARY KEY (id);
 alter table public.assignment_feedback add constraint assignment_feedback_assignment_id_student_id_key UNIQUE (assignment_id, student_id);
@@ -306,22 +326,25 @@ alter table public.exam_sessions add constraint exam_sessions_code_key UNIQUE (c
 alter table public.reading_highlights add constraint reading_highlights_scope_key UNIQUE (assignment_id, student_id, scope_type, section_id, question_id, option_key);
 alter table public.roster add constraint roster_class_id_student_id_key UNIQUE (class_id, student_id);
 alter table public.student_answers add constraint student_answers_student_id_question_id_key UNIQUE (student_id, question_id);
-alter table public.submissions add constraint submissions_assignment_id_student_id_key UNIQUE (assignment_id, student_id);
 alter table public.writing_grades add constraint writing_grades_one_per_task UNIQUE (section_id, student_id);
 alter table public.writing_responses add constraint writing_responses_one_per_task UNIQUE (section_id, student_id);
 alter table public.assignments add constraint assignments_listening_audio_url_https CHECK (((listening_audio_url IS NULL) OR (listening_audio_url ~~ 'https://%'::text)));
 alter table public.assignments add constraint assignments_listening_check_minutes_range CHECK (((listening_check_minutes >= 0) AND (listening_check_minutes <= 30)));
 alter table public.assignments add constraint assignments_reading_test_type_check CHECK ((reading_test_type = ANY (ARRAY['academic'::text, 'general'::text])));
 alter table public.classes add constraint classes_kind_check CHECK ((kind = ANY (ARRAY['class'::text, 'exam'::text])));
+alter table public.exam_extra_time add constraint exam_extra_time_minutes_check CHECK (((minutes >= 1) AND (minutes <= 60)));
 alter table public.exam_incidents add constraint exam_incidents_kind_check CHECK ((kind = ANY (ARRAY['fullscreen_exit'::text, 'tab_switch'::text, 'paste'::text, 'context_menu'::text, 'copy'::text, 'page_reload'::text])));
 alter table public.exam_sections add constraint exam_sections_documents_is_array CHECK (((jsonb_typeof(documents) = 'array'::text) AND (jsonb_array_length(documents) <= 20)));
 alter table public.exam_sections add constraint exam_sections_speaking_part_check CHECK (((speaking_part IS NULL) OR (speaking_part = ANY (ARRAY[1, 2, 3]))));
 alter table public.exam_sections add constraint exam_sections_task_number_check CHECK (((task_number IS NULL) OR (task_number = ANY (ARRAY[1, 2]))));
 alter table public.exam_sessions add constraint exam_sessions_listening_start_check CHECK ((listening_start = ANY (ARRAY['individual'::text, 'grouped'::text])));
+alter table public.exam_sessions add constraint exam_sessions_start_mode_check CHECK ((start_mode = ANY (ARRAY['individual'::text, 'together'::text])));
 alter table public.profiles add constraint profiles_role_check CHECK ((role = ANY (ARRAY['teacher'::text, 'student'::text])));
 alter table public.question_groups add constraint question_groups_image_url_https CHECK (((image_url IS NULL) OR ((image_url ~~ 'https://%'::text) AND (length(image_url) <= 2000))));
+alter table public.teacher_requests add constraint teacher_requests_status_check CHECK ((status = ANY (ARRAY['pending'::text, 'approved'::text, 'declined'::text])));
 alter table public.writing_grades add constraint writing_grades_scores CHECK ((((score_ta IS NULL) OR (((score_ta >= (0)::numeric) AND (score_ta <= (9)::numeric)) AND ((score_ta * (2)::numeric) = trunc((score_ta * (2)::numeric))))) AND ((score_cc IS NULL) OR (((score_cc >= (0)::numeric) AND (score_cc <= (9)::numeric)) AND ((score_cc * (2)::numeric) = trunc((score_cc * (2)::numeric))))) AND ((score_lr IS NULL) OR (((score_lr >= (0)::numeric) AND (score_lr <= (9)::numeric)) AND ((score_lr * (2)::numeric) = trunc((score_lr * (2)::numeric))))) AND ((score_gra IS NULL) OR (((score_gra >= (0)::numeric) AND (score_gra <= (9)::numeric)) AND ((score_gra * (2)::numeric) = trunc((score_gra * (2)::numeric))))) AND ((task_band IS NULL) OR (((task_band >= (0)::numeric) AND (task_band <= (9)::numeric)) AND ((task_band * (2)::numeric) = trunc((task_band * (2)::numeric)))))));
 alter table public.writing_grades add constraint writing_grades_text_size CHECK ((length(corrected_html) <= 300000));
+alter table public.app_admins add constraint app_admins_user_id_fkey FOREIGN KEY (user_id) REFERENCES profiles(id) ON DELETE CASCADE;
 alter table public.assignment_feedback add constraint assignment_feedback_assignment_id_fkey FOREIGN KEY (assignment_id) REFERENCES assignments(id) ON DELETE CASCADE;
 alter table public.assignment_feedback add constraint assignment_feedback_student_id_fkey FOREIGN KEY (student_id) REFERENCES profiles(id) ON DELETE CASCADE;
 alter table public.assignment_questions add constraint assignment_questions_group_id_fkey FOREIGN KEY (group_id) REFERENCES question_groups(id) ON DELETE CASCADE;
@@ -329,9 +352,13 @@ alter table public.assignment_questions add constraint assignment_questions_ques
 alter table public.assignment_questions add constraint assignment_questions_section_id_fkey FOREIGN KEY (section_id) REFERENCES exam_sections(id) ON DELETE CASCADE;
 alter table public.assignments add constraint assignments_class_id_fkey FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE;
 alter table public.classes add constraint classes_teacher_id_fkey FOREIGN KEY (teacher_id) REFERENCES profiles(id) ON DELETE CASCADE;
+alter table public.exam_answer_drafts add constraint exam_answer_drafts_assignment_id_student_id_fkey FOREIGN KEY (assignment_id, student_id) REFERENCES exam_attempts(assignment_id, student_id) ON DELETE CASCADE;
 alter table public.exam_attempt_pages add constraint exam_attempt_pages_assignment_id_student_id_fkey FOREIGN KEY (assignment_id, student_id) REFERENCES exam_attempts(assignment_id, student_id) ON DELETE CASCADE;
 alter table public.exam_attempts add constraint exam_attempts_assignment_id_fkey FOREIGN KEY (assignment_id) REFERENCES assignments(id) ON DELETE CASCADE;
 alter table public.exam_attempts add constraint exam_attempts_student_id_fkey FOREIGN KEY (student_id) REFERENCES profiles(id) ON DELETE CASCADE;
+alter table public.exam_extra_time add constraint exam_extra_time_assignment_id_fkey FOREIGN KEY (assignment_id) REFERENCES assignments(id) ON DELETE CASCADE;
+alter table public.exam_extra_time add constraint exam_extra_time_session_id_fkey FOREIGN KEY (session_id) REFERENCES exam_sessions(id) ON DELETE CASCADE;
+alter table public.exam_extra_time add constraint exam_extra_time_student_id_fkey FOREIGN KEY (student_id) REFERENCES profiles(id) ON DELETE CASCADE;
 alter table public.exam_incidents add constraint exam_incidents_assignment_id_fkey FOREIGN KEY (assignment_id) REFERENCES assignments(id) ON DELETE SET NULL;
 alter table public.exam_incidents add constraint exam_incidents_cleared_by_fkey FOREIGN KEY (cleared_by) REFERENCES profiles(id);
 alter table public.exam_incidents add constraint exam_incidents_session_id_fkey FOREIGN KEY (session_id) REFERENCES exam_sessions(id) ON DELETE CASCADE;
@@ -361,8 +388,8 @@ alter table public.speaking_views add constraint speaking_views_student_id_fkey 
 alter table public.student_answers add constraint student_answers_assignment_id_fkey FOREIGN KEY (assignment_id) REFERENCES assignments(id) ON DELETE CASCADE;
 alter table public.student_answers add constraint student_answers_question_id_fkey FOREIGN KEY (question_id) REFERENCES questions(id) ON DELETE CASCADE;
 alter table public.student_answers add constraint student_answers_student_id_fkey FOREIGN KEY (student_id) REFERENCES profiles(id);
-alter table public.submissions add constraint submissions_assignment_id_fkey FOREIGN KEY (assignment_id) REFERENCES assignments(id) ON DELETE CASCADE;
-alter table public.submissions add constraint submissions_student_id_fkey FOREIGN KEY (student_id) REFERENCES profiles(id) ON DELETE CASCADE;
+alter table public.teacher_requests add constraint teacher_requests_decided_by_fkey FOREIGN KEY (decided_by) REFERENCES profiles(id) ON DELETE SET NULL;
+alter table public.teacher_requests add constraint teacher_requests_user_id_fkey FOREIGN KEY (user_id) REFERENCES profiles(id) ON DELETE CASCADE;
 alter table public.writing_grades add constraint writing_grades_assignment_id_fkey FOREIGN KEY (assignment_id) REFERENCES assignments(id) ON DELETE CASCADE;
 alter table public.writing_grades add constraint writing_grades_section_id_fkey FOREIGN KEY (section_id) REFERENCES exam_sections(id) ON DELETE CASCADE;
 alter table public.writing_grades add constraint writing_grades_student_id_fkey FOREIGN KEY (student_id) REFERENCES profiles(id) ON DELETE CASCADE;
@@ -374,33 +401,58 @@ alter table public.writing_responses add constraint writing_responses_student_id
 -- 3. INDEX
 -- =====================================================================
 
+CREATE INDEX idx_assignment_feedback_student_id ON public.assignment_feedback USING btree (student_id);
 CREATE INDEX idx_aq_group ON public.assignment_questions USING btree (group_id);
 CREATE INDEX idx_aq_question ON public.assignment_questions USING btree (question_id);
 CREATE INDEX idx_aq_section ON public.assignment_questions USING btree (section_id);
 CREATE INDEX idx_assignments_class ON public.assignments USING btree (class_id);
+CREATE INDEX idx_classes_teacher_id ON public.classes USING btree (teacher_id);
+CREATE INDEX idx_exam_attempts_student_id ON public.exam_attempts USING btree (student_id);
+CREATE INDEX exam_extra_time_session_idx ON public.exam_extra_time USING btree (session_id);
+CREATE INDEX idx_exam_extra_time_assignment_id ON public.exam_extra_time USING btree (assignment_id);
+CREATE INDEX idx_exam_extra_time_student_id ON public.exam_extra_time USING btree (student_id);
+CREATE INDEX idx_exam_incidents_assignment_id ON public.exam_incidents USING btree (assignment_id);
+CREATE INDEX idx_exam_incidents_cleared_by ON public.exam_incidents USING btree (cleared_by);
 CREATE INDEX idx_exam_incidents_open ON public.exam_incidents USING btree (session_id, student_id, cleared_at) WHERE freezes;
 CREATE INDEX idx_exam_incidents_session ON public.exam_incidents USING btree (session_id, student_id);
+CREATE INDEX idx_exam_incidents_student_id ON public.exam_incidents USING btree (student_id);
 CREATE INDEX idx_exam_sections_assignment ON public.exam_sections USING btree (assignment_id);
 CREATE INDEX idx_exam_items_assignment ON public.exam_session_items USING btree (assignment_id);
 CREATE INDEX idx_exam_items_session ON public.exam_session_items USING btree (session_id, order_index);
 CREATE INDEX idx_exam_staff_session ON public.exam_session_staff USING btree (session_id, teacher_id);
 CREATE INDEX idx_exam_staff_teacher ON public.exam_session_staff USING btree (teacher_id);
 CREATE INDEX idx_exam_sessions_container ON public.exam_sessions USING btree (container_class_id);
+CREATE INDEX idx_exam_sessions_created_by ON public.exam_sessions USING btree (created_by);
+CREATE INDEX idx_listening_plays_section_id ON public.listening_plays USING btree (section_id);
+CREATE INDEX idx_listening_plays_student_id ON public.listening_plays USING btree (student_id);
 CREATE INDEX idx_question_groups_section ON public.question_groups USING btree (section_id);
+CREATE INDEX idx_questions_teacher_id ON public.questions USING btree (teacher_id);
+CREATE INDEX idx_reading_highlights_question_id ON public.reading_highlights USING btree (question_id);
+CREATE INDEX idx_reading_highlights_section_id ON public.reading_highlights USING btree (section_id);
+CREATE INDEX idx_reading_highlights_student_id ON public.reading_highlights USING btree (student_id);
+CREATE INDEX idx_roster_student_id ON public.roster USING btree (student_id);
+CREATE INDEX idx_speaking_views_student_id ON public.speaking_views USING btree (student_id);
 CREATE INDEX idx_student_answers_assignment_stud ON public.student_answers USING btree (assignment_id, student_id);
+CREATE INDEX idx_student_answers_question_id ON public.student_answers USING btree (question_id);
+CREATE INDEX idx_teacher_requests_decided_by ON public.teacher_requests USING btree (decided_by);
+CREATE INDEX idx_writing_grades_student_id ON public.writing_grades USING btree (student_id);
 CREATE INDEX writing_grades_assignment_idx ON public.writing_grades USING btree (assignment_id, student_id);
+CREATE INDEX idx_writing_responses_student_id ON public.writing_responses USING btree (student_id);
 CREATE INDEX writing_responses_assignment_idx ON public.writing_responses USING btree (assignment_id, student_id);
 
 -- =====================================================================
--- 4. RLS ACTIVEE SUR LES 23 TABLES
+-- 4. RLS ACTIVEE SUR LES 26 TABLES
 -- =====================================================================
 
+alter table public.app_admins enable row level security;
 alter table public.assignment_feedback enable row level security;
 alter table public.assignment_questions enable row level security;
 alter table public.assignments enable row level security;
 alter table public.classes enable row level security;
+alter table public.exam_answer_drafts enable row level security;
 alter table public.exam_attempt_pages enable row level security;
 alter table public.exam_attempts enable row level security;
+alter table public.exam_extra_time enable row level security;
 alter table public.exam_incidents enable row level security;
 alter table public.exam_sections enable row level security;
 alter table public.exam_session_items enable row level security;
@@ -415,17 +467,110 @@ alter table public.reading_highlights enable row level security;
 alter table public.roster enable row level security;
 alter table public.speaking_views enable row level security;
 alter table public.student_answers enable row level security;
-alter table public.submissions enable row level security;
+alter table public.teacher_requests enable row level security;
 alter table public.writing_grades enable row level security;
 alter table public.writing_responses enable row level security;
 
 -- =====================================================================
--- 5. FONCTIONS (60)
+-- 5. FONCTIONS (83)
 --    Chaque corps est celui de la base ; la ligne « Source » dit quel
 --    script l'a ecrit en dernier.
 -- =====================================================================
 
 set check_function_bodies = off;
+
+-- admin_decide_teacher_request — Source : 40_teacher_requests.sql
+create or replace function public.admin_decide_teacher_request(p_user_id uuid, p_approve boolean)
+returns jsonb
+language plpgsql
+volatile
+security definer
+set search_path = public
+as $fn$
+declare
+  v_admin uuid := auth.uid();
+  r       record;
+begin
+  if v_admin is null then raise exception 'Not authenticated'; end if;
+  if not public.is_app_admin() then raise exception 'Not allowed'; end if;
+  if p_approve is null then raise exception 'Approve or decline?'; end if;
+
+  select t.status into r from teacher_requests t where t.user_id = p_user_id for update;
+  if not found then raise exception 'No such request'; end if;
+
+  -- Déjà décidée (double clic, deux onglets) : rien ne change.
+  if r.status <> 'pending' then
+    return jsonb_build_object('result', 'already', 'status', r.status);
+  end if;
+
+  if p_approve then
+    update profiles set role = 'teacher' where id = p_user_id and role = 'student';
+    if not found then
+      -- Plus étudiant (déjà prof) : le rôle ne bouge pas ; la demande est close.
+      update teacher_requests set status = 'approved', decided_at = now(), decided_by = v_admin
+       where user_id = p_user_id;
+      return jsonb_build_object('result', 'not_student', 'status', 'approved');
+    end if;
+    update teacher_requests set status = 'approved', decided_at = now(), decided_by = v_admin
+     where user_id = p_user_id;
+    return jsonb_build_object('result', 'approved', 'status', 'approved');
+  end if;
+
+  update teacher_requests set status = 'declined', decided_at = now(), decided_by = v_admin
+   where user_id = p_user_id;
+  return jsonb_build_object('result', 'declined', 'status', 'declined');
+end $fn$;
+
+-- admin_overview — Source : 40_teacher_requests.sql
+create or replace function public.admin_overview()
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = public
+as $fn$
+begin
+  if auth.uid() is null then raise exception 'Not authenticated'; end if;
+  if not public.is_app_admin() then raise exception 'Not allowed'; end if;
+
+  return jsonb_build_object(
+    'teachers', (select count(*) from profiles p where p.role = 'teacher'),
+    'students', (select count(*) from profiles p where p.role = 'student'),
+    -- Étudiants : des chiffres seulement, jamais de noms.
+    'students_active_30d', (select count(*) from profiles p join auth.users u on u.id = p.id
+                            where p.role = 'student' and u.last_sign_in_at > now() - interval '30 days'),
+    'students_no_class', (select count(*) from profiles p
+                          where p.role = 'student'
+                            and not exists (select 1 from roster r join classes c on c.id = r.class_id
+                                            where r.student_id = p.id and c.kind = 'class')),
+    'classes', (select count(*) from classes c where c.kind = 'class'),
+    -- NOUVEAU (40) : les demandes d'accès prof EN ATTENTE (nom et e-mail de
+    -- ceux qui demandent seulement ; les autres étudiants restent comptés).
+    'requests', coalesce((
+      select jsonb_agg(jsonb_build_object(
+               'user_id',      t.user_id,
+               'name',         p.name,
+               'email',        u.email,
+               'requested_at', t.requested_at)
+             order by t.requested_at)
+      from teacher_requests t
+      join profiles p on p.id = t.user_id
+      join auth.users u on u.id = t.user_id
+      where t.status = 'pending'), '[]'::jsonb),
+    'teacher_list', coalesce((
+      select jsonb_agg(jsonb_build_object(
+               'name',       p.name,
+               'email',      u.email,
+               'classes',    (select count(*) from classes c where c.teacher_id = p.id and c.kind = 'class'),
+               'signed_up',  p.created_at,
+               'last_login', u.last_sign_in_at,
+               'admin',      exists (select 1 from app_admins a where a.user_id = p.id))
+             order by p.name)
+      from profiles p join auth.users u on u.id = p.id
+      where p.role = 'teacher'), '[]'::jsonb),
+    'server_now', now()
+  );
+end $fn$;
 
 -- answers_released — Source : 09_rls_exam_content.sql
 create or replace function public.answers_released(p_assignment_id uuid)
@@ -588,6 +733,73 @@ begin
   return public.is_class_teacher(v) or public.is_enrolled(v);
 end $fn$;
 
+-- class_overview — Source : 44_class_overview.sql
+create or replace function public.class_overview(p_class_id uuid)
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = public
+as $fn$
+declare
+  v_ok boolean;
+  v_result jsonb;
+begin
+  if auth.uid() is null then raise exception 'Not authenticated'; end if;
+
+  select exists (select 1 from classes c
+                 where c.id = p_class_id and c.teacher_id = auth.uid() and coalesce(c.kind, 'class') = 'class')
+    into v_ok;
+  if not v_ok then raise exception 'Not allowed'; end if;
+
+  with st as (
+    select r.student_id from roster r where r.class_id = p_class_id
+  ),
+  a as (
+    select x.id, x.type,
+           exists (select 1 from exam_sections s where s.assignment_id = x.id) as structured
+    from assignments x
+    where x.class_id = p_class_id
+  ),
+  done as (
+    -- One row per (assignment, student) that counts as handed in / viewed.
+    select a.id as assignment_id, st.student_id
+    from a join st on true
+    where a.structured and (
+      case
+        when a.type = 'Speaking' then
+          exists (select 1 from speaking_views v where v.assignment_id = a.id and v.student_id = st.student_id)
+        when a.type = 'Writing' then
+          exists (select 1 from writing_responses w where w.assignment_id = a.id and w.student_id = st.student_id and w.submitted_at is not null)
+        else
+          exists (select 1 from student_answers sa where sa.assignment_id = a.id and sa.student_id = st.student_id)
+          or exists (select 1 from exam_attempts t where t.assignment_id = a.id and t.student_id = st.student_id and t.submitted_at is not null)
+      end)
+  ),
+  per_a as (
+    select a.id, a.structured,
+           (select count(*) from done d where d.assignment_id = a.id) as handed_in,
+           case when a.type = 'Writing' then
+             (select count(*) from done d
+               where d.assignment_id = a.id
+                 and not exists (select 1 from assignment_feedback f
+                                  where f.assignment_id = a.id and f.student_id = d.student_id and f.released_at is not null))
+           else 0 end as to_mark
+    from a
+  ),
+  per_s as (
+    select st.student_id, (select count(*) from done d where d.student_id = st.student_id) as done
+    from st
+  )
+  select jsonb_build_object(
+    'students', (select count(*) from st),
+    'assignments', coalesce((select jsonb_agg(jsonb_build_object('id', id, 'structured', structured, 'handed_in', handed_in, 'to_mark', to_mark)) from per_a), '[]'::jsonb),
+    'students_done', coalesce((select jsonb_agg(jsonb_build_object('student_id', student_id, 'done', done)) from per_s), '[]'::jsonb)
+  ) into v_result;
+
+  return v_result;
+end $fn$;
+
 -- create_exam_session — Source : 12_exam_sessions.sql
 create or replace function public.create_exam_session(p_name text)
 returns jsonb
@@ -631,7 +843,7 @@ begin
   return jsonb_build_object('session_id', v_session, 'code', v_code, 'container_class_id', v_class);
 end $fn$;
 
--- delete_exam_session — Source : 16_exam_manage.sql
+-- delete_exam_session — Source : 43_exam_delete_lock.sql
 create or replace function public.delete_exam_session(p_session_id uuid)
 returns jsonb
 language plpgsql
@@ -645,7 +857,8 @@ begin
   select * into v_src from exam_sessions where id = p_session_id;
   if not found then raise exception 'Exam not found'; end if;
   if v_src.created_by <> auth.uid() then raise exception 'Only the creator can delete this exam'; end if;
-  if v_src.opened_at is not null and v_src.closed_at is null then
+  -- NOUVEAU (43) : ouvert par le bouton OU par l'heure (même règle qu'au 42).
+  if public.exam_running(p_session_id) then
     raise exception 'This exam is running — close it first';
   end if;
 
@@ -669,7 +882,7 @@ begin
   return jsonb_build_object('deleted', true, 'questions_removed', v_removed);
 end $fn$;
 
--- duplicate_assignment — Source : 26_duplicate_assignment.sql
+-- duplicate_assignment — Source : 42_paper_lock.sql
 create or replace function public.duplicate_assignment(p_assignment_id uuid, p_target_class_id uuid)
 returns jsonb
 language plpgsql
@@ -714,10 +927,8 @@ begin
       and public.is_exam_staff(e.id)
     limit 1;
     if v_session is null then raise exception 'Not allowed'; end if;
-    if exists (select 1 from exam_sessions e
-               where e.id = v_session
-                 and (e.opened_at is not null or e.closed_at is not null
-                      or e.results_released_at is not null or public.exam_is_open(e.id))) then
+    -- NOUVEAU (42) : la même définition que partout (exam_not_started, 41).
+    if not public.exam_not_started(v_session) then
       raise exception 'This exam has already started: papers can no longer be added';
     end if;
     v_to_exam := true;
@@ -800,7 +1011,7 @@ begin
   return jsonb_build_object('assignment_id', v_new_a, 'class_id', v_target.id, 'session_id', v_session);
 end $fn$;
 
--- duplicate_exam_session — Source : 16_exam_manage.sql
+-- duplicate_exam_session — Source : 46_everyone_together.sql
 create or replace function public.duplicate_exam_session(p_session_id uuid, p_name text DEFAULT NULL::text)
 returns jsonb
 language plpgsql
@@ -844,11 +1055,11 @@ begin
   values (v_name, auth.uid(), 'EX-' || v_code, 'exam')
   returning id into v_class;
 
-  insert into exam_sessions (name, code, container_class_id, created_by, strict_mode, listening_start)
-  values (v_name, v_code, v_class, auth.uid(), v_src.strict_mode, v_src.listening_start)
+  -- NOUVEAU (46) : start_mode copié aussi.
+  insert into exam_sessions (name, code, container_class_id, created_by, strict_mode, listening_start, start_mode)
+  values (v_name, v_code, v_class, auth.uid(), v_src.strict_mode, v_src.listening_start, v_src.start_mode)
   returning id into v_session;
 
-  -- Celui qui duplique devient proprietaire ; l'equipe le suit.
   insert into exam_session_staff (session_id, teacher_id, role)
   values (v_session, auth.uid(), 'owner')
   on conflict do nothing;
@@ -916,8 +1127,6 @@ begin
         end loop;
       end loop;
 
-      -- Filet : une question rattachee a la partie sans groupe. Il n'y en
-      -- a aucune aujourd'hui, mais rien ne doit disparaitre en silence.
       for v_link in
         select aq.order_index as pos, q.*
         from assignment_questions aq
@@ -984,6 +1193,109 @@ begin
   return jsonb_build_object('resumed', v_n > 0);
 end $fn$;
 
+-- exam_can_add_staff — Source : 41_exam_lock.sql
+create or replace function public.exam_can_add_staff(p_session_id uuid, p_teacher_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $fn$
+  select exists (select 1 from exam_sessions e where e.id = p_session_id and e.created_by = auth.uid())
+     and exists (select 1 from profiles p where p.id = p_teacher_id and p.role = 'teacher')
+     and p_teacher_id <> auth.uid();
+$fn$;
+
+-- exam_collect_papers — Source : 35_pens_down.sql
+create or replace function public.exam_collect_papers(p_session_id uuid, p_all boolean)
+returns integer
+language plpgsql
+volatile
+security definer
+set search_path = public
+as $fn$
+declare
+  v_att   record;
+  v_key   text;
+  v_value jsonb;
+  v_qid   uuid;
+  v_ok    boolean;
+  v_pts   numeric;
+  v_count integer := 0;
+begin
+  for v_att in
+    select a.assignment_id, a.student_id, p.type
+    from exam_session_items i
+    join assignments p   on p.id = i.assignment_id
+    join exam_attempts a on a.assignment_id = i.assignment_id
+    where i.session_id = p_session_id
+      and a.submitted_at is null
+      and p.type in ('Reading', 'Listening', 'Writing')
+      and (p_all or (p.time_limit_minutes is not null
+                     and now() > a.started_at + make_interval(mins => p.time_limit_minutes + 5)))
+    for update of a skip locked          -- une remise en cours au même instant garde la main
+  loop
+   -- Une copie qui poserait un problème imprévu est laissée pour le passage
+   -- suivant : elle ne doit JAMAIS empêcher la fermeture pour toute la salle.
+   begin
+    if v_att.type in ('Reading', 'Listening') then
+      -- Comme une remise normale : seulement si aucune réponse n'est déjà notée.
+      if not exists (select 1 from student_answers sa
+                     where sa.assignment_id = v_att.assignment_id and sa.student_id = v_att.student_id) then
+        for v_key, v_value in
+          select d.key, d.value
+          from exam_answer_drafts x, jsonb_each(x.answers) d
+          where x.assignment_id = v_att.assignment_id and x.student_id = v_att.student_id
+        loop
+          begin
+            v_qid := v_key::uuid;
+          exception when others then
+            continue;                     -- une clé qui n'est pas une question : ignorée
+          end;
+          if exists (select 1 from assignment_questions aq join exam_sections s on s.id = aq.section_id
+                     where aq.question_id = v_qid and s.assignment_id = v_att.assignment_id) then
+            -- Une réponse mal formée (pas la forme attendue pour ce type de
+            -- question) est gardée, comptée fausse, et ne bloque rien.
+            begin
+              select g.is_correct, g.points_earned into v_ok, v_pts from grade_student_answer(v_qid, v_value) g;
+            exception when others then
+              v_ok := false; v_pts := 0;
+            end;
+            insert into student_answers (assignment_id, student_id, question_id, response, is_correct, points_earned)
+            values (v_att.assignment_id, v_att.student_id, v_qid, v_value, coalesce(v_ok, false), coalesce(v_pts, 0))
+            on conflict (student_id, question_id) do nothing;
+          end if;
+        end loop;
+      end if;
+    else
+      -- Writing : comme submit_writing — une tâche jamais tapée a quand même sa ligne (vide).
+      insert into writing_responses (assignment_id, section_id, student_id)
+      select v_att.assignment_id, s.id, v_att.student_id
+      from exam_sections s
+      where s.assignment_id = v_att.assignment_id and s.task_number is not null
+      on conflict (section_id, student_id) do nothing;
+      update writing_responses set submitted_at = now()
+       where assignment_id = v_att.assignment_id and student_id = v_att.student_id and submitted_at is null;
+    end if;
+
+    update exam_attempts set submitted_at = now()
+     where assignment_id = v_att.assignment_id and student_id = v_att.student_id and submitted_at is null;
+    delete from exam_answer_drafts where assignment_id = v_att.assignment_id and student_id = v_att.student_id;
+    v_count := v_count + 1;
+   exception when others then
+    null;                               -- ramassée au prochain passage
+   end;
+  end loop;
+
+  -- Plus besoin des brouillons des copies déjà rendues par les étudiants.
+  delete from exam_answer_drafts x
+   using exam_session_items i, exam_attempts a
+   where i.session_id = p_session_id and x.assignment_id = i.assignment_id
+     and a.assignment_id = x.assignment_id and a.student_id = x.student_id and a.submitted_at is not null;
+
+  return v_count;
+end $fn$;
+
 -- exam_explain_incident — Source : 18_invigilation.sql
 create or replace function public.exam_explain_incident(p_assignment_id uuid, p_reason text)
 returns jsonb
@@ -1012,7 +1324,75 @@ begin
   return jsonb_build_object('explained', v_n > 0);
 end $fn$;
 
--- exam_invigilation_board — Source : 18_invigilation.sql
+-- exam_extend_end — Source : 41_exam_lock.sql
+create or replace function public.exam_extend_end(p_session_id uuid, p_minutes integer)
+returns jsonb
+language plpgsql
+volatile
+security definer
+set search_path = public
+as $fn$
+declare
+  e record;
+begin
+  if auth.uid() is null then raise exception 'Not authenticated'; end if;
+  if not public.is_exam_staff(p_session_id) then raise exception 'Not allowed'; end if;
+  if p_minutes is null or p_minutes < 1 or p_minutes > 180 then
+    raise exception 'Choose between 1 and 180 minutes';
+  end if;
+
+  select * into e from exam_sessions where id = p_session_id for update;
+  if e.results_released_at is not null then raise exception 'The results are published'; end if;
+  if e.closed_at is not null then raise exception 'The exam is closed'; end if;
+  if e.closes_at is null then raise exception 'This exam has no end time'; end if;
+  if now() >= e.closes_at then raise exception 'The end time has passed: use Open to start again'; end if;
+
+  update exam_sessions set closes_at = e.closes_at + make_interval(mins => p_minutes)
+   where id = p_session_id;
+
+  return jsonb_build_object('closes_at', e.closes_at + make_interval(mins => p_minutes));
+end $fn$;
+
+-- exam_give_extra_time — Source : 46_everyone_together.sql
+create or replace function public.exam_give_extra_time(p_session_id uuid, p_student_id uuid, p_assignment_id uuid, p_minutes integer)
+returns jsonb
+language plpgsql
+volatile
+security definer
+set search_path = public
+as $fn$
+declare
+  v_limit integer; v_started timestamptz; v_submitted timestamptz;
+begin
+  if auth.uid() is null then raise exception 'Not authenticated'; end if;
+  if not public.is_exam_staff(p_session_id) then raise exception 'Not allowed'; end if;
+  if p_minutes is null or p_minutes < 1 or p_minutes > 60 then raise exception 'Choose between 1 and 60 minutes'; end if;
+  if not exists (select 1 from exam_session_items i where i.session_id = p_session_id and i.assignment_id = p_assignment_id) then
+    raise exception 'This paper is not in this exam';
+  end if;
+  if not public.exam_is_open(p_session_id)
+     or exists (select 1 from exam_sessions e where e.id = p_session_id and e.results_released_at is not null) then
+    raise exception 'The exam is not open';
+  end if;
+
+  select a.time_limit_minutes into v_limit from assignments a where a.id = p_assignment_id;
+  if v_limit is null then raise exception 'This paper has no time limit'; end if;
+
+  select started_at, submitted_at into v_started, v_submitted
+    from exam_attempts where assignment_id = p_assignment_id and student_id = p_student_id for update;
+  if v_started is null then raise exception 'This candidate has not started this paper'; end if;
+  if v_submitted is not null then raise exception 'This paper is already handed in'; end if;
+  if now() >= v_started + make_interval(mins => v_limit) then raise exception 'The time is already over for this paper'; end if;
+
+  update exam_attempts set started_at = started_at + make_interval(mins => p_minutes)
+   where assignment_id = p_assignment_id and student_id = p_student_id;
+  insert into exam_extra_time (session_id, assignment_id, student_id, minutes, given_by)
+  values (p_session_id, p_assignment_id, p_student_id, p_minutes, auth.uid());
+
+  return jsonb_build_object('ends_at', v_started + make_interval(mins => v_limit + p_minutes));
+end $fn$;
+
+-- exam_invigilation_board — Source : 35_pens_down.sql
 create or replace function public.exam_invigilation_board(p_session_id uuid)
 returns jsonb
 language plpgsql
@@ -1023,6 +1403,10 @@ as $fn$
 declare v_out jsonb; v_class uuid;
 begin
   if not public.is_exam_staff(p_session_id) then raise exception 'Not allowed'; end if;
+  -- NOUVEAU (35) : ramassage au passage (copies dont le temps est écoulé ;
+  -- toutes les copies en cours si l'examen n'est plus ouvert).
+  perform public.exam_collect_papers(p_session_id, not public.exam_is_open(p_session_id)
+          or exists (select 1 from exam_sessions e where e.id = p_session_id and e.results_released_at is not null));
   select container_class_id into v_class from exam_sessions where id = p_session_id;
 
   select coalesce(
@@ -1082,7 +1466,21 @@ as $fn$
   );
 $fn$;
 
--- exam_item_readable — Source : 16_exam_manage.sql
+-- exam_item_belongs — Source : 41_exam_lock.sql
+create or replace function public.exam_item_belongs(p_session_id uuid, p_assignment_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $fn$
+  select exists (
+    select 1 from exam_sessions e join assignments a on a.class_id = e.container_class_id
+    where e.id = p_session_id and a.id = p_assignment_id
+  );
+$fn$;
+
+-- exam_item_readable — Source : 46_everyone_together.sql
 create or replace function public.exam_item_readable(p_assignment_id uuid)
 returns boolean
 language sql
@@ -1100,27 +1498,43 @@ as $fn$
         e.results_released_at is not null
         or (
           public.exam_is_open(e.id)
+          and public.exam_item_released(i.assignment_id)
           and not exists (
             select 1 from exam_session_items prev
             join assignments pa on pa.id = prev.assignment_id
             where prev.session_id = i.session_id
               and prev.order_index < i.order_index
               and pa.type <> 'Speaking'
-              and not exists (select 1 from exam_attempts a
-                              where a.assignment_id = prev.assignment_id
-                                and a.student_id = auth.uid()
-                                and a.submitted_at is not null)
+              and not public.exam_paper_done(prev.assignment_id, auth.uid())
           )
-          and not exists (select 1 from exam_attempts a
-                          where a.assignment_id = i.assignment_id
-                            and a.student_id = auth.uid()
-                            and a.submitted_at is not null)
+          and not public.exam_paper_done(i.assignment_id, auth.uid())
         )
       )
   );
 $fn$;
 
--- exam_item_startable — Source : 16_exam_manage.sql
+-- exam_item_released — Source : 46_everyone_together.sql
+create or replace function public.exam_item_released(p_assignment_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $fn$
+  select coalesce((
+    select case
+             when e.start_mode <> 'together' then true
+             when a.type = 'Speaking' then true
+             else (i.room_started_at is not null or e.free_from is not null)
+           end
+    from exam_session_items i
+    join exam_sessions e on e.id = i.session_id
+    join assignments a on a.id = i.assignment_id
+    where i.assignment_id = p_assignment_id
+  ), true);
+$fn$;
+
+-- exam_item_startable — Source : 46_everyone_together.sql
 create or replace function public.exam_item_startable(p_assignment_id uuid)
 returns boolean
 language sql
@@ -1136,21 +1550,16 @@ as $fn$
     where i.assignment_id = p_assignment_id
       and e.results_released_at is null
       and public.exam_is_open(e.id)
+      and public.exam_item_released(i.assignment_id)
       and not exists (
         select 1 from exam_session_items prev
         join assignments pa on pa.id = prev.assignment_id
         where prev.session_id = i.session_id
           and prev.order_index < i.order_index
           and pa.type <> 'Speaking'
-          and not exists (select 1 from exam_attempts a
-                          where a.assignment_id = prev.assignment_id
-                            and a.student_id = auth.uid()
-                            and a.submitted_at is not null)
+          and not public.exam_paper_done(prev.assignment_id, auth.uid())
       )
-      and not exists (select 1 from exam_attempts a
-                      where a.assignment_id = i.assignment_id
-                        and a.student_id = auth.uid()
-                        and a.submitted_at is not null)
+      and not public.exam_paper_done(i.assignment_id, auth.uid())
   );
 $fn$;
 
@@ -1190,7 +1599,7 @@ begin
   return old;
 end $fn$;
 
--- exam_my_invigilation — Source : 18_invigilation.sql
+-- exam_my_invigilation — Source : 38_exam_timer_rule.sql
 create or replace function public.exam_my_invigilation(p_assignment_id uuid)
 returns jsonb
 language plpgsql
@@ -1198,7 +1607,10 @@ volatile
 security definer
 set search_path = public
 as $fn$
-declare v_student uuid := auth.uid(); v_session uuid; v_strict boolean; v_row record;
+declare
+  v_student uuid := auth.uid();
+  v_session uuid; v_strict boolean; v_row record;
+  v_candidate boolean; v_closed boolean; v_released boolean; v_submitted boolean;
 begin
   if v_student is null then raise exception 'Not authenticated'; end if;
 
@@ -1211,11 +1623,35 @@ begin
     return jsonb_build_object('watched', false, 'frozen', false, 'strict', false);
   end if;
 
+  -- NOUVEAU (38) : l'état de surveillance n'est donné qu'aux CANDIDATS de
+  -- l'examen et à son STAFF. Tout autre compte connecté reçoit la même
+  -- réponse qu'un devoir ordinaire (rien sur l'examen, ni son numéro).
+  select exists (select 1 from exam_sessions e join roster r on r.class_id = e.container_class_id
+                 where e.id = v_session and r.student_id = v_student)
+    into v_candidate;
+  if not v_candidate and not public.is_exam_staff(v_session) then
+    return jsonb_build_object('watched', false, 'frozen', false, 'strict', false);
+  end if;
+
   select x.at, x.kind, x.reason into v_row
   from exam_incidents x
   where x.session_id = v_session and x.student_id = v_student
     and x.freezes and x.cleared_at is null
   order by x.at limit 1;
+
+  -- (34) : l'état de l'examen, pour un candidat seulement (v_candidate, plus haut).
+  if v_candidate then
+    -- NOUVEAU (35) : ramassage au passage, AVANT de dire « rendu » : un
+    -- candidat revenu en ligne apprend dans la même réponse que sa copie a
+    -- été remise.
+    perform public.exam_collect_papers(v_session, not public.exam_is_open(v_session)
+            or exists (select 1 from exam_sessions e where e.id = v_session and e.results_released_at is not null));
+    select not public.exam_is_open(e.id), e.results_released_at is not null
+      into v_closed, v_released
+    from exam_sessions e where e.id = v_session;
+    select coalesce(bool_or(a.submitted_at is not null), false) into v_submitted
+    from exam_attempts a where a.assignment_id = p_assignment_id and a.student_id = v_student;
+  end if;
 
   return jsonb_build_object(
     'watched', true,
@@ -1224,9 +1660,110 @@ begin
     'since', v_row.at,
     'kind', v_row.kind,
     'reason', v_row.reason,
-    'session_id', v_session
+    'session_id', v_session,
+    'closed', v_closed,
+    'released', v_released,
+    'submitted', v_submitted
   );
 end $fn$;
+
+-- exam_not_started — Source : 41_exam_lock.sql
+create or replace function public.exam_not_started(p_session_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $fn$
+  select exists (
+    select 1 from exam_sessions e
+    where e.id = p_session_id
+      and e.opened_at is null
+      and e.closed_at is null
+      and e.results_released_at is null
+      and (e.opens_at is null or now() < e.opens_at)
+  );
+$fn$;
+
+-- exam_paper_content_guard — Source : 42_paper_lock.sql
+create or replace function public.exam_paper_content_guard()
+returns trigger
+language plpgsql
+volatile
+security definer
+set search_path = public
+as $fn$
+declare
+  v_row jsonb := to_jsonb(coalesce(new, old));
+  v_old jsonb := to_jsonb(old);
+  v_new jsonb := to_jsonb(new);
+  v_paper uuid;
+  v_papers uuid[];
+begin
+  if tg_table_name = 'assignments' then
+    if tg_op = 'DELETE' then
+      if public.paper_exam_started(old.id) then
+        raise exception 'This exam has started — its papers can no longer be deleted';
+      end if;
+      return old;
+    end if;
+    -- UPDATE : seule la case de publication des notes peut changer
+    -- pendant l'examen (bouton « Publish »).
+    if (v_new - 'auto_release_score') is distinct from (v_old - 'auto_release_score')
+       and (public.paper_exam_running(old.id) or public.paper_exam_running(new.id)) then
+      raise exception 'This exam is running — close it before changing its papers';
+    end if;
+    return new;
+  end if;
+
+  -- Le(s) paper(s) concerné(s) par la ligne (avant et après modification).
+  if tg_table_name = 'exam_sections' then
+    v_papers := array[(v_old->>'assignment_id')::uuid, (v_new->>'assignment_id')::uuid];
+  elsif tg_table_name in ('question_groups', 'assignment_questions') then
+    select array_agg(s.assignment_id) into v_papers from exam_sections s
+     where s.id in ((v_old->>'section_id')::uuid, (v_new->>'section_id')::uuid);
+  elsif tg_table_name in ('questions', 'question_answer_key') then
+    select array_agg(distinct s.assignment_id) into v_papers
+      from assignment_questions aq join exam_sections s on s.id = aq.section_id
+     where aq.question_id in (coalesce((v_old->>'question_id')::uuid, (v_old->>'id')::uuid),
+                              coalesce((v_new->>'question_id')::uuid, (v_new->>'id')::uuid));
+  end if;
+
+  if v_papers is not null then
+    foreach v_paper in array v_papers loop
+      if v_paper is not null and public.paper_exam_running(v_paper) then
+        raise exception 'This exam is running — close it before changing its papers';
+      end if;
+    end loop;
+  end if;
+
+  if tg_op = 'DELETE' then return old; end if;
+  return new;
+end $fn$;
+
+-- exam_paper_done — Source : 46_everyone_together.sql
+create or replace function public.exam_paper_done(p_assignment_id uuid, p_student_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $fn$
+  select exists (select 1 from exam_attempts t
+                 where t.assignment_id = p_assignment_id and t.student_id = p_student_id
+                   and t.submitted_at is not null)
+      or exists (select 1
+                 from exam_session_items i
+                 join exam_sessions e on e.id = i.session_id
+                 join assignments a on a.id = i.assignment_id
+                 where i.assignment_id = p_assignment_id
+                   and e.start_mode = 'together'
+                   and i.room_started_at is not null
+                   and a.time_limit_minutes is not null
+                   and now() >= i.room_started_at + make_interval(mins => a.time_limit_minutes)
+                   and not exists (select 1 from exam_attempts t
+                                   where t.assignment_id = p_assignment_id and t.student_id = p_student_id));
+$fn$;
 
 -- exam_paper_release_guard — Source : 16_exam_manage.sql
 create or replace function public.exam_paper_release_guard()
@@ -1259,6 +1796,31 @@ begin
   end if;
   return new;
 end $fn$;
+
+-- exam_paper_start_time — Source : 46_everyone_together.sql
+create or replace function public.exam_paper_start_time(p_assignment_id uuid, p_student_id uuid)
+returns timestamp with time zone
+language sql
+stable
+security definer
+set search_path = public
+as $fn$
+  select coalesce((
+    select greatest(i.room_started_at,
+                    coalesce((select max(t.submitted_at)
+                              from exam_session_items prev
+                              join assignments pa on pa.id = prev.assignment_id
+                              join exam_attempts t on t.assignment_id = prev.assignment_id and t.student_id = p_student_id
+                              where prev.session_id = i.session_id
+                                and prev.order_index < i.order_index
+                                and pa.type <> 'Speaking'), i.room_started_at))
+    from exam_session_items i
+    join exam_sessions e on e.id = i.session_id
+    where i.assignment_id = p_assignment_id
+      and e.start_mode = 'together'
+      and i.room_started_at is not null
+  ), now());
+$fn$;
 
 -- exam_report_incident — Source : 18_invigilation.sql
 create or replace function public.exam_report_incident(p_assignment_id uuid, p_kind text)
@@ -1341,7 +1903,23 @@ begin
   return jsonb_build_object('reset', v_n);
 end $fn$;
 
--- exam_session_action — Source : 12_exam_sessions.sql
+-- exam_running — Source : 42_paper_lock.sql
+create or replace function public.exam_running(p_session_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $fn$
+  select not public.exam_not_started(p_session_id)
+     and exists (select 1 from exam_sessions e
+                 where e.id = p_session_id
+                   and e.closed_at is null
+                   and e.results_released_at is null
+                   and (e.closes_at is null or now() < e.closes_at));
+$fn$;
+
+-- exam_session_action — Source : 46_everyone_together.sql
 create or replace function public.exam_session_action(p_session_id uuid, p_action text, p_item_id uuid DEFAULT NULL::uuid)
 returns jsonb
 language plpgsql
@@ -1349,7 +1927,9 @@ volatile
 security definer
 set search_path = public
 as $fn$
-declare v_now timestamptz := now();
+declare
+  v_now timestamptz := now(); v_collected integer := 0; v_left integer := 0;
+  v_e record; v_it record; v_prev record;
 begin
   if not public.is_exam_staff(p_session_id) then raise exception 'Not allowed'; end if;
 
@@ -1357,23 +1937,90 @@ begin
     update exam_sessions set opened_at = coalesce(opened_at, v_now), closed_at = null where id = p_session_id;
   elsif p_action = 'close' then
     update exam_sessions set closed_at = v_now where id = p_session_id;
+    v_collected := public.exam_collect_papers(p_session_id, true);
+    v_left := public.exam_uncollected_papers(p_session_id);
   elsif p_action = 'release' then
     update exam_sessions set results_released_at = coalesce(results_released_at, v_now) where id = p_session_id;
-    -- Les epreuves de cette session publient leurs resultats.
     update assignments set auto_release_score = true
      where id in (select assignment_id from exam_session_items where session_id = p_session_id);
+    v_collected := public.exam_collect_papers(p_session_id, true);
+    v_left := public.exam_uncollected_papers(p_session_id);
   elsif p_action = 'start_audio' then
     if p_item_id is null then raise exception 'Which part?'; end if;
     update exam_session_items set audio_started_at = coalesce(audio_started_at, v_now)
      where id = p_item_id and session_id = p_session_id;
+
+  -- NOUVEAU (46) ------------------------------------------------------
+  elsif p_action = 'start_item' then
+    if p_item_id is null then raise exception 'Which paper?'; end if;
+    select * into v_e from exam_sessions where id = p_session_id for update;
+    if v_e.start_mode <> 'together' then raise exception 'This exam starts each candidate when ready'; end if;
+    if v_e.results_released_at is not null or not public.exam_is_open(p_session_id) then raise exception 'The exam is not open'; end if;
+    if v_e.free_from is not null then raise exception 'Candidates already continue on their own'; end if;
+    select i.*, a.type, a.time_limit_minutes into v_it
+      from exam_session_items i join assignments a on a.id = i.assignment_id
+     where i.id = p_item_id and i.session_id = p_session_id for update of i;
+    if not found then raise exception 'Which paper?'; end if;
+    if v_it.type = 'Speaking' then raise exception 'A Speaking paper does not need to be started'; end if;
+    if v_it.room_started_at is null then
+      -- Every earlier paper must be started, and over: its time is up, or
+      -- every candidate has handed it in.
+      for v_prev in
+        select i.*, a.time_limit_minutes
+        from exam_session_items i join assignments a on a.id = i.assignment_id
+        where i.session_id = p_session_id and i.order_index < v_it.order_index and a.type <> 'Speaking'
+      loop
+        if v_prev.room_started_at is null then raise exception 'Start the previous paper first'; end if;
+        if not (
+             (v_prev.time_limit_minutes is not null
+              and v_now >= v_prev.room_started_at + make_interval(mins => v_prev.time_limit_minutes))
+          or not exists (select 1 from roster r
+                         where r.class_id = v_e.container_class_id
+                           and not exists (select 1 from exam_attempts t
+                                           where t.assignment_id = v_prev.assignment_id
+                                             and t.student_id = r.student_id and t.submitted_at is not null))
+        ) then
+          raise exception 'Wait until the previous paper is over';
+        end if;
+      end loop;
+      update exam_session_items set room_started_at = v_now where id = p_item_id;
+      -- Listening heard by the whole room: the recording starts with the paper.
+      if v_e.listening_start = 'grouped' and v_it.type = 'Listening' then
+        update exam_session_items set audio_started_at = coalesce(audio_started_at, v_now) where id = p_item_id;
+      end if;
+    end if;
+  elsif p_action = 'free' then
+    select * into v_e from exam_sessions where id = p_session_id for update;
+    if v_e.start_mode <> 'together' then raise exception 'This exam starts each candidate when ready'; end if;
+    if v_e.results_released_at is not null or not public.exam_is_open(p_session_id) then raise exception 'The exam is not open'; end if;
+    if not exists (select 1 from exam_session_items i where i.session_id = p_session_id and i.room_started_at is not null) then
+      raise exception 'Start the first paper first';
+    end if;
+    update exam_sessions set free_from = coalesce(free_from, v_now) where id = p_session_id;
+  -- -------------------------------------------------------------------
   else
     raise exception 'Unknown action';
   end if;
 
-  return jsonb_build_object('ok', true, 'at', v_now);
+  return jsonb_build_object('ok', true, 'at', v_now, 'collected', v_collected, 'uncollected', v_left);
 end $fn$;
 
--- exam_session_status — Source : 12_exam_sessions.sql
+-- exam_session_delete_guard — Source : 43_exam_delete_lock.sql
+create or replace function public.exam_session_delete_guard()
+returns trigger
+language plpgsql
+volatile
+security definer
+set search_path = public
+as $fn$
+begin
+  if public.exam_running(old.id) then
+    raise exception 'This exam is running — close it first';
+  end if;
+  return old;
+end $fn$;
+
+-- exam_session_status — Source : 46_everyone_together.sql
 create or replace function public.exam_session_status(p_session_id uuid)
 returns jsonb
 language plpgsql
@@ -1399,6 +2046,10 @@ begin
     'listening_start', v_e.listening_start,
     'results_released_at', v_e.results_released_at,
     'server_now', now(),
+    -- NOUVEAU (46)
+    'start_mode', v_e.start_mode,
+    'free_from', v_e.free_from,
+    'candidates', (select count(*) from roster r where r.class_id = v_e.container_class_id),
     'items', coalesce((
       select jsonb_agg(jsonb_build_object(
         'item_id', i.id,
@@ -1413,7 +2064,19 @@ begin
                                and at.student_id = auth.uid() and at.submitted_at is not null),
         'started', exists (select 1 from exam_attempts at
                            where at.assignment_id = i.assignment_id and at.student_id = auth.uid()),
-        'readable', public.exam_item_readable(i.assignment_id)
+        'readable', public.exam_item_readable(i.assignment_id),
+        -- NOUVEAU (46)
+        'room_started_at', i.room_started_at,
+        'released', public.exam_item_released(i.assignment_id),
+        'my_started_at', (select at.started_at from exam_attempts at
+                          where at.assignment_id = i.assignment_id and at.student_id = auth.uid()),
+        'start_if_now', case when v_e.start_mode = 'together' and i.room_started_at is not null
+                             then public.exam_paper_start_time(i.assignment_id, auth.uid()) end,
+        'missed', (public.exam_paper_done(i.assignment_id, auth.uid())
+                   and not exists (select 1 from exam_attempts at
+                                   where at.assignment_id = i.assignment_id and at.student_id = auth.uid())),
+        'extra_minutes', (select coalesce(sum(x.minutes), 0) from exam_extra_time x
+                          where x.assignment_id = i.assignment_id and x.student_id = auth.uid())
       ) order by i.order_index)
       from exam_session_items i join assignments a on a.id = i.assignment_id
       where i.session_id = p_session_id), '[]'::jsonb)
@@ -1421,23 +2084,31 @@ begin
   return v_out;
 end $fn$;
 
--- exam_start_item — Source : 12_exam_sessions.sql
-create or replace function public.exam_start_item(p_assignment_id uuid)
-returns jsonb
+-- exam_settings_guard — Source : 46_everyone_together.sql
+create or replace function public.exam_settings_guard()
+returns trigger
 language plpgsql
 volatile
-security definer
 set search_path = public
 as $fn$
 begin
-  if auth.uid() is null then raise exception 'Not authenticated'; end if;
-  if not public.exam_item_readable(p_assignment_id) then
-    raise exception 'This part is not open yet';
+  if current_user = 'authenticated'
+     and (new.strict_mode     is distinct from old.strict_mode
+       or new.listening_start is distinct from old.listening_start
+       or new.start_mode      is distinct from old.start_mode
+       or new.opens_at        is distinct from old.opens_at
+       or new.closes_at       is distinct from old.closes_at)
+     -- l'examen est en cours (même règle que exam_is_open, sur l'ancienne ligne)
+     and old.closed_at is null
+     and (old.closes_at is null or now() < old.closes_at)
+     and (old.opened_at is not null or (old.opens_at is not null and now() >= old.opens_at))
+  then
+    raise exception 'The exam is running: its settings are locked';
   end if;
-  return public.exam_timer_status(p_assignment_id, true);
+  return new;
 end $fn$;
 
--- exam_timer_status — Source : 32_exam_page_reload.sql
+-- exam_timer_status — Source : 46_everyone_together.sql
 create or replace function public.exam_timer_status(p_assignment_id uuid, p_start boolean, p_page uuid DEFAULT NULL::uuid)
 returns jsonb
 language plpgsql
@@ -1473,6 +2144,12 @@ begin
     raise exception 'Not enrolled in this class';
   end if;
 
+  -- (38) dans un paper d'EXAMEN, un appel sans numéro d'écran est refusé.
+  if p_page is null
+     and exists (select 1 from exam_session_items i where i.assignment_id = p_assignment_id) then
+    raise exception 'Please reload the page';
+  end if;
+
   if p_start then
     select (c.kind = 'exam') into v_is_exam from classes c where c.id = v_class_id;
     if coalesce(v_is_exam, false) and not public.exam_item_startable(p_assignment_id) then
@@ -1481,8 +2158,9 @@ begin
 
     -- The start time is written once, by the server clock. Calling this
     -- again (refresh, other device…) never changes it.
+    -- NOUVEAU (46) : en mode « together », l'heure de départ commune.
     insert into exam_attempts (assignment_id, student_id, started_at)
-    values (p_assignment_id, v_student_id, now())
+    values (p_assignment_id, v_student_id, public.exam_paper_start_time(p_assignment_id, v_student_id))
     on conflict (assignment_id, student_id) do nothing;
   end if;
 
@@ -1491,10 +2169,10 @@ begin
   where assignment_id = p_assignment_id and student_id = v_student_id;
 
   -- Livraison 47 : dans quel écran ce paper est-il ouvert ?
-  if p_page is not null                      -- ancien site : pas de numéro, rien
-     and v_started is not null               -- F5 avant Start : rien
-     and v_submitted is null                 -- après la remise : rien
-     and (v_limit is null or now() < v_started + make_interval(mins => v_limit))  -- temps écoulé : rien
+  if p_page is not null
+     and v_started is not null
+     and v_submitted is null
+     and (v_limit is null or now() < v_started + make_interval(mins => v_limit))
   then
     select e.id, e.strict_mode, public.exam_is_open(e.id), e.results_released_at
       into v_session, v_strict, v_open, v_released
@@ -1502,14 +2180,11 @@ begin
     join exam_sessions e on e.id = i.session_id
     where i.assignment_id = p_assignment_id;
 
-    -- classe ordinaire, examen fermé ou résultats publiés : rien
     if v_session is not null and coalesce(v_open, false) and v_released is null then
       insert into exam_attempt_pages (assignment_id, student_id, page_token)
       values (p_assignment_id, v_student_id, p_page)
       on conflict (assignment_id, student_id) do nothing;
 
-      -- FOUND = premier numéro enregistré (Start, ou épreuve commencée
-      -- avant cette livraison) : adopté, pas de gel.
       if not found then
         select page_token into v_prev
         from exam_attempt_pages
@@ -1517,7 +2192,6 @@ begin
         for update;
 
         if v_prev is distinct from p_page then
-          -- Le paper a été rouvert dans un autre écran.
           update exam_attempt_pages
              set page_token = p_page, updated_at = now()
            where assignment_id = p_assignment_id and student_id = v_student_id;
@@ -1527,8 +2201,6 @@ begin
                            and x.freezes and x.cleared_at is null)
             into v_already;
 
-          -- Gèle comme Échap (examen strict). Déjà gelé : on note sans
-          -- empiler un deuxième gel, pour que le prof voie le compte.
           insert into exam_incidents (session_id, student_id, assignment_id, kind, freezes)
           values (v_session, v_student_id, p_assignment_id, 'page_reload',
                   coalesce(v_strict, false) and not v_already);
@@ -1544,6 +2216,45 @@ begin
   );
 end;
 $fn$;
+
+-- exam_uncollected_papers — Source : 36_collect_safety.sql
+create or replace function public.exam_uncollected_papers(p_session_id uuid)
+returns integer
+language plpgsql
+volatile
+security definer
+set search_path = public
+as $fn$
+declare
+  v_all  boolean;
+  v_left integer;
+begin
+  if not public.is_exam_staff(p_session_id) then raise exception 'Not allowed'; end if;
+
+  -- Les memes copies que celles que le ramassage doit prendre :
+  -- toutes si l'examen n'est plus ouvert ou publie, sinon celles dont
+  -- le temps (+5 min) est fini.
+  v_all := not public.exam_is_open(p_session_id)
+           or exists (select 1 from exam_sessions e where e.id = p_session_id and e.results_released_at is not null);
+
+  -- « skip locked » : une copie que l'etudiant est en train de remettre
+  -- a cet instant n'est pas un echec — elle n'est pas comptee.
+  select count(*) into v_left
+  from (
+    select 1
+    from exam_session_items i
+    join assignments p   on p.id = i.assignment_id
+    join exam_attempts a on a.assignment_id = i.assignment_id
+    where i.session_id = p_session_id
+      and a.submitted_at is null
+      and p.type in ('Reading', 'Listening', 'Writing')
+      and (v_all or (p.time_limit_minutes is not null
+                     and now() > a.started_at + make_interval(mins => p.time_limit_minutes + 5)))
+    for update of a skip locked
+  ) as s;
+
+  return v_left;
+end $fn$;
 
 -- get_paper — Source : 30_get_paper.sql
 create or replace function public.get_paper(p_assignment_id uuid, p_with_keys boolean DEFAULT false)
@@ -1648,7 +2359,7 @@ begin
 end;
 $fn$;
 
--- handle_new_user — Source : (aucun script : créée avant le 09)
+-- handle_new_user — Source : 40_teacher_requests.sql
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
@@ -1657,14 +2368,42 @@ security definer
 set search_path = public
 as $fn$
 begin
+  -- NOUVEAU (37) : le rôle envoyé par la page d'inscription est IGNORÉ.
+  -- Seul l'administrateur donne le rôle prof (sql/nommer_prof.sql).
   insert into public.profiles (id, name, role)
   values (
     new.id,
     coalesce(new.raw_user_meta_data->>'name', 'User'),
-    coalesce(new.raw_user_meta_data->>'role', 'student')
+    'student'
   );
+
+  -- NOUVEAU (40) : la case « I'm a teacher — request teacher access ».
+  -- Seulement une DEMANDE, jamais le rôle prof. Ce bloc ne peut jamais
+  -- faire échouer une inscription : valeur bizarre ou problème
+  -- d'insertion = compte créé normalement (étudiant), sans demande.
+  begin
+    if lower(coalesce(new.raw_user_meta_data->>'teacher_request', '')) = 'true' then
+      insert into public.teacher_requests (user_id, status)
+      values (new.id, 'pending')
+      on conflict (user_id) do nothing;
+    end if;
+  exception when others then
+    null;
+  end;
+
   return new;
 end;
+$fn$;
+
+-- is_app_admin — Source : 39_admin_overview.sql
+create or replace function public.is_app_admin()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $fn$
+  select exists (select 1 from app_admins a where a.user_id = auth.uid());
 $fn$;
 
 -- is_assignment_teacher — Source : 10_rls_copies_classes.sql
@@ -1733,6 +2472,17 @@ as $fn$
   );
 $fn$;
 
+-- is_exam_creator — Source : 41_exam_lock.sql
+create or replace function public.is_exam_creator(p_session_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $fn$
+  select exists (select 1 from exam_sessions e where e.id = p_session_id and e.created_by = auth.uid());
+$fn$;
+
 -- is_exam_staff — Source : 12_exam_sessions.sql
 create or replace function public.is_exam_staff(p_session_id uuid)
 returns boolean
@@ -1779,6 +2529,17 @@ as $fn$
     where aq.question_id = p_question_id
       and s.teacher_id = auth.uid()
   );
+$fn$;
+
+-- is_teacher — Source : 37_teacher_signup.sql
+create or replace function public.is_teacher()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $fn$
+  select exists (select 1 from profiles p where p.id = auth.uid() and p.role = 'teacher');
 $fn$;
 
 -- join_class — Source : 12_exam_sessions.sql
@@ -1843,7 +2604,7 @@ as $fn$
   order by p.name;
 $fn$;
 
--- listening_audio_status — Source : (aucun script : créée avant le 09)
+-- listening_audio_status — Source : 46_everyone_together.sql
 create or replace function public.listening_audio_status(p_assignment_id uuid, p_start boolean)
 returns jsonb
 language plpgsql
@@ -1858,6 +2619,7 @@ declare
   v_exam_mode  boolean;
   v_check_min  integer;
   v_started    timestamptz;
+  v_is_exam    boolean;
 begin
   if v_student_id is null then
     raise exception 'Not authenticated';
@@ -1871,19 +2633,23 @@ begin
     raise exception 'Assignment not found';
   end if;
 
-  -- L'étudiant doit être inscrit dans la classe du devoir.
   if not exists (select 1 from roster r where r.class_id = v_class_id and r.student_id = v_student_id) then
     raise exception 'Not enrolled in this class';
   end if;
 
   if p_start and v_audio is not null then
-    -- La ligne de tentative existe peut-être déjà (minuteur).
+    -- NOUVEAU (46) : dans un examen, pas de copie créée hors des règles.
+    if not exists (select 1 from exam_attempts t where t.assignment_id = p_assignment_id and t.student_id = v_student_id) then
+      select (c.kind = 'exam') into v_is_exam from classes c where c.id = v_class_id;
+      if coalesce(v_is_exam, false) and not public.exam_item_startable(p_assignment_id) then
+        raise exception 'This part is not open';
+      end if;
+    end if;
+
     insert into exam_attempts (assignment_id, student_id, started_at)
-    values (p_assignment_id, v_student_id, now())
+    values (p_assignment_id, v_student_id, public.exam_paper_start_time(p_assignment_id, v_student_id))
     on conflict (assignment_id, student_id) do nothing;
 
-    -- L'heure de départ n'est écrite QU'UNE FOIS : rafraîchir la page,
-    -- ou rouvrir le devoir sur un autre appareil, ne la change jamais.
     update exam_attempts
        set audio_started_at = now()
      where assignment_id = p_assignment_id
@@ -1903,6 +2669,33 @@ begin
   );
 end;
 $fn$;
+
+-- my_teacher_request — Source : 40_teacher_requests.sql
+create or replace function public.my_teacher_request()
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = public
+as $fn$
+declare
+  v_user uuid := auth.uid();
+  r      record;
+begin
+  if v_user is null then raise exception 'Not authenticated'; end if;
+  select t.status, t.requested_at, t.decided_at into r
+  from teacher_requests t where t.user_id = v_user;
+  if not found then
+    return jsonb_build_object('status', 'none');
+  end if;
+  return jsonb_build_object(
+    'status',       r.status,
+    'requested_at', r.requested_at,
+    'decided_at',   r.decided_at,
+    -- Après un refus : nouvelle demande possible 7 jours plus tard.
+    'again_at',     case when r.status = 'declined' then r.decided_at + interval '7 days' end
+  );
+end $fn$;
 
 -- normalize_answer_text — Source : 21_answer_matching.sql
 create or replace function public.normalize_answer_text(p_text text)
@@ -1936,7 +2729,7 @@ as $fn$
   select count(*)::integer from regexp_matches(coalesce(p_text, ''), '_{3,}', 'g');
 $fn$;
 
--- paper_edit_state — Source : 27_paper_editor.sql
+-- paper_edit_state — Source : 42_paper_lock.sql
 create or replace function public.paper_edit_state(p_assignment_id uuid)
 returns jsonb
 language plpgsql
@@ -1977,11 +2770,9 @@ begin
                where f.assignment_id = p_assignment_id and f.released_at is not null)
   );
 
-  select exists (
-    select 1 from exam_session_items i join exam_sessions e on e.id = i.session_id
-    where i.assignment_id = p_assignment_id
-      and ((e.opened_at is not null and e.closed_at is null) or public.exam_is_open(e.id))
-  ) into v_live;
+  -- NOUVEAU (42) : UNE seule définition de « examen en cours » partout
+  -- (paper_exam_running, fondée sur exam_not_started du 41).
+  v_live := public.paper_exam_running(p_assignment_id);
 
   return jsonb_build_object(
     'level', case when v_sub = 0 then 1 when v_seen then 3 else 2 end,
@@ -1989,6 +2780,30 @@ begin
     'marks_seen', v_seen,
     'exam_live', v_live);
 end $fn$;
+
+-- paper_exam_running — Source : 42_paper_lock.sql
+create or replace function public.paper_exam_running(p_assignment_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $fn$
+  select exists (select 1 from exam_session_items i
+                 where i.assignment_id = p_assignment_id and public.exam_running(i.session_id));
+$fn$;
+
+-- paper_exam_started — Source : 42_paper_lock.sql
+create or replace function public.paper_exam_started(p_assignment_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $fn$
+  select exists (select 1 from exam_session_items i
+                 where i.assignment_id = p_assignment_id and not public.exam_not_started(i.session_id));
+$fn$;
 
 -- paper_json_shape — Source : 27_paper_editor.sql
 create or replace function public.paper_json_shape(p jsonb, p_key text DEFAULT NULL::text)
@@ -2138,6 +2953,99 @@ begin
   update classes set name = v_name where id = v_class;
 
   return jsonb_build_object('name', v_name);
+end $fn$;
+
+-- request_teacher_access — Source : 40_teacher_requests.sql
+create or replace function public.request_teacher_access()
+returns jsonb
+language plpgsql
+volatile
+security definer
+set search_path = public
+as $fn$
+declare
+  v_user uuid := auth.uid();
+  v_role text;
+  r      record;
+begin
+  if v_user is null then raise exception 'Not authenticated'; end if;
+  select p.role into v_role from profiles p where p.id = v_user;
+  if v_role is null then raise exception 'Not allowed'; end if;
+  if v_role = 'teacher' then raise exception 'You already have teacher access'; end if;
+
+  -- Une ligne par compte ; la verrouiller évite deux demandes mêlées
+  -- (double clic, deux onglets, ou une décision de l'admin au même instant).
+  insert into teacher_requests (user_id, status) values (v_user, 'pending')
+  on conflict (user_id) do nothing;
+  select t.status, t.decided_at into r from teacher_requests t where t.user_id = v_user for update;
+
+  if r.status = 'declined' and r.decided_at > now() - interval '7 days' then
+    null;                                   -- trop tôt : rien ne change
+  elsif r.status in ('declined', 'approved') then
+    -- Refus d'il y a 7 jours ou plus, ou ancien accord (rôle retiré depuis) :
+    -- nouvelle demande.
+    update teacher_requests
+       set status = 'pending', requested_at = now(), decided_at = null, decided_by = null
+     where user_id = v_user;
+  end if;                                   -- déjà en attente : rien ne change
+
+  return public.my_teacher_request();
+end $fn$;
+
+-- save_answer_drafts — Source : 35_pens_down.sql
+create or replace function public.save_answer_drafts(p_assignment_id uuid, p_answers jsonb)
+returns jsonb
+language plpgsql
+volatile
+security definer
+set search_path = public
+as $fn$
+declare
+  v_student  uuid := auth.uid();
+  v_type     text;
+  v_limit    integer;
+  v_session  uuid;
+  v_released timestamptz;
+  v_started  timestamptz;
+  v_submitted timestamptz;
+begin
+  if v_student is null then raise exception 'Not authenticated'; end if;
+
+  select a.type, a.time_limit_minutes into v_type, v_limit from assignments a where a.id = p_assignment_id;
+  if v_type is null or v_type not in ('Reading', 'Listening') then
+    raise exception 'Not a Reading or Listening paper';
+  end if;
+
+  select e.id, e.results_released_at into v_session, v_released
+  from exam_session_items i join exam_sessions e on e.id = i.session_id
+  where i.assignment_id = p_assignment_id;
+  if v_session is null then
+    return jsonb_build_object('saved', false, 'reason', 'not_exam');
+  end if;
+  if not public.is_exam_candidate(v_session) then raise exception 'Not allowed'; end if;
+
+  if p_answers is null or jsonb_typeof(p_answers) <> 'object' then raise exception 'Invalid answers'; end if;
+  if (select count(*) from jsonb_object_keys(p_answers)) > 500 or length(p_answers::text) > 200000 then
+    raise exception 'Too many answers';
+  end if;
+
+  select started_at, submitted_at into v_started, v_submitted
+  from exam_attempts where assignment_id = p_assignment_id and student_id = v_student;
+  if v_started is null then return jsonb_build_object('saved', false, 'reason', 'not_started'); end if;
+  if v_submitted is not null then return jsonb_build_object('saved', false, 'reason', 'submitted'); end if;
+  if v_released is not null or not public.exam_is_open(v_session) then
+    return jsonb_build_object('saved', false, 'reason', 'closed');
+  end if;
+  if v_limit is not null and now() > v_started + make_interval(mins => v_limit + 5) then
+    return jsonb_build_object('saved', false, 'reason', 'time');
+  end if;
+
+  insert into exam_answer_drafts (assignment_id, student_id, answers, updated_at)
+  values (p_assignment_id, v_student, p_answers, now())
+  on conflict (assignment_id, student_id) do update
+    set answers = excluded.answers, updated_at = now();
+
+  return jsonb_build_object('saved', true);
 end $fn$;
 
 -- save_paper_edits — Source : 29_paper_editor_add_groups.sql
@@ -2619,119 +3527,6 @@ begin
 end;
 $fn$;
 
--- submissions_guard — Source : 10_rls_copies_classes.sql
-create or replace function public.submissions_guard()
-returns trigger
-language plpgsql
-volatile
-security definer
-set search_path = public
-as $fn$
-begin
-  -- Appel hors navigateur (tâche serveur, éditeur SQL) : on laisse faire.
-  if auth.uid() is null then return new; end if;
-  -- Le professeur de la classe : rien à vérifier.
-  if public.is_assignment_teacher(coalesce(new.assignment_id, old.assignment_id)) then return new; end if;
-
-  if tg_op = 'INSERT' then
-    new.grade := null; new.feedback := null; new.graded_at := null;
-    new.score_task_achievement := null; new.score_coherence_cohesion := null;
-    new.score_lexical_resource := null; new.score_grammar_accuracy := null;
-  else
-    if (new.grade is distinct from old.grade and new.grade is not null)
-    or (new.feedback is distinct from old.feedback and new.feedback is not null)
-    or (new.graded_at is distinct from old.graded_at and new.graded_at is not null)
-    or (new.score_task_achievement is distinct from old.score_task_achievement and new.score_task_achievement is not null)
-    or (new.score_coherence_cohesion is distinct from old.score_coherence_cohesion and new.score_coherence_cohesion is not null)
-    or (new.score_lexical_resource  is distinct from old.score_lexical_resource  and new.score_lexical_resource  is not null)
-    or (new.score_grammar_accuracy  is distinct from old.score_grammar_accuracy  and new.score_grammar_accuracy  is not null)
-    then
-      raise exception 'Only the teacher can set a mark';
-    end if;
-  end if;
-  return new;
-end $fn$;
-
--- submit_student_answer — Source : (aucun script : créée avant le 09)
-create or replace function public.submit_student_answer(p_assignment_id uuid, p_question_id uuid, p_response jsonb)
-returns jsonb
-language plpgsql
-volatile
-security definer
-set search_path = public
-as $fn$
-declare
-  v_student_id uuid := auth.uid();
-  v_class_id   uuid;
-  v_limit      integer;
-  v_started    timestamptz;
-  v_submitted  timestamptz;
-  v_grade      record;
-begin
-  if v_student_id is null then
-    raise exception 'Not authenticated';
-  end if;
-
-  select class_id, time_limit_minutes into v_class_id, v_limit
-  from public.assignments where id = p_assignment_id;
-  if v_class_id is null then
-    raise exception 'Assignment not found';
-  end if;
-
-  if not exists (select 1 from public.roster r where r.class_id = v_class_id and r.student_id = v_student_id) then
-    raise exception 'Not enrolled in this class';
-  end if;
-
-  if not exists (
-    select 1
-    from public.assignment_questions aq
-    join public.exam_sections s on s.id = aq.section_id
-    where aq.question_id = p_question_id and s.assignment_id = p_assignment_id
-  ) then
-    raise exception 'Question not in this assignment';
-  end if;
-
-  select started_at, submitted_at into v_started, v_submitted
-  from public.exam_attempts
-  where assignment_id = p_assignment_id and student_id = v_student_id;
-
-  if v_submitted is not null then
-    raise exception 'Already submitted';
-  end if;
-
-  -- An answer already given can never be changed.
-  if exists (select 1 from public.student_answers where student_id = v_student_id and question_id = p_question_id) then
-    raise exception 'Already answered';
-  end if;
-
-  -- Submissions made with the old one-by-one method finish within
-  -- seconds: anything added long after the first answer is refused.
-  if exists (
-    select 1 from public.student_answers
-    where assignment_id = p_assignment_id and student_id = v_student_id
-      and answered_at < now() - interval '2 minutes'
-  ) then
-    raise exception 'Already submitted';
-  end if;
-
-  if v_limit is not null then
-    if v_started is null then
-      raise exception 'Exam not started';
-    end if;
-    if now() > v_started + make_interval(mins => v_limit + 5) then
-      raise exception 'Time is over';
-    end if;
-  end if;
-
-  select * into v_grade from public.grade_student_answer(p_question_id, p_response);
-
-  insert into public.student_answers (assignment_id, student_id, question_id, response, is_correct, points_earned)
-  values (p_assignment_id, v_student_id, p_question_id, p_response, v_grade.is_correct, v_grade.points_earned);
-
-  return jsonb_build_object('is_correct', v_grade.is_correct, 'points_earned', v_grade.points_earned, 'points_possible', v_grade.points_possible);
-end;
-$fn$;
-
 -- submit_student_answers — Source : 15_exam_locks.sql
 create or replace function public.submit_student_answers(p_assignment_id uuid, p_answers jsonb)
 returns jsonb
@@ -2860,7 +3655,7 @@ begin
 end;
 $fn$;
 
--- submit_writing — Source : 16_exam_manage.sql
+-- submit_writing — Source : 36_collect_safety.sql
 create or replace function public.submit_writing(p_assignment_id uuid)
 returns jsonb
 language plpgsql
@@ -2874,6 +3669,8 @@ declare
   v_type       text;
   v_exam       record;
   v_had_copy   boolean;
+  v_exam_paper boolean;
+  v_submitted  timestamptz;
 begin
   if v_student_id is null then
     raise exception 'Not authenticated';
@@ -2898,25 +3695,38 @@ begin
   from exam_session_items i
   join exam_sessions e on e.id = i.session_id
   where i.assignment_id = p_assignment_id;
+  v_exam_paper := found;
 
-  if found then
+  if v_exam_paper then
     if v_exam.results_released_at is not null then
       raise exception 'This exam is over';
     end if;
     if v_exam.closed_at is not null and not v_had_copy then
       raise exception 'This exam is closed';
     end if;
-    -- Une copie rendue est ramassee : on ne la rend pas deux fois.
-    -- (Le texte etait deja gele — save_writing_draft refuse d'ecrire
-    -- apres le rendu — mais la fonction repondait quand meme "rendu".
-    -- Dans une classe ordinaire, on ne change rien : le double envoi y
-    -- reste sans effet et sans erreur, comme avant.)
-    if exists (select 1 from exam_attempts a
-               where a.assignment_id = p_assignment_id
-                 and a.student_id = v_student_id
-                 and a.submitted_at is not null) then
-      raise exception 'Already submitted';
-    end if;
+  end if;
+
+  -- NOUVEAU (36) : la ligne de la copie est verrouillee EN PREMIER, comme
+  -- dans submit_student_answers et dans le ramassage (exam_collect_papers).
+  -- Meme ordre partout = plus de blocage mutuel (deadlock) quand l'etudiant
+  -- remet pile au moment ou le serveur ramasse. Si le ramassage passe
+  -- avant, on attend qu'il finisse, puis on lit sa remise ici.
+  insert into exam_attempts (assignment_id, student_id, started_at)
+  values (p_assignment_id, v_student_id, now())
+  on conflict (assignment_id, student_id) do nothing;
+
+  select submitted_at into v_submitted
+  from exam_attempts
+  where assignment_id = p_assignment_id and student_id = v_student_id
+  for update;
+
+  -- Une copie rendue est ramassee : on ne la rend pas deux fois.
+  -- (Le texte etait deja gele — save_writing_draft refuse d'ecrire
+  -- apres le rendu — mais la fonction repondait quand meme "rendu".
+  -- Dans une classe ordinaire, on ne change rien : le double envoi y
+  -- reste sans effet et sans erreur, comme avant.)
+  if v_exam_paper and v_submitted is not null then
+    raise exception 'Already submitted';
   end if;
 
   -- A task the student never typed in still gets an (empty) row, so the
@@ -2933,11 +3743,7 @@ begin
      and student_id = v_student_id
      and submitted_at is null;
 
-  -- NOUVEAU : le registre unique du rendu.
-  insert into exam_attempts (assignment_id, student_id, started_at)
-  values (p_assignment_id, v_student_id, now())
-  on conflict (assignment_id, student_id) do nothing;
-
+  -- Le registre unique du rendu (sa ligne existe deja : voir plus haut).
   update exam_attempts
      set submitted_at = coalesce(submitted_at, now())
    where assignment_id = p_assignment_id and student_id = v_student_id;
@@ -2945,18 +3751,129 @@ begin
   return jsonb_build_object('submitted', true);
 end $fn$;
 
+-- teacher_overview — Source : 45_teacher_overview.sql
+create or replace function public.teacher_overview()
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = public
+as $fn$
+declare
+  v_uid uuid := auth.uid();
+  v_result jsonb;
+begin
+  if v_uid is null then raise exception 'Not authenticated'; end if;
+
+  with cl as (
+    select c.id, c.name, c.code, c.created_at
+    from classes c
+    where c.teacher_id = v_uid and coalesce(c.kind, 'class') = 'class'
+  ),
+  st as (
+    select r.class_id, r.student_id, r.joined_at
+    from roster r join cl on cl.id = r.class_id
+  ),
+  a as (
+    select x.id, x.class_id, x.type,
+           exists (select 1 from exam_sections s where s.assignment_id = x.id) as structured
+    from assignments x join cl on cl.id = x.class_id
+  ),
+  -- One row per (assignment, enrolled student): handed in / viewed or not
+  -- (same test as script 44), and WHEN, if the time is known.
+  pair as (
+    select a.id as assignment_id, a.class_id, a.type, st.student_id,
+      case
+        when a.type = 'Speaking' then
+          exists (select 1 from speaking_views v where v.assignment_id = a.id and v.student_id = st.student_id)
+        when a.type = 'Writing' then
+          exists (select 1 from writing_responses w where w.assignment_id = a.id and w.student_id = st.student_id and w.submitted_at is not null)
+        else
+          exists (select 1 from student_answers sa where sa.assignment_id = a.id and sa.student_id = st.student_id)
+          or exists (select 1 from exam_attempts t where t.assignment_id = a.id and t.student_id = st.student_id and t.submitted_at is not null)
+      end as done,
+      case
+        when a.type = 'Speaking' then
+          (select min(v.first_viewed_at) from speaking_views v where v.assignment_id = a.id and v.student_id = st.student_id)
+        when a.type = 'Writing' then
+          (select max(w.submitted_at) from writing_responses w where w.assignment_id = a.id and w.student_id = st.student_id and w.submitted_at is not null)
+        else
+          coalesce((select max(t.submitted_at) from exam_attempts t where t.assignment_id = a.id and t.student_id = st.student_id and t.submitted_at is not null),
+                   (select max(sa.answered_at) from student_answers sa where sa.assignment_id = a.id and sa.student_id = st.student_id))
+      end as at
+    from a join st on st.class_id = a.class_id
+    where a.structured
+  ),
+  done as (
+    select p.*,
+           (p.type = 'Writing' and not exists (
+              select 1 from assignment_feedback f
+               where f.assignment_id = p.assignment_id and f.student_id = p.student_id and f.released_at is not null)) as waiting
+    from pair p
+    where p.done
+  ),
+  per_a as (
+    select a.id, a.class_id,
+           (select count(*) from done d where d.assignment_id = a.id) as handed_in,
+           (select count(*) from done d where d.assignment_id = a.id and d.waiting) as to_mark,
+           (select min(d.at) from done d where d.assignment_id = a.id and d.waiting) as oldest
+    from a
+  ),
+  per_c as (
+    select cl.id, cl.name, cl.code, cl.created_at,
+           (select count(*) from st where st.class_id = cl.id) as students,
+           (select count(*) from a where a.class_id = cl.id) as assignments,
+           (select coalesce(sum(p.to_mark), 0) from per_a p where p.class_id = cl.id) as to_mark
+    from cl
+  ),
+  events as (
+    select 'handed_in'::text as kind, d.class_id, d.assignment_id, d.student_id, d.at
+    from done d
+    where d.type <> 'Speaking' and d.at is not null
+    union all
+    select 'joined', st.class_id, null::uuid, st.student_id, st.joined_at
+    from st
+    where st.joined_at is not null
+  ),
+  recent as (
+    select e.*, pr.name as student_name
+    from events e left join profiles pr on pr.id = e.student_id
+    order by e.at desc
+    limit 8
+  )
+  select jsonb_build_object(
+    'classes', coalesce((select jsonb_agg(jsonb_build_object(
+        'id', id, 'name', name, 'code', code, 'created_at', created_at,
+        'students', students, 'assignments', assignments, 'to_mark', to_mark) order by created_at desc) from per_c), '[]'::jsonb),
+    'assignments', coalesce((select jsonb_agg(jsonb_build_object(
+        'id', id, 'class_id', class_id, 'handed_in', handed_in, 'to_mark', to_mark, 'oldest', oldest)) from per_a), '[]'::jsonb),
+    'students', (select count(distinct student_id) from st),
+    'handed_in_7d', (select count(*) from done d where d.type <> 'Speaking' and d.at >= now() - interval '7 days'),
+    'recent', coalesce((select jsonb_agg(jsonb_build_object(
+        'kind', kind, 'class_id', class_id, 'assignment_id', assignment_id,
+        'student_name', student_name, 'at', at) order by at desc) from recent), '[]'::jsonb)
+  ) into v_result;
+
+  return v_result;
+end $fn$;
+
 -- =====================================================================
 -- 6. DECLENCHEURS
 -- =====================================================================
 
+CREATE TRIGGER exam_paper_lock BEFORE INSERT OR DELETE OR UPDATE ON public.assignment_questions FOR EACH ROW EXECUTE FUNCTION exam_paper_content_guard();
+CREATE TRIGGER exam_paper_lock BEFORE DELETE OR UPDATE ON public.assignments FOR EACH ROW EXECUTE FUNCTION exam_paper_content_guard();
 CREATE TRIGGER guard_exam_paper_release BEFORE INSERT OR UPDATE ON public.assignments FOR EACH ROW EXECUTE FUNCTION exam_paper_release_guard();
-CREATE TRIGGER guard_live_exam_sections BEFORE DELETE ON public.exam_sections FOR EACH ROW EXECUTE FUNCTION exam_live_content_guard();
-CREATE TRIGGER guard_live_exam_questions BEFORE DELETE ON public.questions FOR EACH ROW EXECUTE FUNCTION exam_live_content_guard();
-CREATE TRIGGER trg_submissions_guard BEFORE INSERT OR UPDATE ON public.submissions FOR EACH ROW EXECUTE FUNCTION submissions_guard();
+CREATE TRIGGER exam_paper_lock BEFORE INSERT OR DELETE OR UPDATE ON public.exam_sections FOR EACH ROW EXECUTE FUNCTION exam_paper_content_guard();
+CREATE TRIGGER exam_session_delete_lock BEFORE DELETE ON public.exam_sessions FOR EACH ROW EXECUTE FUNCTION exam_session_delete_guard();
+CREATE TRIGGER exam_settings_guard BEFORE UPDATE ON public.exam_sessions FOR EACH ROW EXECUTE FUNCTION exam_settings_guard();
+CREATE TRIGGER exam_paper_lock BEFORE INSERT OR DELETE OR UPDATE ON public.question_answer_key FOR EACH ROW EXECUTE FUNCTION exam_paper_content_guard();
+CREATE TRIGGER exam_paper_lock BEFORE INSERT OR DELETE OR UPDATE ON public.question_groups FOR EACH ROW EXECUTE FUNCTION exam_paper_content_guard();
+CREATE TRIGGER exam_paper_lock BEFORE DELETE OR UPDATE ON public.questions FOR EACH ROW EXECUTE FUNCTION exam_paper_content_guard();
 CREATE TRIGGER on_auth_user_created AFTER INSERT ON auth.users FOR EACH ROW EXECUTE FUNCTION handle_new_user();
 
 -- =====================================================================
--- 7. REGLES RLS (60 sur public, 5 sur le stockage)
+-- 7. REGLES RLS (58 sur public, 5 sur le stockage)
 -- =====================================================================
 
 create policy "exam staff mark feedback" on public.assignment_feedback
@@ -2964,13 +3881,16 @@ create policy "exam staff mark feedback" on public.assignment_feedback
   for all
   to public
   using (is_exam_staff_of_assignment(assignment_id))
-  with check (is_exam_staff_of_assignment(assignment_id));
+  with check ((is_exam_staff_of_assignment(assignment_id) AND (EXISTS ( SELECT 1
+   FROM (assignments a2
+     JOIN roster r ON ((r.class_id = a2.class_id)))
+  WHERE ((a2.id = assignment_feedback.assignment_id) AND (r.student_id = assignment_feedback.student_id))))));
 
 create policy "students read own released feedback" on public.assignment_feedback
   as permissive
   for select
   to public
-  using (((student_id = auth.uid()) AND (released_at IS NOT NULL)));
+  using (((student_id = ( SELECT auth.uid() AS uid)) AND (released_at IS NOT NULL)));
 
 create policy "teachers manage feedback in own class" on public.assignment_feedback
   as permissive
@@ -2979,11 +3899,14 @@ create policy "teachers manage feedback in own class" on public.assignment_feedb
   using ((EXISTS ( SELECT 1
    FROM (assignments a
      JOIN classes c ON ((c.id = a.class_id)))
-  WHERE ((a.id = assignment_feedback.assignment_id) AND (c.teacher_id = auth.uid())))))
-  with check ((EXISTS ( SELECT 1
+  WHERE ((a.id = assignment_feedback.assignment_id) AND (c.teacher_id = ( SELECT auth.uid() AS uid))))))
+  with check (((EXISTS ( SELECT 1
    FROM (assignments a
      JOIN classes c ON ((c.id = a.class_id)))
-  WHERE ((a.id = assignment_feedback.assignment_id) AND (c.teacher_id = auth.uid())))));
+  WHERE ((a.id = assignment_feedback.assignment_id) AND (c.teacher_id = ( SELECT auth.uid() AS uid))))) AND (EXISTS ( SELECT 1
+   FROM (assignments a2
+     JOIN roster r ON ((r.class_id = a2.class_id)))
+  WHERE ((a2.id = assignment_feedback.assignment_id) AND (r.student_id = assignment_feedback.student_id))))));
 
 create policy "links readable by class members" on public.assignment_questions
   as permissive
@@ -2997,10 +3920,10 @@ create policy "teacher manages own assignment_questions" on public.assignment_qu
   to public
   using ((EXISTS ( SELECT 1
    FROM questions q
-  WHERE ((q.id = assignment_questions.question_id) AND (q.teacher_id = auth.uid())))))
+  WHERE ((q.id = assignment_questions.question_id) AND (q.teacher_id = ( SELECT auth.uid() AS uid))))))
   with check ((EXISTS ( SELECT 1
    FROM questions q
-  WHERE ((q.id = assignment_questions.question_id) AND (q.teacher_id = auth.uid())))));
+  WHERE ((q.id = assignment_questions.question_id) AND (q.teacher_id = ( SELECT auth.uid() AS uid))))));
 
 create policy "assignments readable by class members" on public.assignments
   as permissive
@@ -3014,7 +3937,7 @@ create policy "teacher can create assignments in own class" on public.assignment
   to public
   with check ((EXISTS ( SELECT 1
    FROM classes c
-  WHERE ((c.id = assignments.class_id) AND (c.teacher_id = auth.uid())))));
+  WHERE ((c.id = assignments.class_id) AND (c.teacher_id = ( SELECT auth.uid() AS uid))))));
 
 create policy "teacher can delete own assignments" on public.assignments
   as permissive
@@ -3022,7 +3945,7 @@ create policy "teacher can delete own assignments" on public.assignments
   to public
   using ((EXISTS ( SELECT 1
    FROM classes c
-  WHERE ((c.id = assignments.class_id) AND (c.teacher_id = auth.uid())))));
+  WHERE ((c.id = assignments.class_id) AND (c.teacher_id = ( SELECT auth.uid() AS uid))))));
 
 create policy "teacher reads own assignment rows" on public.assignments
   as permissive
@@ -3047,19 +3970,19 @@ create policy "classes readable by owner or member" on public.classes
   as permissive
   for select
   to public
-  using (((teacher_id = auth.uid()) OR is_enrolled(id)));
+  using (((teacher_id = ( SELECT auth.uid() AS uid)) OR is_enrolled(id)));
 
 create policy "teacher deletes own class" on public.classes
   as permissive
   for delete
   to public
-  using ((teacher_id = auth.uid()));
+  using ((teacher_id = ( SELECT auth.uid() AS uid)));
 
 create policy "teachers can create classes" on public.classes
   as permissive
   for insert
   to public
-  with check ((auth.uid() = teacher_id));
+  with check (((( SELECT auth.uid() AS uid) = teacher_id) AND is_teacher()));
 
 create policy "exam staff read attempts" on public.exam_attempts
   as permissive
@@ -3071,7 +3994,7 @@ create policy "students read own attempts" on public.exam_attempts
   as permissive
   for select
   to public
-  using ((student_id = auth.uid()));
+  using ((student_id = ( SELECT auth.uid() AS uid)));
 
 create policy "teachers read attempts in own classes" on public.exam_attempts
   as permissive
@@ -3080,13 +4003,19 @@ create policy "teachers read attempts in own classes" on public.exam_attempts
   using ((EXISTS ( SELECT 1
    FROM (assignments a
      JOIN classes c ON ((c.id = a.class_id)))
-  WHERE ((a.id = exam_attempts.assignment_id) AND (c.teacher_id = auth.uid())))));
+  WHERE ((a.id = exam_attempts.assignment_id) AND (c.teacher_id = ( SELECT auth.uid() AS uid))))));
+
+create policy "exam staff read extra time" on public.exam_extra_time
+  as permissive
+  for select
+  to public
+  using (is_exam_staff(session_id));
 
 create policy "incidents readable by owner or exam staff" on public.exam_incidents
   as permissive
   for select
   to public
-  using (((student_id = auth.uid()) OR is_exam_staff(session_id)));
+  using (((student_id = ( SELECT auth.uid() AS uid)) OR is_exam_staff(session_id)));
 
 create policy "sections readable by class members" on public.exam_sections
   as permissive
@@ -3101,18 +4030,17 @@ create policy "teacher manages sections of own assignments" on public.exam_secti
   using ((EXISTS ( SELECT 1
    FROM (assignments a
      JOIN classes c ON ((c.id = a.class_id)))
-  WHERE ((a.id = exam_sections.assignment_id) AND (c.teacher_id = auth.uid())))))
+  WHERE ((a.id = exam_sections.assignment_id) AND (c.teacher_id = ( SELECT auth.uid() AS uid))))))
   with check ((EXISTS ( SELECT 1
    FROM (assignments a
      JOIN classes c ON ((c.id = a.class_id)))
-  WHERE ((a.id = exam_sections.assignment_id) AND (c.teacher_id = auth.uid())))));
+  WHERE ((a.id = exam_sections.assignment_id) AND (c.teacher_id = ( SELECT auth.uid() AS uid))))));
 
-create policy "exam items managed by staff" on public.exam_session_items
+create policy "exam items added by staff before start" on public.exam_session_items
   as permissive
-  for all
+  for insert
   to public
-  using (is_exam_staff(session_id))
-  with check (is_exam_staff(session_id));
+  with check ((is_exam_staff(session_id) AND exam_not_started(session_id) AND exam_item_belongs(session_id, assignment_id)));
 
 create policy "exam items readable by staff or candidate" on public.exam_session_items
   as permissive
@@ -3120,16 +4048,24 @@ create policy "exam items readable by staff or candidate" on public.exam_session
   to public
   using ((is_exam_staff(session_id) OR is_exam_candidate(session_id)));
 
-create policy "exam staff managed by creator" on public.exam_session_staff
+create policy "exam items removed by staff before start" on public.exam_session_items
   as permissive
-  for all
+  for delete
   to public
-  using ((EXISTS ( SELECT 1
-   FROM exam_sessions e
-  WHERE ((e.id = exam_session_staff.session_id) AND (e.created_by = auth.uid())))))
-  with check ((EXISTS ( SELECT 1
-   FROM exam_sessions e
-  WHERE ((e.id = exam_session_staff.session_id) AND (e.created_by = auth.uid())))));
+  using ((is_exam_staff(session_id) AND exam_not_started(session_id)));
+
+create policy "exam items reordered by staff before start" on public.exam_session_items
+  as permissive
+  for update
+  to public
+  using ((is_exam_staff(session_id) AND exam_not_started(session_id)))
+  with check ((is_exam_staff(session_id) AND exam_not_started(session_id) AND exam_item_belongs(session_id, assignment_id)));
+
+create policy "exam staff added by creator" on public.exam_session_staff
+  as permissive
+  for insert
+  to public
+  with check (((role = 'co'::text) AND exam_can_add_staff(session_id, teacher_id)));
 
 create policy "exam staff readable by staff" on public.exam_session_staff
   as permissive
@@ -3137,11 +4073,11 @@ create policy "exam staff readable by staff" on public.exam_session_staff
   to public
   using (is_exam_staff(session_id));
 
-create policy "exam sessions deleted by creator" on public.exam_sessions
+create policy "exam staff removed by creator" on public.exam_session_staff
   as permissive
   for delete
   to public
-  using ((created_by = auth.uid()));
+  using (((role <> 'owner'::text) AND is_exam_creator(session_id)));
 
 create policy "exam sessions readable by staff or candidate" on public.exam_sessions
   as permissive
@@ -3160,7 +4096,7 @@ create policy "students read their own play counts" on public.listening_plays
   as permissive
   for select
   to public
-  using ((auth.uid() = student_id));
+  using ((( SELECT auth.uid() AS uid) = student_id));
 
 create policy "teachers read play counts in own classes" on public.listening_plays
   as permissive
@@ -3178,19 +4114,13 @@ create policy "profiles readable by self or class members" on public.profiles
   as permissive
   for select
   to public
-  using (((id = auth.uid()) OR shares_class_with(id)));
-
-create policy "users can insert own profile" on public.profiles
-  as permissive
-  for insert
-  to public
-  with check ((auth.uid() = id));
+  using (((id = ( SELECT auth.uid() AS uid)) OR shares_class_with(id)));
 
 create policy "users can update own profile" on public.profiles
   as permissive
   for update
   to public
-  using ((auth.uid() = id));
+  using ((( SELECT auth.uid() AS uid) = id));
 
 create policy "exam staff read answer keys" on public.question_answer_key
   as permissive
@@ -3207,9 +4137,9 @@ create policy "students see answer key once released and allowed" on public.ques
      JOIN assignment_questions aq ON ((aq.question_id = sa.question_id)))
      JOIN exam_sections es ON ((es.id = aq.section_id)))
      JOIN assignments a ON ((a.id = es.assignment_id)))
-  WHERE ((sa.question_id = question_answer_key.question_id) AND (sa.student_id = auth.uid()) AND (a.show_answer_review = true) AND ((a.auto_release_score = true) OR (EXISTS ( SELECT 1
+  WHERE ((sa.question_id = question_answer_key.question_id) AND (sa.student_id = ( SELECT auth.uid() AS uid)) AND (a.show_answer_review = true) AND ((a.auto_release_score = true) OR (EXISTS ( SELECT 1
            FROM assignment_feedback af
-          WHERE ((af.assignment_id = a.id) AND (af.student_id = auth.uid()) AND (af.released_at IS NOT NULL)))))))));
+          WHERE ((af.assignment_id = a.id) AND (af.student_id = ( SELECT auth.uid() AS uid)) AND (af.released_at IS NOT NULL)))))))));
 
 create policy "teacher manages own answer keys" on public.question_answer_key
   as permissive
@@ -3217,10 +4147,10 @@ create policy "teacher manages own answer keys" on public.question_answer_key
   to public
   using ((EXISTS ( SELECT 1
    FROM questions q
-  WHERE ((q.id = question_answer_key.question_id) AND (q.teacher_id = auth.uid())))))
+  WHERE ((q.id = question_answer_key.question_id) AND (q.teacher_id = ( SELECT auth.uid() AS uid))))))
   with check ((EXISTS ( SELECT 1
    FROM questions q
-  WHERE ((q.id = question_answer_key.question_id) AND (q.teacher_id = auth.uid())))));
+  WHERE ((q.id = question_answer_key.question_id) AND (q.teacher_id = ( SELECT auth.uid() AS uid))))));
 
 create policy "groups readable by class members" on public.question_groups
   as permissive
@@ -3236,12 +4166,12 @@ create policy "teacher manages own question_groups" on public.question_groups
    FROM ((exam_sections s
      JOIN assignments a ON ((a.id = s.assignment_id)))
      JOIN classes c ON ((c.id = a.class_id)))
-  WHERE ((s.id = question_groups.section_id) AND (c.teacher_id = auth.uid())))))
+  WHERE ((s.id = question_groups.section_id) AND (c.teacher_id = ( SELECT auth.uid() AS uid))))))
   with check ((EXISTS ( SELECT 1
    FROM ((exam_sections s
      JOIN assignments a ON ((a.id = s.assignment_id)))
      JOIN classes c ON ((c.id = a.class_id)))
-  WHERE ((s.id = question_groups.section_id) AND (c.teacher_id = auth.uid())))));
+  WHERE ((s.id = question_groups.section_id) AND (c.teacher_id = ( SELECT auth.uid() AS uid))))));
 
 create policy "questions readable by class members" on public.questions
   as permissive
@@ -3253,27 +4183,27 @@ create policy "teacher manages own questions" on public.questions
   as permissive
   for all
   to public
-  using ((teacher_id = auth.uid()))
-  with check ((teacher_id = auth.uid()));
+  using ((teacher_id = ( SELECT auth.uid() AS uid)))
+  with check (((teacher_id = ( SELECT auth.uid() AS uid)) AND is_teacher()));
 
 create policy "students manage their own highlights" on public.reading_highlights
   as permissive
   for all
   to public
-  using ((auth.uid() = student_id))
-  with check ((auth.uid() = student_id));
+  using ((( SELECT auth.uid() AS uid) = student_id))
+  with check ((( SELECT auth.uid() AS uid) = student_id));
 
 create policy "roster readable by owner or teacher" on public.roster
   as permissive
   for select
   to public
-  using (((student_id = auth.uid()) OR is_class_teacher(class_id)));
+  using (((student_id = ( SELECT auth.uid() AS uid)) OR is_class_teacher(class_id)));
 
 create policy "student leaves or teacher removes" on public.roster
   as permissive
   for delete
   to public
-  using (((student_id = auth.uid()) OR is_class_teacher(class_id)));
+  using (((student_id = ( SELECT auth.uid() AS uid)) OR is_class_teacher(class_id)));
 
 create policy "exam staff read speaking views" on public.speaking_views
   as permissive
@@ -3285,16 +4215,16 @@ create policy "students read own speaking views" on public.speaking_views
   as permissive
   for select
   to public
-  using ((student_id = auth.uid()));
+  using ((student_id = ( SELECT auth.uid() AS uid)));
 
 create policy "students record own speaking view" on public.speaking_views
   as permissive
   for insert
   to public
-  with check (((student_id = auth.uid()) AND (EXISTS ( SELECT 1
+  with check (((student_id = ( SELECT auth.uid() AS uid)) AND (EXISTS ( SELECT 1
    FROM (assignments a
      JOIN roster r ON ((r.class_id = a.class_id)))
-  WHERE ((a.id = speaking_views.assignment_id) AND (a.type = 'Speaking'::text) AND (r.student_id = auth.uid()))))));
+  WHERE ((a.id = speaking_views.assignment_id) AND (a.type = 'Speaking'::text) AND (r.student_id = ( SELECT auth.uid() AS uid)))))));
 
 create policy "teachers read speaking views in own classes" on public.speaking_views
   as permissive
@@ -3303,7 +4233,7 @@ create policy "teachers read speaking views in own classes" on public.speaking_v
   using ((EXISTS ( SELECT 1
    FROM (assignments a
      JOIN classes c ON ((c.id = a.class_id)))
-  WHERE ((a.id = speaking_views.assignment_id) AND (c.teacher_id = auth.uid())))));
+  WHERE ((a.id = speaking_views.assignment_id) AND (c.teacher_id = ( SELECT auth.uid() AS uid))))));
 
 create policy "exam staff read answers" on public.student_answers
   as permissive
@@ -3315,7 +4245,7 @@ create policy "students see own answers once released" on public.student_answers
   as permissive
   for select
   to public
-  using (((student_id = auth.uid()) AND answers_released(assignment_id)));
+  using (((student_id = ( SELECT auth.uid() AS uid)) AND answers_released(assignment_id)));
 
 create policy "teacher sees answers to own questions" on public.student_answers
   as permissive
@@ -3323,34 +4253,7 @@ create policy "teacher sees answers to own questions" on public.student_answers
   to public
   using ((EXISTS ( SELECT 1
    FROM questions q
-  WHERE ((q.id = student_answers.question_id) AND (q.teacher_id = auth.uid())))));
-
-create policy "students can submit own work" on public.submissions
-  as permissive
-  for insert
-  to public
-  with check ((auth.uid() = student_id));
-
-create policy "students can update own submission" on public.submissions
-  as permissive
-  for update
-  to public
-  using ((auth.uid() = student_id));
-
-create policy "submissions readable by owner or teacher" on public.submissions
-  as permissive
-  for select
-  to public
-  using (((student_id = auth.uid()) OR is_assignment_teacher(assignment_id)));
-
-create policy "teachers can grade submissions in own class" on public.submissions
-  as permissive
-  for update
-  to public
-  using ((EXISTS ( SELECT 1
-   FROM (assignments a
-     JOIN classes c ON ((c.id = a.class_id)))
-  WHERE ((a.id = submissions.assignment_id) AND (c.teacher_id = auth.uid())))));
+  WHERE ((q.id = student_answers.question_id) AND (q.teacher_id = ( SELECT auth.uid() AS uid))))));
 
 create policy "exam staff mark writing" on public.writing_grades
   as permissive
@@ -3363,9 +4266,9 @@ create policy "students read own released writing grades" on public.writing_grad
   as permissive
   for select
   to public
-  using (((student_id = auth.uid()) AND (EXISTS ( SELECT 1
+  using (((student_id = ( SELECT auth.uid() AS uid)) AND (EXISTS ( SELECT 1
    FROM assignment_feedback f
-  WHERE ((f.assignment_id = writing_grades.assignment_id) AND (f.student_id = auth.uid()) AND (f.released_at IS NOT NULL))))));
+  WHERE ((f.assignment_id = writing_grades.assignment_id) AND (f.student_id = ( SELECT auth.uid() AS uid)) AND (f.released_at IS NOT NULL))))));
 
 create policy "teachers manage writing grades in own classes" on public.writing_grades
   as permissive
@@ -3374,13 +4277,13 @@ create policy "teachers manage writing grades in own classes" on public.writing_
   using ((EXISTS ( SELECT 1
    FROM (assignments a
      JOIN classes c ON ((c.id = a.class_id)))
-  WHERE ((a.id = writing_grades.assignment_id) AND (c.teacher_id = auth.uid())))))
+  WHERE ((a.id = writing_grades.assignment_id) AND (c.teacher_id = ( SELECT auth.uid() AS uid))))))
   with check ((EXISTS ( SELECT 1
    FROM (((assignments a
      JOIN classes c ON ((c.id = a.class_id)))
      JOIN exam_sections s ON ((s.assignment_id = a.id)))
      JOIN roster r ON ((r.class_id = c.id)))
-  WHERE ((a.id = writing_grades.assignment_id) AND (s.id = writing_grades.section_id) AND (r.student_id = writing_grades.student_id) AND (c.teacher_id = auth.uid())))));
+  WHERE ((a.id = writing_grades.assignment_id) AND (s.id = writing_grades.section_id) AND (r.student_id = writing_grades.student_id) AND (c.teacher_id = ( SELECT auth.uid() AS uid))))));
 
 create policy "exam staff read writing" on public.writing_responses
   as permissive
@@ -3392,7 +4295,7 @@ create policy "students read own writing" on public.writing_responses
   as permissive
   for select
   to public
-  using ((student_id = auth.uid()));
+  using ((student_id = ( SELECT auth.uid() AS uid)));
 
 create policy "teachers read writing in own classes" on public.writing_responses
   as permissive
@@ -3401,7 +4304,7 @@ create policy "teachers read writing in own classes" on public.writing_responses
   using ((EXISTS ( SELECT 1
    FROM (assignments a
      JOIN classes c ON ((c.id = a.class_id)))
-  WHERE ((a.id = writing_responses.assignment_id) AND (c.teacher_id = auth.uid())))));
+  WHERE ((a.id = writing_responses.assignment_id) AND (c.teacher_id = ( SELECT auth.uid() AS uid))))));
 
 create policy "readers read the files of what they can read" on storage.objects
   as permissive
@@ -3435,57 +4338,70 @@ create policy "uploads limited to own folders" on storage.objects
 
 -- =====================================================================
 -- 8. DROITS
---    Tables : droits par defaut de Supabase (la RLS protege les lignes).
---    exam_attempt_pages : aucun droit (seules les fonctions y touchent).
+--    anon : AUCUN droit (script 33). authenticated : seulement ce qui est
+--    liste ici ; la RLS protege ensuite chaque ligne.
+--    Les tables sans ligne « grant » n'ont aucun droit direct (seules les
+--    fonctions y touchent).
 -- =====================================================================
 
-grant update (name) on public.profiles to authenticated;
-grant delete, insert, references, select, trigger, truncate, update on public.assignment_feedback to anon;
-grant delete, insert, references, select, trigger, truncate, update on public.assignment_feedback to authenticated;
-grant delete, insert, references, trigger, truncate, update on public.assignment_questions to anon;
-grant delete, insert, references, select, trigger, truncate, update on public.assignment_questions to authenticated;
-grant delete, insert, references, select, trigger, truncate, update on public.assignments to anon;
-grant delete, insert, references, select, trigger, truncate, update on public.assignments to authenticated;
-grant delete, insert, references, select, trigger, truncate, update on public.classes to anon;
-grant delete, insert, references, select, trigger, truncate, update on public.classes to authenticated;
-grant delete, insert, references, select, trigger, truncate, update on public.exam_attempts to anon;
-grant delete, insert, references, select, trigger, truncate, update on public.exam_attempts to authenticated;
-grant delete, insert, references, select, trigger, truncate, update on public.exam_incidents to anon;
-grant delete, insert, references, select, trigger, truncate, update on public.exam_incidents to authenticated;
-grant delete, insert, references, trigger, truncate, update on public.exam_sections to anon;
-grant delete, insert, references, select, trigger, truncate, update on public.exam_sections to authenticated;
-grant delete, insert, references, select, trigger, truncate, update on public.exam_session_items to anon;
-grant delete, insert, references, select, trigger, truncate, update on public.exam_session_items to authenticated;
-grant delete, insert, references, select, trigger, truncate, update on public.exam_session_staff to anon;
-grant delete, insert, references, select, trigger, truncate, update on public.exam_session_staff to authenticated;
-grant delete, insert, references, select, trigger, truncate, update on public.exam_sessions to anon;
-grant delete, insert, references, select, trigger, truncate, update on public.exam_sessions to authenticated;
-grant delete, insert, references, select, trigger, truncate, update on public.listening_plays to anon;
-grant delete, insert, references, select, trigger, truncate, update on public.listening_plays to authenticated;
-grant delete, insert, references, select, trigger, truncate on public.profiles to anon;
-grant delete, insert, references, select, trigger, truncate on public.profiles to authenticated;
-grant delete, insert, references, select, trigger, truncate, update on public.question_answer_key to anon;
-grant delete, insert, references, select, trigger, truncate, update on public.question_answer_key to authenticated;
-grant delete, insert, references, trigger, truncate, update on public.question_groups to anon;
-grant delete, insert, references, select, trigger, truncate, update on public.question_groups to authenticated;
-grant delete, insert, references, trigger, truncate, update on public.questions to anon;
-grant delete, insert, references, select, trigger, truncate, update on public.questions to authenticated;
-grant delete, insert, references, select, trigger, truncate, update on public.reading_highlights to anon;
-grant delete, insert, references, select, trigger, truncate, update on public.reading_highlights to authenticated;
-grant delete, insert, references, select, trigger, truncate, update on public.roster to anon;
-grant delete, insert, references, select, trigger, truncate, update on public.roster to authenticated;
-grant delete, insert, references, select, trigger, truncate, update on public.speaking_views to anon;
-grant delete, insert, references, select, trigger, truncate, update on public.speaking_views to authenticated;
-grant delete, insert, references, select, trigger, truncate, update on public.student_answers to anon;
-grant delete, insert, references, select, trigger, truncate, update on public.student_answers to authenticated;
-grant delete, insert, references, select, trigger, truncate, update on public.submissions to anon;
-grant delete, insert, references, select, trigger, truncate, update on public.submissions to authenticated;
-grant delete, insert, references, select, trigger, truncate, update on public.writing_grades to anon;
-grant delete, insert, references, select, trigger, truncate, update on public.writing_grades to authenticated;
-grant delete, insert, references, select, trigger, truncate, update on public.writing_responses to anon;
-grant delete, insert, references, select, trigger, truncate, update on public.writing_responses to authenticated;
+revoke all on public.app_admins from public, anon, authenticated;
+revoke all on public.assignment_feedback from public, anon, authenticated;
+revoke all on public.assignment_questions from public, anon, authenticated;
+revoke all on public.assignments from public, anon, authenticated;
+revoke all on public.classes from public, anon, authenticated;
+revoke all on public.exam_answer_drafts from public, anon, authenticated;
 revoke all on public.exam_attempt_pages from public, anon, authenticated;
+revoke all on public.exam_attempts from public, anon, authenticated;
+revoke all on public.exam_extra_time from public, anon, authenticated;
+revoke all on public.exam_incidents from public, anon, authenticated;
+revoke all on public.exam_sections from public, anon, authenticated;
+revoke all on public.exam_session_items from public, anon, authenticated;
+revoke all on public.exam_session_staff from public, anon, authenticated;
+revoke all on public.exam_sessions from public, anon, authenticated;
+revoke all on public.listening_plays from public, anon, authenticated;
+revoke all on public.profiles from public, anon, authenticated;
+revoke all on public.question_answer_key from public, anon, authenticated;
+revoke all on public.question_groups from public, anon, authenticated;
+revoke all on public.questions from public, anon, authenticated;
+revoke all on public.reading_highlights from public, anon, authenticated;
+revoke all on public.roster from public, anon, authenticated;
+revoke all on public.speaking_views from public, anon, authenticated;
+revoke all on public.student_answers from public, anon, authenticated;
+revoke all on public.teacher_requests from public, anon, authenticated;
+revoke all on public.writing_grades from public, anon, authenticated;
+revoke all on public.writing_responses from public, anon, authenticated;
+grant delete, insert, select, update on public.assignment_feedback to authenticated;
+grant delete, insert, select, update on public.assignment_questions to authenticated;
+grant delete, insert, select, update on public.assignments to authenticated;
+grant delete, insert, select, update on public.classes to authenticated;
+grant select on public.exam_attempts to authenticated;
+grant select on public.exam_extra_time to authenticated;
+grant select on public.exam_incidents to authenticated;
+grant delete, insert, select, update on public.exam_sections to authenticated;
+grant delete, select on public.exam_session_items to authenticated;
+grant delete, select on public.exam_session_staff to authenticated;
+grant select on public.exam_sessions to authenticated;
+grant select on public.listening_plays to authenticated;
+grant select on public.profiles to authenticated;
+grant delete, insert, select, update on public.question_answer_key to authenticated;
+grant delete, insert, select, update on public.question_groups to authenticated;
+grant delete, insert, select, update on public.questions to authenticated;
+grant delete, insert, select, update on public.reading_highlights to authenticated;
+grant delete, insert, select, update on public.roster to authenticated;
+grant delete, insert, select, update on public.speaking_views to authenticated;
+grant delete, insert, select, update on public.student_answers to authenticated;
+grant delete, insert, select, update on public.writing_grades to authenticated;
+grant delete, insert, select, update on public.writing_responses to authenticated;
+grant insert (assignment_id, order_index, session_id) on public.exam_session_items to authenticated;
+grant update (order_index) on public.exam_session_items to authenticated;
+grant insert (role, session_id, teacher_id) on public.exam_session_staff to authenticated;
+grant update (closes_at, listening_start, opens_at, start_mode, strict_mode) on public.exam_sessions to authenticated;
+grant update (name) on public.profiles to authenticated;
 
+revoke all on function public.admin_decide_teacher_request(p_user_id uuid, p_approve boolean) from public, anon, authenticated;
+grant execute on function public.admin_decide_teacher_request(p_user_id uuid, p_approve boolean) to authenticated;
+revoke all on function public.admin_overview() from public, anon, authenticated;
+grant execute on function public.admin_overview() to authenticated;
 revoke all on function public.answers_released(p_assignment_id uuid) from public, anon, authenticated;
 grant execute on function public.answers_released(p_assignment_id uuid) to authenticated;
 revoke all on function public.can_read_assignment(p_assignment_id uuid) from public, anon, authenticated;
@@ -3498,6 +4414,8 @@ revoke all on function public.can_read_storage_file(p_name text) from public, an
 grant execute on function public.can_read_storage_file(p_name text) to authenticated;
 revoke all on function public.can_write_class_file(p_folder text) from public, anon, authenticated;
 grant execute on function public.can_write_class_file(p_folder text) to authenticated;
+revoke all on function public.class_overview(p_class_id uuid) from public, anon, authenticated;
+grant execute on function public.class_overview(p_class_id uuid) to authenticated;
 revoke all on function public.create_exam_session(p_name text) from public, anon, authenticated;
 grant execute on function public.create_exam_session(p_name text) to authenticated;
 revoke all on function public.delete_exam_session(p_session_id uuid) from public, anon, authenticated;
@@ -3510,38 +4428,59 @@ revoke all on function public.duplicate_targets() from public, anon, authenticat
 grant execute on function public.duplicate_targets() to authenticated;
 revoke all on function public.exam_allow_resume(p_session_id uuid, p_student_id uuid) from public, anon, authenticated;
 grant execute on function public.exam_allow_resume(p_session_id uuid, p_student_id uuid) to authenticated;
+revoke all on function public.exam_can_add_staff(p_session_id uuid, p_teacher_id uuid) from public, anon, authenticated;
+grant execute on function public.exam_can_add_staff(p_session_id uuid, p_teacher_id uuid) to authenticated;
+revoke all on function public.exam_collect_papers(p_session_id uuid, p_all boolean) from public, anon, authenticated;
 revoke all on function public.exam_explain_incident(p_assignment_id uuid, p_reason text) from public, anon, authenticated;
 grant execute on function public.exam_explain_incident(p_assignment_id uuid, p_reason text) to authenticated;
+revoke all on function public.exam_extend_end(p_session_id uuid, p_minutes integer) from public, anon, authenticated;
+grant execute on function public.exam_extend_end(p_session_id uuid, p_minutes integer) to authenticated;
+revoke all on function public.exam_give_extra_time(p_session_id uuid, p_student_id uuid, p_assignment_id uuid, p_minutes integer) from public, anon, authenticated;
+grant execute on function public.exam_give_extra_time(p_session_id uuid, p_student_id uuid, p_assignment_id uuid, p_minutes integer) to authenticated;
 revoke all on function public.exam_invigilation_board(p_session_id uuid) from public, anon, authenticated;
 grant execute on function public.exam_invigilation_board(p_session_id uuid) to authenticated;
 revoke all on function public.exam_is_open(p_session_id uuid) from public, anon, authenticated;
 grant execute on function public.exam_is_open(p_session_id uuid) to authenticated;
+revoke all on function public.exam_item_belongs(p_session_id uuid, p_assignment_id uuid) from public, anon, authenticated;
+grant execute on function public.exam_item_belongs(p_session_id uuid, p_assignment_id uuid) to authenticated;
 revoke all on function public.exam_item_readable(p_assignment_id uuid) from public, anon, authenticated;
 grant execute on function public.exam_item_readable(p_assignment_id uuid) to authenticated;
+revoke all on function public.exam_item_released(p_assignment_id uuid) from public, anon, authenticated;
 revoke all on function public.exam_item_startable(p_assignment_id uuid) from public, anon, authenticated;
 grant execute on function public.exam_item_startable(p_assignment_id uuid) to authenticated;
 revoke all on function public.exam_live_content_guard() from public, anon, authenticated;
-grant execute on function public.exam_live_content_guard() to public;
+grant execute on function public.exam_live_content_guard() to authenticated;
 revoke all on function public.exam_my_invigilation(p_assignment_id uuid) from public, anon, authenticated;
 grant execute on function public.exam_my_invigilation(p_assignment_id uuid) to authenticated;
+revoke all on function public.exam_not_started(p_session_id uuid) from public, anon, authenticated;
+grant execute on function public.exam_not_started(p_session_id uuid) to authenticated;
+revoke all on function public.exam_paper_content_guard() from public, anon, authenticated;
+revoke all on function public.exam_paper_done(p_assignment_id uuid, p_student_id uuid) from public, anon, authenticated;
 revoke all on function public.exam_paper_release_guard() from public, anon, authenticated;
-grant execute on function public.exam_paper_release_guard() to public;
+grant execute on function public.exam_paper_release_guard() to authenticated;
+revoke all on function public.exam_paper_start_time(p_assignment_id uuid, p_student_id uuid) from public, anon, authenticated;
 revoke all on function public.exam_report_incident(p_assignment_id uuid, p_kind text) from public, anon, authenticated;
 grant execute on function public.exam_report_incident(p_assignment_id uuid, p_kind text) to authenticated;
 revoke all on function public.exam_reset_audio(p_assignment_id uuid, p_student_id uuid) from public, anon, authenticated;
 grant execute on function public.exam_reset_audio(p_assignment_id uuid, p_student_id uuid) to authenticated;
+revoke all on function public.exam_running(p_session_id uuid) from public, anon, authenticated;
+grant execute on function public.exam_running(p_session_id uuid) to authenticated;
 revoke all on function public.exam_session_action(p_session_id uuid, p_action text, p_item_id uuid) from public, anon, authenticated;
 grant execute on function public.exam_session_action(p_session_id uuid, p_action text, p_item_id uuid) to authenticated;
+revoke all on function public.exam_session_delete_guard() from public, anon, authenticated;
 revoke all on function public.exam_session_status(p_session_id uuid) from public, anon, authenticated;
 grant execute on function public.exam_session_status(p_session_id uuid) to authenticated;
-revoke all on function public.exam_start_item(p_assignment_id uuid) from public, anon, authenticated;
-grant execute on function public.exam_start_item(p_assignment_id uuid) to authenticated;
+revoke all on function public.exam_settings_guard() from public, anon, authenticated;
 revoke all on function public.exam_timer_status(p_assignment_id uuid, p_start boolean, p_page uuid) from public, anon, authenticated;
 grant execute on function public.exam_timer_status(p_assignment_id uuid, p_start boolean, p_page uuid) to authenticated;
+revoke all on function public.exam_uncollected_papers(p_session_id uuid) from public, anon, authenticated;
+grant execute on function public.exam_uncollected_papers(p_session_id uuid) to authenticated;
 revoke all on function public.get_paper(p_assignment_id uuid, p_with_keys boolean) from public, anon, authenticated;
 grant execute on function public.get_paper(p_assignment_id uuid, p_with_keys boolean) to authenticated;
 revoke all on function public.grade_student_answer(p_question_id uuid, p_response jsonb) from public, anon, authenticated;
 revoke all on function public.handle_new_user() from public, anon, authenticated;
+revoke all on function public.is_app_admin() from public, anon, authenticated;
+grant execute on function public.is_app_admin() to authenticated;
 revoke all on function public.is_assignment_teacher(p_assignment_id uuid) from public, anon, authenticated;
 grant execute on function public.is_assignment_teacher(p_assignment_id uuid) to authenticated;
 revoke all on function public.is_class_teacher(p_class_id uuid) from public, anon, authenticated;
@@ -3552,12 +4491,16 @@ revoke all on function public.is_exam_candidate(p_session_id uuid) from public, 
 grant execute on function public.is_exam_candidate(p_session_id uuid) to authenticated;
 revoke all on function public.is_exam_container_staff(p_class_id uuid) from public, anon, authenticated;
 grant execute on function public.is_exam_container_staff(p_class_id uuid) to authenticated;
+revoke all on function public.is_exam_creator(p_session_id uuid) from public, anon, authenticated;
+grant execute on function public.is_exam_creator(p_session_id uuid) to authenticated;
 revoke all on function public.is_exam_staff(p_session_id uuid) from public, anon, authenticated;
 grant execute on function public.is_exam_staff(p_session_id uuid) to authenticated;
 revoke all on function public.is_exam_staff_of_assignment(p_assignment_id uuid) from public, anon, authenticated;
 grant execute on function public.is_exam_staff_of_assignment(p_assignment_id uuid) to authenticated;
 revoke all on function public.is_exam_staff_of_question(p_question_id uuid) from public, anon, authenticated;
 grant execute on function public.is_exam_staff_of_question(p_question_id uuid) to authenticated;
+revoke all on function public.is_teacher() from public, anon, authenticated;
+grant execute on function public.is_teacher() to authenticated;
 revoke all on function public.join_class(p_code text) from public, anon, authenticated;
 grant execute on function public.join_class(p_code text) to authenticated;
 revoke all on function public.join_exam(p_code text) from public, anon, authenticated;
@@ -3566,12 +4509,18 @@ revoke all on function public.list_invitable_teachers(p_session_id uuid) from pu
 grant execute on function public.list_invitable_teachers(p_session_id uuid) to authenticated;
 revoke all on function public.listening_audio_status(p_assignment_id uuid, p_start boolean) from public, anon, authenticated;
 grant execute on function public.listening_audio_status(p_assignment_id uuid, p_start boolean) to authenticated;
+revoke all on function public.my_teacher_request() from public, anon, authenticated;
+grant execute on function public.my_teacher_request() to authenticated;
 revoke all on function public.normalize_answer_text(p_text text) from public, anon, authenticated;
 grant execute on function public.normalize_answer_text(p_text text) to authenticated;
 revoke all on function public.paper_blank_count(p_text text) from public, anon, authenticated;
 grant execute on function public.paper_blank_count(p_text text) to authenticated;
 revoke all on function public.paper_edit_state(p_assignment_id uuid) from public, anon, authenticated;
 grant execute on function public.paper_edit_state(p_assignment_id uuid) to authenticated;
+revoke all on function public.paper_exam_running(p_assignment_id uuid) from public, anon, authenticated;
+grant execute on function public.paper_exam_running(p_assignment_id uuid) to authenticated;
+revoke all on function public.paper_exam_started(p_assignment_id uuid) from public, anon, authenticated;
+grant execute on function public.paper_exam_started(p_assignment_id uuid) to authenticated;
 revoke all on function public.paper_json_shape(p jsonb, p_key text) from public, anon, authenticated;
 grant execute on function public.paper_json_shape(p jsonb, p_key text) to authenticated;
 revoke all on function public.paper_own_file(p_value text, p_folder text) from public, anon, authenticated;
@@ -3586,6 +4535,10 @@ revoke all on function public.record_audio_play(p_assignment_id uuid, p_section_
 grant execute on function public.record_audio_play(p_assignment_id uuid, p_section_id uuid, p_max_plays integer) to authenticated;
 revoke all on function public.rename_exam_session(p_session_id uuid, p_name text) from public, anon, authenticated;
 grant execute on function public.rename_exam_session(p_session_id uuid, p_name text) to authenticated;
+revoke all on function public.request_teacher_access() from public, anon, authenticated;
+grant execute on function public.request_teacher_access() to authenticated;
+revoke all on function public.save_answer_drafts(p_assignment_id uuid, p_answers jsonb) from public, anon, authenticated;
+grant execute on function public.save_answer_drafts(p_assignment_id uuid, p_answers jsonb) to authenticated;
 revoke all on function public.save_paper_edits(p_assignment_id uuid, p_edits jsonb) from public, anon, authenticated;
 grant execute on function public.save_paper_edits(p_assignment_id uuid, p_edits jsonb) to authenticated;
 revoke all on function public.save_writing_draft(p_section_id uuid, p_content_html text, p_word_count integer) from public, anon, authenticated;
@@ -3596,13 +4549,18 @@ revoke all on function public.shares_exam_with(p_user_id uuid) from public, anon
 grant execute on function public.shares_exam_with(p_user_id uuid) to authenticated;
 revoke all on function public.storage_file_usage(p_name text) from public, anon, authenticated;
 grant execute on function public.storage_file_usage(p_name text) to authenticated;
-revoke all on function public.submissions_guard() from public, anon, authenticated;
-grant execute on function public.submissions_guard() to public;
-revoke all on function public.submit_student_answer(p_assignment_id uuid, p_question_id uuid, p_response jsonb) from public, anon, authenticated;
 revoke all on function public.submit_student_answers(p_assignment_id uuid, p_answers jsonb) from public, anon, authenticated;
 grant execute on function public.submit_student_answers(p_assignment_id uuid, p_answers jsonb) to authenticated;
 revoke all on function public.submit_writing(p_assignment_id uuid) from public, anon, authenticated;
 grant execute on function public.submit_writing(p_assignment_id uuid) to authenticated;
+revoke all on function public.teacher_overview() from public, anon, authenticated;
+grant execute on function public.teacher_overview() to authenticated;
+
+-- Droits PAR DEFAUT pour les futurs objets (script 33) :
+--   proprietaire postgres, schema (tous), fonctions : {postgres=X/postgres}
+--   proprietaire postgres, schema public, sequences : {postgres=rwU/postgres,authenticated=rwU/postgres,service_role=rwU/postgres}
+--   proprietaire postgres, schema public, fonctions : {postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}
+--   proprietaire postgres, schema public, tables : {postgres=arwdDxtm/postgres,authenticated=arwd/postgres,service_role=arwdDxtm/postgres}
 
 -- =====================================================================
 -- 9. STOCKAGE
