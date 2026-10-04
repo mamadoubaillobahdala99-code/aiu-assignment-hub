@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { supabase } from "../../supabaseClient";
+import { forgetStudentWork } from "./studentWork";
 
 // Livraison 77 — « Join a class »: the 5-character code in 5 boxes.
 // Typing moves to the next box, Backspace goes back, the arrows move, and
@@ -89,6 +90,7 @@ export function JoinClass({ userId, setScreen, showToast }) {
       );
       return;
     }
+    forgetStudentWork();   // livraison 82: the pages read the new class at once
     const already = mine?.some((c) => c.id === data?.class_id);
     showToast(already ? `You are already in ${data?.name || "this class"}` : `Joined ${data?.name || "the class"}`);
     // Straight to the class just joined (its assignments are there).
