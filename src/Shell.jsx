@@ -1,6 +1,5 @@
 import React, { useState, useEffect, Suspense } from "react";
-import { BookOpen, Users, Plus, Check, Clock, AlertTriangle, LogOut, GraduationCap, FileText, ChevronRight, X, Copy, CheckCircle2, Headphones, PenLine, Mic, ListChecks, ArrowLeft, Loader2, Timer, Highlighter, Maximize, Minimize, User, Menu, ShieldCheck, Home, LayoutDashboard } from "lucide-react";
-import { supabase } from "./supabaseClient";
+import { BookOpen, Plus, LogOut, X, ListChecks, Maximize, Minimize, User, Menu, ShieldCheck, Home, LayoutDashboard } from "lucide-react";
 import { TeacherHome } from "./features/assignment-hub/TeacherHome";
 import { TeacherDashboard } from "./features/assignment-hub/TeacherDashboard";
 import { JoinClass } from "./features/assignment-hub/JoinClass";
