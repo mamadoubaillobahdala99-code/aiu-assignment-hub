@@ -6,6 +6,7 @@ import { ScoreRing } from "./ScoreRing";
 import { ReviewContent } from "./ReviewContent";
 import { formatAnswerValue } from "./answerFormat";
 import { numberQuestions, questionSlotCount } from "./bulkParse";
+import { loadPaperTree, toReviewSections } from "./paperTree";
 import { computeIeltsBand } from "./bandConversion";
 import { Breadcrumb } from "../../components/DropMenu";
 import { confirmDialog } from "../../lib/confirmDialog";
@@ -29,81 +30,49 @@ export function TeacherQuestionEngineReview({ assignmentId, studentId, studentNa
   const [saving, setSaving] = useState(false);
   const [view, setView] = useState("sheet");
 
+  // Livraison 81: everything at once — the whole paper with its correct
+  // answers (get_paper, the teacher's own rights), this student's answers
+  // and the feedback row, in parallel. Before: one request per part and
+  // per group, one after the other.
   const load = useCallback(async () => {
     setLoading(true);
-    const { data: a } = await supabase
-      .from("assignments")
-      .select("id, title, type, auto_release_score, show_answer_review, reading_test_type")
-      .eq("id", assignmentId)
-      .single();
-    setAssignment(a || null);
-
-    const { data: sectionRows } = await supabase
-      .from("exam_sections")
-      .select("id, title, passage_title, passage_text, audio_url, max_plays, order_index")
-      .eq("assignment_id", assignmentId)
-      .order("order_index");
-
-    const built = [];
-    let globalCounter = 0;
-    for (const s of sectionRows || []) {
-      const { data: groupRows } = await supabase
-        .from("question_groups")
-        .select("id, instruction, passage_text, image_url, order_index")
-        .eq("section_id", s.id)
-        .order("order_index");
-
-      const groups = [];
-      for (const g of groupRows || []) {
-        const { data: links } = await supabase
-          .from("assignment_questions")
-          .select("order_index, questions(*)")
-          .eq("group_id", g.id)
-          .order("order_index");
-        const questions = (links || []).map((l) => l.questions);
-        const { start: startNumber, end: endNumber, numbers: questionNumbers, nextStart } = numberQuestions(questions, globalCounter + 1);
-        globalCounter = nextStart - 1;
-        groups.push({ id: g.id, instruction: g.instruction, passageText: g.passage_text, imageUrl: g.image_url, questions, startNumber, endNumber, questionNumbers });
-      }
-      built.push({ id: s.id, title: s.title, passageTitle: s.passage_title, passageText: s.passage_text, audioUrl: s.audio_url, maxPlays: s.max_plays, groups });
-    }
-    setSections(built);
-
-    const allQuestions = built.flatMap((s) => s.groups.flatMap((g) => g.questions));
-    const allQuestionIds = allQuestions.map((q) => q.id);
-
-    if (allQuestionIds.length > 0) {
-      const { data: sa } = await supabase
+    const [paper, { data: sa }, { data: fb }] = await Promise.all([
+      loadPaperTree(assignmentId, { withKeys: true }),
+      supabase
         .from("student_answers")
         .select("question_id, response, is_correct, points_earned")
+        .eq("assignment_id", assignmentId)
+        .eq("student_id", studentId),
+      supabase
+        .from("assignment_feedback")
+        .select("*")
+        .eq("assignment_id", assignmentId)
         .eq("student_id", studentId)
-        .in("question_id", allQuestionIds);
+        .maybeSingle(),
+    ]);
+    const ok = paper.status === "ok";
+    setAssignment(ok ? paper.assignment : null);
+    const built = ok ? toReviewSections(paper.sections, numberQuestions) : [];
+    setSections(built);
 
-      const answers = {};
-      const results = {};
-      (sa || []).forEach((row) => {
-        answers[row.question_id] = row.response;
-        results[row.question_id] = { isCorrect: row.is_correct, earned: row.points_earned ?? (row.is_correct ? 1 : 0) };
-      });
-      setAnswersByQ(answers);
-      setResultsByQ(results);
+    // Only the answers to this paper's questions (as before).
+    const inPaper = new Set(built.flatMap((s) => s.groups.flatMap((g) => g.questions.map((q) => q.id))));
+    const answers = {};
+    const results = {};
+    (sa || []).forEach((row) => {
+      if (!inPaper.has(row.question_id)) return;
+      answers[row.question_id] = row.response;
+      results[row.question_id] = { isCorrect: row.is_correct, earned: row.points_earned ?? (row.is_correct ? 1 : 0) };
+    });
+    setAnswersByQ(answers);
+    setResultsByQ(results);
+    const correct = {};
+    if (ok) for (const [qid, k] of Object.entries(paper.answerKeys || {})) if (inPaper.has(qid)) correct[qid] = k;
+    setCorrectByQ(correct);
 
-      const { data: keys } = await supabase.from("question_answer_key").select("question_id, correct_answer").in("question_id", allQuestionIds);
-      const correct = {};
-      (keys || []).forEach((k) => { correct[k.question_id] = k.correct_answer; });
-      setCorrectByQ(correct);
-    }
-
-    const { data: fb } = await supabase
-      .from("assignment_feedback")
-      .select("*")
-      .eq("assignment_id", assignmentId)
-      .eq("student_id", studentId)
-      .maybeSingle();
     setFeedbackRow(fb || null);
     setBandDraft(fb?.band || "");
     setFeedbackDraft(fb?.feedback || "");
-
     setLoading(false);
   }, [assignmentId, studentId]);
 
