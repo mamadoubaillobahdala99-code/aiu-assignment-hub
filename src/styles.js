@@ -1,5 +1,5 @@
 export const CSS = `
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Public+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap');
+/* Livraison 83: the fonts are announced in index.html (fetched at once, not after the script). */
 
 :root {
   --paper: #FAFAF7;
