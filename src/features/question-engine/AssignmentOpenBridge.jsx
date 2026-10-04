@@ -37,14 +37,30 @@ export function AssignmentOpenBridge({ userId, classId, assignmentId, setScreen,
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      // Livraison 81: every check is asked AT THE SAME TIME (before: up to
+      // six requests one after the other). Same reads, same rights, same
+      // decisions below; a read whose answer is not needed is ignored.
+      //
       // 1. The paper's own row decides whether this student may open it
       // (its RLS carries the exam locks). maybeSingle: no row = no error,
       // so a refusal is never mistaken for a connection problem.
-      const { data: paperRow, error: paperError } = await supabase
-        .from("assignments")
-        .select("type")
-        .eq("id", assignmentId)
-        .maybeSingle();
+      const [
+        { data: paperRow, error: paperError },
+        { count, error: countError },
+        { count: sentCount },
+        { data: fbRow },
+        { count: answerCount },
+        { data: att },
+      ] = await Promise.all([
+        supabase.from("assignments").select("type, auto_release_score").eq("id", assignmentId).maybeSingle(),
+        supabase.from("exam_sections").select("id", { count: "exact", head: true }).eq("assignment_id", assignmentId),
+        supabase.from("writing_responses").select("id", { count: "exact", head: true })
+          .eq("assignment_id", assignmentId).eq("student_id", userId).not("submitted_at", "is", null),
+        // The student can read this row only once it is published (database rule).
+        supabase.from("assignment_feedback").select("released_at").eq("assignment_id", assignmentId).eq("student_id", userId).maybeSingle(),
+        supabase.from("student_answers").select("id", { count: "exact", head: true }).eq("assignment_id", assignmentId).eq("student_id", userId),
+        supabase.from("exam_attempts").select("submitted_at").eq("assignment_id", assignmentId).eq("student_id", userId).maybeSingle(),
+      ]);
       if (paperError || !paperRow) {
         if (!cancelled) {
           setAccess(paperError ? "error" : "refused");
@@ -52,11 +68,6 @@ export function AssignmentOpenBridge({ userId, classId, assignmentId, setScreen,
         }
         return;
       }
-
-      const { count, error: countError } = await supabase
-        .from("exam_sections")
-        .select("id", { count: "exact", head: true })
-        .eq("assignment_id", assignmentId);
       if (countError) {
         // Not "no content": we simply could not tell.
         if (!cancelled) { setAccess("error"); setChecking(false); }
@@ -66,72 +77,20 @@ export function AssignmentOpenBridge({ userId, classId, assignmentId, setScreen,
 
       // Structured Writing stores its answers in writing_responses (not
       // student_answers) and has its own exam screen.
-      let writing = false;
-      let writingSubmitted = false;
-      let speaking = false;
-      if (structured) {
-        const t = paperRow;
-        writing = t?.type === "Writing";
-        speaking = t?.type === "Speaking";
-        if (writing) {
-          const { count: sentCount } = await supabase
-            .from("writing_responses")
-            .select("id", { count: "exact", head: true })
-            .eq("assignment_id", assignmentId)
-            .eq("student_id", userId)
-            .not("submitted_at", "is", null);
-          writingSubmitted = (sentCount || 0) > 0;
-        }
-      }
+      const writing = structured && paperRow.type === "Writing";
+      const speaking = structured && paperRow.type === "Speaking";
+      const writingSubmitted = writing && (sentCount || 0) > 0;
 
       // Writing is always marked by the teacher: results show only once
-      // the feedback is published (the student can read that row only
-      // after publication — database rule).
-      let writingReleased = false;
-      if (writing && writingSubmitted) {
-        const { data: wfb } = await supabase
-          .from("assignment_feedback")
-          .select("released_at")
-          .eq("assignment_id", assignmentId)
-          .eq("student_id", userId)
-          .maybeSingle();
-        writingReleased = Boolean(wfb?.released_at);
-      }
+      // the feedback is published.
+      const writingReleased = writing && writingSubmitted && Boolean(fbRow?.released_at);
 
       let submitted = false;
       let released = false;
       if (structured && !writing && !speaking) {
-        const { count: answerCount } = await supabase
-          .from("student_answers")
-          .select("id", { count: "exact", head: true })
-          .eq("assignment_id", assignmentId)
-          .eq("student_id", userId);
-        submitted = (answerCount || 0) > 0;
-        if (!submitted) {
-          // A submission with no answer at all is still a submission.
-          const { data: att } = await supabase
-            .from("exam_attempts")
-            .select("submitted_at")
-            .eq("assignment_id", assignmentId)
-            .eq("student_id", userId)
-            .maybeSingle();
-          submitted = Boolean(att?.submitted_at);
-        }
-
-        if (submitted) {
-          const { data: a } = await supabase.from("assignments").select("auto_release_score").eq("id", assignmentId).single();
-          if (a?.auto_release_score) {
-            released = true;
-          } else {
-            const { data: fb } = await supabase
-              .from("assignment_feedback")
-              .select("released_at")
-              .eq("assignment_id", assignmentId)
-              .eq("student_id", userId)
-              .maybeSingle();
-            released = Boolean(fb?.released_at);
-          }
-        }
+        // A submission with no answer at all is still a submission.
+        submitted = (answerCount || 0) > 0 || Boolean(att?.submitted_at);
+        if (submitted) released = Boolean(paperRow.auto_release_score) || Boolean(fbRow?.released_at);
       }
 
       if (!cancelled) {
