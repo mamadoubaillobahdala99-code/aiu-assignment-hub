@@ -27,8 +27,16 @@ export function ClassDetail({ classId, setScreen, showToast }) {
   // Livraison 70: the class's figures (script 44). null = not available.
   const [overview, setOverview] = useState(null);
 
+  // Livraison 82: the four reads are asked at the same time (before: one
+  // after the other). Same reads, same rights; an exam's box still leads
+  // to its exam, and nothing of it is shown.
   const load = useCallback(async () => {
-    const { data: c } = await supabase.from("classes").select("*").eq("id", classId).single();
+    const [{ data: c }, { data: r }, { data: a }, { data: ov, error: ovErr }] = await Promise.all([
+      supabase.from("classes").select("*").eq("id", classId).single(),
+      supabase.from("roster").select("student_id, joined_at, profiles(name)").eq("class_id", classId),
+      supabase.from("assignments").select("*").eq("class_id", classId).order("created_at", { ascending: false }),
+      supabase.rpc("class_overview", { p_class_id: classId }),
+    ]);
     // Livraison 69: an exam keeps its papers in a private box that is a
     // class underneath. It is never shown as a class: whoever lands here
     // (an old link, a refresh) is taken to the exam itself.
@@ -38,11 +46,8 @@ export function ClassDetail({ classId, setScreen, showToast }) {
       return;
     }
     setCls(c || null);
-    const { data: r } = await supabase.from("roster").select("student_id, joined_at, profiles(name)").eq("class_id", classId);
     setRoster((r || []).map((x) => ({ studentId: x.student_id, name: x.profiles?.name || "Unknown", joined_at: x.joined_at })));
-    const { data: a } = await supabase.from("assignments").select("*").eq("class_id", classId).order("created_at", { ascending: false });
     setAssignments(a || []);
-    const { data: ov, error: ovErr } = await supabase.rpc("class_overview", { p_class_id: classId });
     setOverview(ovErr ? null : ov || null);
   }, [classId, setScreen]);
 
@@ -296,7 +301,18 @@ function StudentInClassDetail({ student, classId, assignments, onBack, setScreen
         return;
       }
 
-      const { data: qeSections } = await supabase.from("exam_sections").select("assignment_id").in("assignment_id", assignmentIds);
+      // Livraison 82: the six reads are asked at the same time (before:
+      // one after the other). Same reads, same rights, same statuses.
+      const writingAll = assignments.filter((x) => x.type === "Writing").map((x) => x.id);
+      const speakingAll = assignments.filter((x) => x.type === "Speaking").map((x) => x.id);
+      const [{ data: qeSections }, { data: answers }, { data: attempts }, { data: wr }, { data: sv }, { data: fb }] = await Promise.all([
+        supabase.from("exam_sections").select("assignment_id").in("assignment_id", assignmentIds),
+        supabase.from("student_answers").select("assignment_id").eq("student_id", student.studentId).in("assignment_id", assignmentIds),
+        supabase.from("exam_attempts").select("assignment_id").eq("student_id", student.studentId).in("assignment_id", assignmentIds),
+        writingAll.length ? supabase.from("writing_responses").select("assignment_id, submitted_at").eq("student_id", student.studentId).in("assignment_id", writingAll) : { data: [] },
+        speakingAll.length ? supabase.from("speaking_views").select("assignment_id").eq("student_id", student.studentId).in("assignment_id", speakingAll) : { data: [] },
+        supabase.from("assignment_feedback").select("assignment_id, released_at").eq("student_id", student.studentId).in("assignment_id", assignmentIds),
+      ]);
       const qeIds = new Set((qeSections || []).map((s) => s.assignment_id));
 
       let submittedQe = new Set();
@@ -304,28 +320,17 @@ function StudentInClassDetail({ student, classId, assignments, onBack, setScreen
       let releasedQe = new Set();
       let viewedQe = new Set();
       if (qeIds.size > 0) {
-        const qeIdList = [...qeIds];
-        const { data: answers } = await supabase.from("student_answers").select("assignment_id").eq("student_id", student.studentId).in("assignment_id", qeIdList);
-        submittedQe = new Set((answers || []).map((a) => a.assignment_id));
-        const { data: attempts } = await supabase.from("exam_attempts").select("assignment_id").eq("student_id", student.studentId).in("assignment_id", qeIdList);
-        attemptedQe = new Set((attempts || []).map((a) => a.assignment_id));
+        submittedQe = new Set((answers || []).filter((a) => qeIds.has(a.assignment_id)).map((a) => a.assignment_id));
+        attemptedQe = new Set((attempts || []).filter((a) => qeIds.has(a.assignment_id)).map((a) => a.assignment_id));
         // Structured Writing answers live in writing_responses.
-        const writingIdList = assignments.filter((x) => x.type === "Writing" && qeIds.has(x.id)).map((x) => x.id);
-        if (writingIdList.length > 0) {
-          const { data: wr } = await supabase.from("writing_responses").select("assignment_id, submitted_at").eq("student_id", student.studentId).in("assignment_id", writingIdList);
-          for (const w of wr || []) {
-            if (w.submitted_at) submittedQe.add(w.assignment_id);
-            else attemptedQe.add(w.assignment_id);
-          }
+        for (const w of wr || []) {
+          if (!qeIds.has(w.assignment_id)) continue;
+          if (w.submitted_at) submittedQe.add(w.assignment_id);
+          else attemptedQe.add(w.assignment_id);
         }
         // Structured Speaking is consult-only: "viewed" instead of "submitted".
-        const speakingIdList = assignments.filter((x) => x.type === "Speaking" && qeIds.has(x.id)).map((x) => x.id);
-        if (speakingIdList.length > 0) {
-          const { data: sv } = await supabase.from("speaking_views").select("assignment_id").eq("student_id", student.studentId).in("assignment_id", speakingIdList);
-          viewedQe = new Set((sv || []).map((r) => r.assignment_id));
-        }
-        const { data: fb } = await supabase.from("assignment_feedback").select("assignment_id, released_at").eq("student_id", student.studentId).in("assignment_id", qeIdList);
-        releasedQe = new Set((fb || []).filter((r) => r.released_at).map((r) => r.assignment_id));
+        viewedQe = new Set((sv || []).filter((r) => qeIds.has(r.assignment_id)).map((r) => r.assignment_id));
+        releasedQe = new Set((fb || []).filter((r) => r.released_at && qeIds.has(r.assignment_id)).map((r) => r.assignment_id));
       }
 
       const map = {};
