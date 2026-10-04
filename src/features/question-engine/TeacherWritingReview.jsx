@@ -81,33 +81,40 @@ export function TeacherWritingReview({ assignmentId, studentId, studentName, onB
 
   const load = useCallback(async () => {
     setLoading(true);
-    const { data: a } = await supabase.from("assignments").select("*").eq("id", assignmentId).single();
+    // Livraison 81: the five reads are asked at the same time (before: one
+    // after the other). Same reads, same rights.
+    const [{ data: a }, { data: rows }, { data: wr }, { data: grades }, { data: fb }] = await Promise.all([
+      supabase.from("assignments").select("*").eq("id", assignmentId).single(),
+      supabase
+        .from("exam_sections")
+        .select("id, title, passage_text, image_url, task_number, order_index")
+        .eq("assignment_id", assignmentId)
+        .order("order_index"),
+      supabase
+        .from("writing_responses")
+        .select("section_id, content_html, word_count, submitted_at")
+        .eq("assignment_id", assignmentId)
+        .eq("student_id", studentId),
+      supabase
+        .from("writing_grades")
+        .select("section_id, corrected_html, score_ta, score_cc, score_lr, score_gra")
+        .eq("assignment_id", assignmentId)
+        .eq("student_id", studentId),
+      supabase
+        .from("assignment_feedback")
+        .select("band, feedback, released_at")
+        .eq("assignment_id", assignmentId)
+        .eq("student_id", studentId)
+        .maybeSingle(),
+    ]);
     setAssignment(a || null);
-
-    const { data: rows } = await supabase
-      .from("exam_sections")
-      .select("id, title, passage_text, image_url, task_number, order_index")
-      .eq("assignment_id", assignmentId)
-      .order("order_index");
     const built = (rows || [])
       .filter((s) => s.task_number)
       .map((s) => ({ id: s.id, title: s.title, taskNumber: s.task_number, prompt: s.passage_text || "", imageUrl: s.image_url || "" }));
     setSections(built);
-
-    const { data: wr } = await supabase
-      .from("writing_responses")
-      .select("section_id, content_html, word_count, submitted_at")
-      .eq("assignment_id", assignmentId)
-      .eq("student_id", studentId);
     const resp = {};
     (wr || []).forEach((r) => { resp[r.section_id] = { html: r.content_html || "", words: r.word_count || 0, submittedAt: r.submitted_at }; });
     setResponses(resp);
-
-    const { data: grades } = await supabase
-      .from("writing_grades")
-      .select("section_id, corrected_html, score_ta, score_cc, score_lr, score_gra")
-      .eq("assignment_id", assignmentId)
-      .eq("student_id", studentId);
     const corr = {};
     const sc = {};
     for (const s of built) {
@@ -117,13 +124,6 @@ export function TeacherWritingReview({ assignmentId, studentId, studentName, onB
     }
     setCorrected(corr);
     setScores(sc);
-
-    const { data: fb } = await supabase
-      .from("assignment_feedback")
-      .select("band, feedback, released_at")
-      .eq("assignment_id", assignmentId)
-      .eq("student_id", studentId)
-      .maybeSingle();
     setFeedbackDraft(fb?.feedback || "");
     setReleasedAt(fb?.released_at || null);
     // A saved overall band that simply equals the automatic one keeps
