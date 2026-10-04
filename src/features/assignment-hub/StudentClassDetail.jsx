@@ -4,14 +4,15 @@ import { supabase } from "../../supabaseClient";
 import { EmptyState, CenterSpinner } from "../../components/shared";
 import { confirmDialog } from "../../lib/confirmDialog";
 import { DropMenu, DropMenuItem, Breadcrumb } from "../../components/DropMenu";
-import { loadStudentWork, isDone, sortTodo, sortDone } from "./studentWork";
+import { loadStudentWork, rememberedStudentWork, forgetStudentWork, isDone, sortTodo, sortDone } from "./studentWork";
 import { TodoTable, DoneTable } from "./StudentHome";
 
 // Livraison 71 — a class, seen by a student: its teacher, what is left to
 // do and what is done, with the same two tables as "My assignments".
 // "Leave this class…" moves into the "•••" menu (it still asks first).
 export function StudentClassDetail({ classId, userId, setScreen, showToast }) {
-  const [data, setData] = useState(null);
+  // Livraison 82: what this page last read is shown at once, then refreshed.
+  const [data, setData] = useState(() => rememberedStudentWork(userId, { classId }));
   const [tab, setTab] = useState("todo");
   const [leaving, setLeaving] = useState(false);
 
@@ -29,6 +30,7 @@ export function StudentClassDetail({ classId, userId, setScreen, showToast }) {
       showToast?.("Could not leave the class");
       return;
     }
+    forgetStudentWork();   // livraison 82: no page shows this class again from memory
     showToast?.("You left the class");
     setScreen({ name: "student-classes" });
   }
