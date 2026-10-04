@@ -18,6 +18,13 @@ import { isPhoneScreen } from "../question-engine/useInvigilation";
 //   join with the code → the papers in order → one paper at a time →
 //   "Exam finished, you may leave".
 //
+// Livraison 87: the exam is finished for the candidate once every WRITTEN
+// paper (Listening, Reading, Writing) is handed in — or missed, in
+// « Everyone together ». A Speaking paper is consulted, never handed in, so
+// it no longer keeps the exam « running » for ever: it stays open to
+// consult while the exam is open, and the candidate is told the teacher
+// will call them for the Speaking test.
+//
 // The order is NOT enforced here. The database decides: exam_session_status
 // returns, for every paper, whether it is readable right now, and a locked
 // paper has neither content nor timer. This screen only draws what the
@@ -434,7 +441,12 @@ export function StudentExamSession({ userId, screen, setScreen, showToast }) {
   const noneStarted = together && !roomFree && firstTimed && !items.some((i) => i.room_started_at);
   const released = Boolean(status.results_released_at);
   const closed = Boolean(status.closed_at);
-  const allDone = items.length > 0 && items.every((i) => i.submitted);
+  // Livraison 87: done = every written paper handed in (or missed). Before,
+  // every paper had to be handed in — a Speaking paper never is, so an exam
+  // with a Speaking never reached « finished » before the teacher closed it.
+  const written = items.filter((i) => i.type !== "Speaking");
+  const allDone = written.length > 0 && written.every((i) => i.submitted || i.missed);
+  const speakingLeft = allDone && !closed && !released && items.some((i) => i.type === "Speaking");
   // The next paper to sit: the first unlocked one that is not handed in.
   const nextId = released ? null : (items.find((i) => i.readable && !i.submitted) || {}).assignment_id;
   // Livraison 80.
@@ -486,13 +498,27 @@ export function StudentExamSession({ userId, screen, setScreen, showToast }) {
         <div className="exs-banner exs-banner-end">
           <Flag size={18} />
           <div>
-            <strong>Exam finished — you may leave the room.</strong>
-            <em>
-              {allDone
-                ? "Every paper has been handed in. Nothing can be opened again."
-                : "Your teacher has closed the exam."}{" "}
-              Your results will appear here once your teacher publishes them.
-            </em>
+            {speakingLeft ? (
+              <>
+                <strong>Written papers handed in. Your teacher will call you for the Speaking test.</strong>
+                <em>
+                  You can still open the Speaking paper below while the exam is open.
+                  Your results will appear here once your teacher publishes them.
+                </em>
+              </>
+            ) : (
+              <>
+                <strong>Exam finished — you may leave the room.</strong>
+                <em>
+                  {allDone && written.every((i) => i.submitted) && !items.some((i) => i.type === "Speaking")
+                    ? "Every paper has been handed in. Nothing can be opened again."
+                    : allDone && !closed
+                      ? "Every paper is over. Nothing can be opened again."
+                      : "Your teacher has closed the exam."}{" "}
+                  Your results will appear here once your teacher publishes them.
+                </em>
+              </>
+            )}
           </div>
         </div>
       ) : noneStarted ? (
