@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { ArrowLeft, Lock, Plus, X, Copy, AlertTriangle, CheckCircle2, Trash2, Undo2 } from "lucide-react";
 import { supabase } from "../../supabaseClient";
 import { CenterSpinner } from "../../components/shared";
+import { loadPaperTree } from "./paperTree";
 import { numberQuestions } from "./bulkParse";
 import { AudioFilePicker } from "./AudioFilePicker";
 import { GroupImagePicker } from "./GroupImage";
@@ -101,43 +102,39 @@ export function PaperEditor({ assignmentId, classId, teacherId, setScreen, showT
   const load = useCallback(async () => {
     setLoading(true);
     setLoadError("");
-    const { data: a, error: aErr } = await supabase.from("assignments").select("*").eq("id", assignmentId).single();
+    // Livraison 81: the paper row, the editing level and the whole paper
+    // with its correct answers (get_paper, the teacher's own rights) are
+    // read at the same time. Before: one request per part and per group,
+    // one after the other. Same checks, in the same order, as before.
+    const [{ data: a, error: aErr }, { data: st, error: stErr }, paper] = await Promise.all([
+      supabase.from("assignments").select("*").eq("id", assignmentId).single(),
+      supabase.rpc("paper_edit_state", { p_assignment_id: assignmentId }),
+      loadPaperTree(assignmentId, { withKeys: true }),
+    ]);
     if (aErr || !a) {
       setLoadError("This paper could not be opened.");
       setLoading(false);
       return;
     }
-    const { data: st, error: stErr } = await supabase.rpc("paper_edit_state", { p_assignment_id: assignmentId });
     if (stErr || !st) {
       setLoadError("Only the teacher who owns this paper can edit it" + (stErr?.message ? ` (${stErr.message}).` : "."));
       setLoading(false);
       return;
     }
-
-    const { data: sectionRows } = await supabase
-      .from("exam_sections")
-      .select("id, title, passage_title, passage_text, audio_url, max_plays, order_index")
-      .eq("assignment_id", assignmentId)
-      .order("order_index");
+    if (paper.status !== "ok") {
+      setLoadError("This paper could not be opened.");
+      setLoading(false);
+      return;
+    }
 
     const o = { sections: {}, groups: {}, questions: {} };
     const built = [];
     let counter = 0;
-    for (const s of sectionRows || []) {
+    for (const s of paper.sections) {
       o.sections[s.id] = { passage_title: s.passage_title || "", passage_text: s.passage_text || "", audio_url: s.audio_url || null, max_plays: s.max_plays == null ? "" : String(s.max_plays) };
-      const { data: groupRows } = await supabase
-        .from("question_groups")
-        .select("id, instruction, passage_text, image_url, order_index")
-        .eq("section_id", s.id)
-        .order("order_index");
       const groups = [];
-      for (const g of groupRows || []) {
-        const { data: links } = await supabase
-          .from("assignment_questions")
-          .select("order_index, questions(*)")
-          .eq("group_id", g.id)
-          .order("order_index");
-        const qs = (links || []).map((l) => l.questions).filter(Boolean);
+      for (const g of s.groups) {
+        const qs = g.questions;
         const { numbers, end, nextStart } = numberQuestions(qs, counter + 1);
         counter = nextStart - 1;
         o.groups[g.id] = { instruction: g.instruction || "", passage_text: g.passage_text || "", image_url: g.image_url || null };
@@ -148,13 +145,8 @@ export function PaperEditor({ assignmentId, classId, teacherId, setScreen, showT
       }
       built.push({ id: s.id, title: s.title, audioUrl: s.audio_url, maxPlays: s.max_plays, groups });
     }
-
-    const ids = Object.keys(o.questions);
-    if (ids.length > 0) {
-      const { data: keys } = await supabase.from("question_answer_key").select("question_id, correct_answer").in("question_id", ids);
-      (keys || []).forEach((k) => {
-        if (o.questions[k.question_id]) o.questions[k.question_id].key = k.correct_answer;
-      });
+    for (const [qid, k] of Object.entries(paper.answerKeys || {})) {
+      if (o.questions[qid]) o.questions[qid].key = k;
     }
 
     const s0 = {
