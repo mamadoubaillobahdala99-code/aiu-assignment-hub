@@ -42,45 +42,45 @@ export function StudentWritingFeedback({ assignmentId, userId, setScreen, inExam
   const [openNote, setOpenNote] = useState(null); // { text, note }
   const textRef = useRef(null);
 
+  // Livraison 81: the five reads are asked at the same time (before: one
+  // after the other). Same reads, same rights.
   const load = useCallback(async () => {
-    const { data: a } = await supabase.from("assignments").select("id, title, type").eq("id", assignmentId).single();
+    const [{ data: a }, { data: rows }, { data: wr }, { data: wg }, { data: fb }] = await Promise.all([
+      supabase.from("assignments").select("id, title, type").eq("id", assignmentId).single(),
+      supabase
+        .from("exam_sections")
+        .select("id, title, passage_text, image_url, task_number, order_index")
+        .eq("assignment_id", assignmentId)
+        .order("order_index"),
+      supabase
+        .from("writing_responses")
+        .select("section_id, content_html, word_count")
+        .eq("assignment_id", assignmentId)
+        .eq("student_id", userId),
+      supabase
+        .from("writing_grades")
+        .select("section_id, corrected_html, score_ta, score_cc, score_lr, score_gra, task_band")
+        .eq("assignment_id", assignmentId)
+        .eq("student_id", userId),
+      supabase
+        .from("assignment_feedback")
+        .select("band, feedback, released_at")
+        .eq("assignment_id", assignmentId)
+        .eq("student_id", userId)
+        .maybeSingle(),
+    ]);
     setAssignment(a || null);
-
-    const { data: rows } = await supabase
-      .from("exam_sections")
-      .select("id, title, passage_text, image_url, task_number, order_index")
-      .eq("assignment_id", assignmentId)
-      .order("order_index");
     setSections(
       (rows || [])
         .filter((s) => s.task_number)
         .map((s) => ({ id: s.id, taskNumber: s.task_number, prompt: s.passage_text || "", imageUrl: s.image_url || "" }))
     );
-
-    const { data: wr } = await supabase
-      .from("writing_responses")
-      .select("section_id, content_html, word_count")
-      .eq("assignment_id", assignmentId)
-      .eq("student_id", userId);
     const r = {};
     (wr || []).forEach((x) => { r[x.section_id] = x; });
     setResponses(r);
-
-    const { data: wg } = await supabase
-      .from("writing_grades")
-      .select("section_id, corrected_html, score_ta, score_cc, score_lr, score_gra, task_band")
-      .eq("assignment_id", assignmentId)
-      .eq("student_id", userId);
     const g = {};
     (wg || []).forEach((x) => { g[x.section_id] = x; });
     setGrades(g);
-
-    const { data: fb } = await supabase
-      .from("assignment_feedback")
-      .select("band, feedback, released_at")
-      .eq("assignment_id", assignmentId)
-      .eq("student_id", userId)
-      .maybeSingle();
     setFeedback(fb || null);
     setLoading(false);
   }, [assignmentId, userId]);
