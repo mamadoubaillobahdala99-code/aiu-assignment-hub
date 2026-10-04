@@ -17,7 +17,7 @@ Il est dépassé : ne pas l'exécuter. Il est gardé tel quel pour l'histoire.
 
 | Fichier | À quoi il sert |
 |---|---|
-| `00_etat_actuel.sql` | **Photo de la base au 26/09/2026** (après 32 — les droits ont changé depuis avec le 33) : tables, contraintes, index, RLS, 60 fonctions, déclencheurs, 65 règles, droits, stockage. Aucune donnée. Voir section 3. |
+| `00_etat_actuel.sql` | **Photo de la base au 04/10/2026** (après le 48) : 26 tables, contraintes, index, RLS, 83 fonctions, déclencheurs, 63 règles (58 sur `public`, 5 sur le stockage), droits (dont « jamais anon » du 33 et les droits par défaut), stockage. Aucune donnée. Voir section 3. |
 | `09_rls_exam_content.sql` | Sécurité, étape 1 : le contenu des examens n'est plus lisible par tout compte ; la correction n'est plus visible avant publication. |
 | `10_rls_copies_classes.sql` | Sécurité, étape 2 : copies et notes privées, code de classe protégé, un étudiant ne peut plus se déclarer prof ni se noter. |
 | `11_rls_storage_profiles.sql` | Sécurité, étape 3 : dépôt de fichiers limité à ses dossiers, profils visibles seulement entre membres d'une classe. |
@@ -59,6 +59,7 @@ Il est dépassé : ne pas l'exécuter. Il est gardé tel quel pour l'histoire.
 | `45_teacher_overview.sql` | Le tableau de bord du prof et ses cartes « My classes » en une lecture, pour toutes ses classes : étudiants, devoirs, copies Writing à corriger (et la plus ancienne), rendus par devoir, copies rendues sur 7 jours, activité récente (« X a rendu… », « X a rejoint… »). Fonction `teacher_overview` en LECTURE SEULE (stable) : seulement les classes de l'appelant, jamais la boîte privée d'un examen, jamais anon ; nombres, heures et noms des étudiants de ses classes, aucune réponse ni note. Mêmes règles de « rendu » que le 44. |
 | `46_everyone_together.sql` | « Everyone together » (livraison 79) : réglage de l'examen `start_mode` (`individual` par défaut — tous les examens existants inchangés — ou `together`). En mode together, « Open » ouvre la salle d'attente et le prof lance chaque épreuve pour tous (`exam_session_action` 'start_item') : même départ, même fin ; un retardataire a le temps restant ; une épreuve jamais commencée dont le temps est fini est « manquée » ; 'free' laisse chacun continuer seul. Minutes offertes par candidat : `exam_give_extra_time` (staff, 1–60 min), notées dans `exam_extra_time` (RLS, lecture staff seulement, aucune écriture directe). Règles seulement RESSERRÉES : contenu illisible avant le Start, heure de départ écrite par le serveur ; `listening_audio_status` ne crée plus de copie hors des règles. Retour arrière complet (versions exactes d'avant). À lancer AVANT : `46_test_annule.sql` (tout le script + 36 vérifications dans une transaction annulée ; attendu « RESULTATS : 36 OK / 0 KO », la base ne change pas). |
 | `47_rls_speed.sql` | La base plus rapide, sécurité IDENTIQUE (livraison 84) : 22 index sur des colonnes de liaison (ex. `roster.student_id`, `exam_attempts.student_id`, `classes.teacher_id`) et 35 règles RLS réécrites avec `(select auth.uid())` au lieu de `auth.uid()` (conseil Supabase « auth_rls_initplan » : la valeur est lue une fois par requête au lieu d'une fois par ligne). Aucune règle ajoutée, retirée ou élargie, aucun droit changé. Garde-fou au début (les 62 règles doivent être exactement celles d'avant, empreinte `5647f84a…`), 4 vérifications à la fin (dont : en remettant `auth.uid()`, on retrouve EXACTEMENT les 62 règles d'avant). Ré-exécutable. Retour arrière exact en bas (testé : empreinte d'origine retrouvée). À lancer AVANT : `47_test_annule.sql` (5 comptes réels, 27 tables : mêmes lignes visibles, mêmes modifications / suppressions / ajouts possibles avant et après, dans une transaction annulée ; attendu « RESULTATS : 445 OK / 0 KO », la base ne change pas). |
+| `48_cleanup_feedback.sql` | Nettoyage + notes (livraison 86) : supprime l'ANCIEN système de rendu, vide et plus utilisé — table `submissions` (avec ses 4 règles, son déclencheur, ses index), fonctions `submissions_guard()` et `submit_student_answer(uuid, uuid, jsonb)` (`is_assignment_teacher` est gardée : la règle de `listening_plays` s'en sert). Resserre `assignment_feedback` : un prof (ou un prof d'examen) ne peut plus créer ni modifier une note que pour un élève INSCRIT dans la classe du devoir — seule la partie « with check » change ; lire et supprimer ne changent pas ; aucune ligne existante touchée. Garde-fou au début (règles d'avant, empreinte `5647f84a…`, ou d'après, `65c8a9cc…` ; table `submissions` vide), 5 vérifications à la fin. Ré-exécutable. Retour arrière exact en bas (testé : tout revient à l'identique). Après le 48, ne plus relancer le 47 (son garde-fou l'arrête, sans rien changer). À lancer AVANT : `48_test_annule.sql` (crée une classe, un devoir et un examen de test avec 2 profs et 3 élèves existants, 16 essais avant et après le 48, dans une transaction annulée ; attendu « RESULTATS : 37 OK / 0 KO » ; seuls 4 essais changent : une note pour un compte non inscrit devient refusée). |
 | `nommer_prof.sql` | **Outil, pas une étape.** Donne le rôle prof à un compte existant (remplacer `<EMAIL>`). Lancé par Mamadou seulement ; ne jamais enregistrer une vraie adresse dans le dépôt. |
 | `reinitialiser_mot_de_passe.sql` | **Outil, pas une étape.** Donne un mot de passe provisoire (règle : 8+ caractères, une lettre, un chiffre) à un compte qui a oublié le sien ; ne change rien d'autre. Option commentée : déconnecter les autres appareils (compte volé). Lancé par Mamadou seulement ; ne jamais enregistrer une vraie adresse ni un vrai mot de passe dans le dépôt. |
 
@@ -93,8 +94,12 @@ Un script plus récent a réécrit ces éléments. **La version en base est touj
   - « students see own answers » (supprimée par 09) ;
   - « authenticated users can upload assignment files » (supprimée par 11) ;
   - « anyone can view assignment files » (supprimée par 22).
+- **Supprimé par le 48** (ancien système de rendu, vide) : la table `submissions` et ses 4 règles, son déclencheur
+  `trg_submissions_guard`, les fonctions `submissions_guard` et `submit_student_answer`.
 - **Créé avant le 09**, donc absent des scripts de ce dossier, mais présent en base et dans `00_etat_actuel.sql` :
-  - 5 fonctions : `handle_new_user`, `listening_audio_status`, `record_audio_play`, `save_writing_draft`, `submit_student_answer` ;
+  - 2 fonctions encore dans leur version d'origine : `record_audio_play`, `save_writing_draft`
+    (`handle_new_user` a été réécrite par le 37 puis le 40, `listening_audio_status` par le 46,
+    `submit_student_answer` supprimée par le 48) ;
   - 30 règles RLS ;
   - les tables d'origine.
 
@@ -133,6 +138,18 @@ Ils sont tous présents en base.
   - le déclencheur `on_auth_user_created`.
 - Une seule différence d'écriture : la contrainte `writing_grades_scores` est réécrite par Postgres avec moins de parenthèses. Le sens est identique.
 
+**4 bis. `00_etat_actuel.sql` régénéré le 04/10/2026 (livraison 86, après le 48)**
+
+- Fabriqué automatiquement à partir du catalogue d'une copie locale de la base, après avoir vérifié que cette copie
+  était IDENTIQUE à la vraie base (empreintes md5 : règles, fonctions, droits des tables, des colonnes et des
+  fonctions, colonnes, contraintes, index, déclencheurs, règles du stockage), puis le script 48 appliqué.
+- Rechargé dans une base PostgreSQL **vide** : il reconstruit exactement la même chose (mêmes empreintes, partout).
+- Comparé ensuite à la vraie base, après que Mamadou a lancé le 48 (voir la livraison 86).
+- Ce qui vient directement de la vraie base (Postgres 17) car la copie locale (Postgres 16) l'écrit autrement :
+  le texte de la contrainte `writing_grades_scores`, la liste des extensions et les droits par défaut.
+- La ligne « Source » de chaque fonction = le dernier script du dossier qui la crée (les retours arrière entre
+  `/* … */` ne comptent pas).
+
 **5. Secrets**
 
 Une recherche automatique de clés, jetons, mots de passe, e-mails et identifiants dans tout le dossier donne 0 résultat (hors les faux `11111111-…` et `<ID_ETUDIANT>`).
@@ -141,7 +158,7 @@ Une recherche automatique de clés, jetons, mots de passe, e-mails et identifian
 
 ## 4. Règles pour les prochains scripts
 
-1. Un nouveau script prend le numéro suivant (`48_…`) et s'ajoute ici avec une ligne dans le tableau.
+1. Un nouveau script prend le numéro suivant (`49_…`) et s'ajoute ici avec une ligne dans le tableau.
 2. Il est complet et ré-exécutable, avec un retour arrière dans un bloc `/* … */`.
 3. Il est d'abord testé dans une transaction annulée, puis exécuté par Mamadou dans Supabase.
 4. Nouvelles tables : droits pour `authenticated` seulement, jamais `anon`. La RLS n'est jamais affaiblie.
