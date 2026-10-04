@@ -78,36 +78,58 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
   const [extraFor, setExtraFor] = useState(null);   // null | { st, it, minutes }
   const [giving, setGiving] = useState(false);
 
+  // Livraison 82: the page's reads are asked in 3 rounds instead of one
+  // after the other (up to 11). Same reads, same rights, same results;
+  // the only write (adopting a paper just built) is unchanged.
   const load = useCallback(async () => {
-    const { data: s } = await supabase.from("exam_sessions").select("*").eq("id", sessionId).maybeSingle();
-    if (!s) { setSession(false); return; }
-    setSession(s);
-
-    // Papers built inside this exam. Anything sitting in the private
-    // container that is not yet a paper of this exam has just been
-    // built — adopt it, in the order it was created.
-    const { data: inContainer } = await supabase
-      .from("assignments")
-      .select("id, title, type, time_limit_minutes, created_at, listening_audio_url, listening_exam_mode")
-      .eq("class_id", s.container_class_id)
-      .order("created_at");
-    const { data: rows } = await supabase
+    const itemsQuery = () => supabase
       .from("exam_session_items")
       .select("id, assignment_id, order_index, audio_started_at, room_started_at")
       .eq("session_id", sessionId)
       .order("order_index");
+    const [{ data: s }, { data: firstRows }, { data: st }, { data: xt }] = await Promise.all([
+      supabase.from("exam_sessions").select("*").eq("id", sessionId).maybeSingle(),
+      itemsQuery(),
+      supabase.from("exam_session_staff").select("teacher_id, role, profiles(name)").eq("session_id", sessionId),
+      supabase.from("exam_extra_time").select("assignment_id, student_id, minutes").eq("session_id", sessionId),
+    ]);
+    if (!s) { setSession(false); return; }
+    setSession(s);
+    let rows = firstRows || [];
 
-    const known = new Set((rows || []).map((r) => r.assignment_id));
+    // Who has handed in what (one query for the whole room) and which
+    // papers have content — asked with the papers and the candidates.
+    const perPaper = (ids) => ids.length > 0
+      ? Promise.all([
+          supabase.from("exam_attempts").select("student_id, assignment_id, started_at, submitted_at").in("assignment_id", ids),
+          supabase.from("exam_sections").select("assignment_id, audio_url, max_plays").in("assignment_id", ids),
+        ])
+      : Promise.resolve([{ data: [] }, { data: [] }]);
+
+    // Papers built inside this exam. Anything sitting in the private
+    // container that is not yet a paper of this exam has just been
+    // built — adopt it, in the order it was created.
+    let [{ data: inContainer }, { data: r }, paperReads] = await Promise.all([
+      supabase
+        .from("assignments")
+        .select("id, title, type, time_limit_minutes, created_at, listening_audio_url, listening_exam_mode")
+        .eq("class_id", s.container_class_id)
+        .order("created_at"),
+      supabase.from("roster").select("student_id, joined_at, profiles(name)").eq("class_id", s.container_class_id),
+      perPaper(rows.map((x) => x.assignment_id)),
+    ]);
+
+    const known = new Set(rows.map((x) => x.assignment_id));
     const orphans = (inContainer || []).filter((a) => !known.has(a.id));
     if (orphans.length > 0) {
-      let next = (rows || []).reduce((m, r) => Math.max(m, r.order_index), 0);
+      let next = rows.reduce((m, x) => Math.max(m, x.order_index), 0);
       const toAdd = orphans.map((a) => ({ session_id: sessionId, assignment_id: a.id, order_index: ++next }));
       await supabase.from("exam_session_items").insert(toAdd);
-      const { data: again } = await supabase
-        .from("exam_session_items").select("id, assignment_id, order_index, audio_started_at, room_started_at")
-        .eq("session_id", sessionId).order("order_index");
-      rows.splice(0, rows.length, ...(again || []));
+      const { data: again } = await itemsQuery();
+      rows = again || [];
+      paperReads = await perPaper(rows.map((x) => x.assignment_id));
     }
+    const [{ data: att }, { data: secs }] = paperReads;
 
     const byId = new Map((inContainer || []).map((a) => [a.id, a]));
 
@@ -115,30 +137,16 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
     // in exam mode, or when one of its parts has audio with no play limit.
     const listening = (inContainer || []).filter((a) => a.type === "Listening");
     const replay = new Set(listening.filter((a) => a.listening_audio_url && !a.listening_exam_mode).map((a) => a.id));
-    const perPart = listening.filter((a) => !a.listening_audio_url).map((a) => a.id);
-    if (perPart.length > 0) {
-      const { data: secs } = await supabase.from("exam_sections").select("assignment_id, audio_url, max_plays").in("assignment_id", perPart);
-      for (const sec of secs || []) if (sec.audio_url && !sec.max_plays) replay.add(sec.assignment_id);
-    }
+    const perPart = new Set(listening.filter((a) => !a.listening_audio_url).map((a) => a.id));
+    for (const sec of secs || []) if (perPart.has(sec.assignment_id) && sec.audio_url && !sec.max_plays) replay.add(sec.assignment_id);
     setReplayIds(replay);
-    setItems((rows || []).map((r) => ({ ...r, assignment: byId.get(r.assignment_id) || null })));
+    setItems(rows.map((x) => ({ ...x, assignment: byId.get(x.assignment_id) || null })));
 
-    const [{ data: r }, { data: st }] = await Promise.all([
-      supabase.from("roster").select("student_id, joined_at, profiles(name)").eq("class_id", s.container_class_id),
-      supabase.from("exam_session_staff").select("teacher_id, role, profiles(name)").eq("session_id", sessionId),
-    ]);
     setRoster((r || []).map((x) => ({ id: x.student_id, name: x.profiles?.name || "Student", joined_at: x.joined_at })));
     setStaff((st || []).map((x) => ({ id: x.teacher_id, role: x.role, name: x.profiles?.name || "Teacher" })));
     setLoaded(true);
 
-    // Who has handed in what. One query for the whole room.
-    const paperIds = (rows || []).map((x) => x.assignment_id);
-    if (paperIds.length > 0) {
-      const [{ data: att }, { data: secs }, { data: xt }] = await Promise.all([
-        supabase.from("exam_attempts").select("student_id, assignment_id, started_at, submitted_at").in("assignment_id", paperIds),
-        supabase.from("exam_sections").select("assignment_id").in("assignment_id", paperIds),
-        supabase.from("exam_extra_time").select("assignment_id, student_id, minutes").eq("session_id", sessionId),
-      ]);
+    if (rows.length > 0) {
       setAttempts(att || []);
       setExtras(xt || []);
       setWithContent(new Set((secs || []).map((x) => x.assignment_id)));
