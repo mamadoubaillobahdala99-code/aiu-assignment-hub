@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { Users, FileText, Search } from "lucide-react";
 import { TYPES } from "../../lib/utils";
 import { EmptyState, CenterSpinner } from "../../components/shared";
-import { loadStudentWork, isDone, sortTodo, sortDone, actionLabel, resultLabel } from "./studentWork";
+import { loadStudentWork, rememberedStudentWork, isDone, sortTodo, sortDone, actionLabel, resultLabel } from "./studentWork";
 
 // Livraison 71 — the student's full list of assignments ("My assignments"),
 // in two parts: To do (most urgent first) and Done (newest first, with the
@@ -119,7 +119,8 @@ export function useListFilter(items) {
 }
 
 export function StudentAssignments({ userId, setScreen }) {
-  const [data, setData] = useState(null);
+  // Livraison 82: what this page last read is shown at once, then refreshed.
+  const [data, setData] = useState(() => rememberedStudentWork(userId));
   const load = useCallback(async () => { setData(await loadStudentWork(userId)); }, [userId]);
   useEffect(() => { load(); }, [load]);
   const { filtered, bar, reset, active } = useListFilter(data?.items);
