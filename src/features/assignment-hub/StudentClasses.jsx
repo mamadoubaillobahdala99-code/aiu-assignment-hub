@@ -2,12 +2,13 @@ import React, { useState, useEffect, useCallback } from "react";
 import { Users, GraduationCap, Plus } from "lucide-react";
 import { fmtDate } from "../../lib/utils";
 import { EmptyState, CenterSpinner } from "../../components/shared";
-import { loadStudentWork, isDone } from "./studentWork";
+import { loadStudentWork, rememberedStudentWork, isDone } from "./studentWork";
 
 // Livraison 71 — the student's classes as cards: teacher, what is left to
 // do, since when. A card opens the class; the last card joins a new one.
 export function StudentClasses({ userId, setScreen }) {
-  const [data, setData] = useState(null);
+  // Livraison 82: what this page last read is shown at once, then refreshed.
+  const [data, setData] = useState(() => rememberedStudentWork(userId));
   const load = useCallback(async () => { setData(await loadStudentWork(userId)); }, [userId]);
   useEffect(() => { load(); }, [load]);
 
