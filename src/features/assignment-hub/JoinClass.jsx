@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef } from "react";
+import { CodeBoxes } from "../../components/CodeBoxes";
 import { supabase } from "../../supabaseClient";
 import { forgetStudentWork } from "./studentWork";
 
-// Livraison 77 — « Join a class »: the 5-character code in 5 boxes.
+// Livraison 77 — « Join a class »: the 5-character code in 5 boxes
+// (livraison 85: the shared CodeBoxes component, same behaviour).
 // Typing moves to the next box, Backspace goes back, the arrows move, and
 // pasting a whole code ("k7x2m", " K7X2M ") fills every box. Enter joins.
 //
@@ -12,14 +14,12 @@ import { forgetStudentWork } from "./studentWork";
 // the same step. Running it twice is harmless. The call is the same as
 // before: join_class({ p_code }).
 const LEN = 5;
-const clean = (v) => String(v || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
 
 export function JoinClass({ userId, setScreen, showToast }) {
   const [boxes, setBoxes] = useState(Array(LEN).fill(""));
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [mine, setMine] = useState(null);   // the classes I am already in (names)
-  const refs = useRef([]);
   const busyRef = useRef(false);            // a second Enter / click before the re-render
 
   // The classes this student already belongs to (an exam's private box is
@@ -33,45 +33,15 @@ export function JoinClass({ userId, setScreen, showToast }) {
     return () => { cancelled = true; };
   }, [userId]);
 
-  useEffect(() => { refs.current[0]?.focus(); }, []);
-
   const code = boxes.join("");
   const full = code.length === LEN;
 
-  function fill(from, text) {
-    const chars = clean(text).slice(0, LEN - from).split("");
-    if (chars.length === 0) return;
-    setErr("");
-    setBoxes((b) => { const n = [...b]; chars.forEach((c, k) => { n[from + k] = c; }); return n; });
-    refs.current[Math.min(from + chars.length, LEN - 1)]?.focus();
-  }
-
-  function onChange(i, e) {
-    const v = clean(e.target.value);
-    if (!v) { setBoxes((b) => { const n = [...b]; n[i] = ""; return n; }); return; }
-    // A box that already held a letter receives two: keep the new one.
-    fill(i, v.length > 1 && boxes[i] ? v.replace(boxes[i], "") || v : v);
-  }
-
-  function onKeyDown(i, e) {
-    if (e.key === "Backspace" && !boxes[i] && i > 0) {
-      e.preventDefault();
-      setBoxes((b) => { const n = [...b]; n[i - 1] = ""; return n; });
-      refs.current[i - 1]?.focus();
-    } else if (e.key === "ArrowLeft" && i > 0) {
-      e.preventDefault(); refs.current[i - 1]?.focus();
-    } else if (e.key === "ArrowRight" && i < LEN - 1) {
-      e.preventDefault(); refs.current[i + 1]?.focus();
-    } else if (e.key === "Enter") {
-      e.preventDefault(); join();
-    }
-  }
-
-  function onPaste(i, e) {
-    e.preventDefault();
-    const text = e.clipboardData?.getData("text") || "";
-    // A whole code pasted anywhere fills the boxes from the first one.
-    fill(clean(text).length >= LEN ? 0 : i, text);
+  // Livraison 85: the boxes are the shared CodeBoxes (the exam code's).
+  // Same behaviour as before; a typed or pasted character clears the
+  // message, emptying a box does not (as before).
+  function onBoxes(next) {
+    if (next.some((c, i) => c && c !== boxes[i])) setErr("");
+    setBoxes(next);
   }
 
   async function join() {
@@ -104,15 +74,7 @@ export function JoinClass({ userId, setScreen, showToast }) {
         <h1 className="ph-title">Enter your class code</h1>
         <p className="ph-sub" style={{ marginTop: 6 }}>Your teacher gives you a {LEN}-character code, for example A2K9Q.</p>
 
-        <div className={`jc-boxes ${err ? "bad" : ""}`} role="group" aria-label="Class code">
-          {boxes.map((c, i) => (
-            <input key={i} ref={(el) => { refs.current[i] = el; }}
-                   className={`jc-box ${c ? "on" : ""}`} value={c} inputMode="text" autoComplete="off" autoCapitalize="characters" spellCheck={false}
-                   aria-label={`Character ${i + 1} of ${LEN}`} maxLength={LEN}
-                   onChange={(e) => onChange(i, e)} onKeyDown={(e) => onKeyDown(i, e)} onPaste={(e) => onPaste(i, e)}
-                   onFocus={(e) => e.target.select()} disabled={busy} />
-          ))}
-        </div>
+        <CodeBoxes length={LEN} value={boxes} onChange={onBoxes} onEnter={join} disabled={busy} bad={Boolean(err)} label="Class code" autoFocus />
         {err && <div className="field-error jc-err" role="alert">{err}</div>}
 
         <button className="btn-primary jc-go" disabled={!full || busy} onClick={join}>

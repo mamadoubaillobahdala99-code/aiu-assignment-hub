@@ -12,7 +12,6 @@
 .qe-exam-warn { margin: 6px 0 0; padding: 7px 10px; border-radius: 6px; background: #fdf0d9; color: #8a5a00; font-size: 12.5px; line-height: 1.45; }
 
 /* ---------- Paper editor (edit a Reading / Listening in place) ---------- */
-.qe-pe .section-title { margin-top: 26px; }
 .qe-pe-banner { display: flex; align-items: flex-start; gap: 10px; margin: 12px 0 6px; padding: 12px 14px; border-radius: 8px; font-size: 13.5px; line-height: 1.55; }
 .qe-pe-banner svg { flex-shrink: 0; margin-top: 2px; }
 .qe-pe-banner.is-ok { background: var(--teal-soft); color: var(--ink); }
@@ -21,8 +20,6 @@
 .qe-pe-dup { margin: 6px 0 4px; padding: 12px 14px; border: 1px dashed var(--line); border-radius: 8px; font-size: 13px; color: var(--ink-soft); }
 .qe-pe-dup-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .qe-pe-dup-row .field-input { max-width: 280px; margin: 0; }
-.qe-pe-row { display: flex; flex-wrap: wrap; gap: 14px; }
-.qe-pe-row > div { flex: 1 1 180px; }
 .qe-pe-part { margin-top: 18px; padding-top: 6px; border-top: 2px solid var(--line); }
 .qe-pe-passage { min-height: 220px; font-size: 14px; line-height: 1.6; }
 .field-input.textarea.qe-pe-short { min-height: 56px; height: 64px; font-size: 14px; line-height: 1.5; }

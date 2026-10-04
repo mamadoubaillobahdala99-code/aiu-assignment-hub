@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { BookOpen, Users, Plus, Check, Clock, AlertTriangle, LogOut, GraduationCap, FileText, ChevronRight, X, Copy, CheckCircle2, Headphones, PenLine, Mic, ListChecks, ArrowLeft, Loader2, Timer, Highlighter, Trash2, Pencil , Eye } from "lucide-react";
+import { Users, Copy, CheckCircle2, Trash2, Pencil, Eye } from "lucide-react";
 import { supabase } from "../../supabaseClient";
-import { uid, makeCode, TYPES, fmtDate, fmtDueDateTime, daysUntil, wordCount, isPdfUrl } from "../../lib/utils";
-import { PageHeader, EmptyState, CenterSpinner, StatusBadge } from "../../components/shared";
+import { TYPES, fmtDueDateTime } from "../../lib/utils";
+import { EmptyState, CenterSpinner } from "../../components/shared";
 import { TeacherQuestionEngineReview } from "../question-engine/TeacherQuestionEngineReview";
 import { TeacherWritingReview } from "../question-engine/TeacherWritingReview";
 import { TeacherPaperPreview } from "../question-engine/TeacherPaperPreview";
@@ -11,13 +11,6 @@ import { confirmDialog } from "../../lib/confirmDialog";
 import { DropMenu, DropMenuItem, DropMenuSeparator, Breadcrumb } from "../../components/DropMenu";
 import { loadAssignmentWork, assignmentStats, sortRows } from "./assignmentWork";
 import { AssignmentStats, StudentsTable, QuestionsTable } from "./AssignmentStudents";
-
-const CRITERIA = [
-  { key: "score_task_achievement", label: "Task Achievement" },
-  { key: "score_coherence_cohesion", label: "Coherence & Cohesion" },
-  { key: "score_lexical_resource", label: "Lexical Resource" },
-  { key: "score_grammar_accuracy", label: "Grammatical Range & Accuracy" },
-];
 
 
 // Livraison 69: whether this paper belongs to an exam, and whether that
@@ -51,7 +44,6 @@ export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen,
   // the teacher answers « Leave without saving? ».
   const dirtyRef = useRef(false);
   const [shownId, setShownId] = useState(studentId);
-  const [busy, setBusy] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [myClasses, setMyClasses] = useState([]);
   const [showDuplicate, setShowDuplicate] = useState(false);
@@ -170,7 +162,6 @@ export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen,
     setStructuredStudentIds(new Set(w.rows.filter((x) => x.open).map((x) => x.id)));
   }, [assignment, roster, isStructured]);
 
-  const isWritingType = assignment?.type === "Writing Task 1" || assignment?.type === "Writing Task 2";
 
 
   async function handleDelete() {

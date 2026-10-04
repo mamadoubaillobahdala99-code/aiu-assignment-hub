@@ -1,5 +1,5 @@
 import React from "react";
-import { BookOpen, Users, Plus, Check, Clock, AlertTriangle, LogOut, GraduationCap, FileText, ChevronRight, X, Copy, CheckCircle2, Headphones, PenLine, Mic, ListChecks, ArrowLeft, Loader2, Timer, Highlighter } from "lucide-react";
+import { Check, Clock, FileText, X, CheckCircle2, Loader2, Timer } from "lucide-react";
 import { Eye } from "lucide-react";
 import { isPdfUrl, isAudioUrl } from "../lib/utils";
 

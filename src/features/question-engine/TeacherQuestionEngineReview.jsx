@@ -5,7 +5,7 @@ import { CenterSpinner } from "../../components/shared";
 import { ScoreRing } from "./ScoreRing";
 import { ReviewContent } from "./ReviewContent";
 import { formatAnswerValue } from "./answerFormat";
-import { numberQuestions, questionSlotCount } from "./bulkParse";
+import { numberQuestions } from "./bulkParse";
 import { loadPaperTree, toReviewSections } from "./paperTree";
 import { computeIeltsBand } from "./bandConversion";
 import { Breadcrumb } from "../../components/DropMenu";
@@ -79,14 +79,11 @@ export function TeacherQuestionEngineReview({ assignmentId, studentId, studentNa
   useEffect(() => { load(); }, [load]);
 
   const allQuestions = useMemo(() => sections.flatMap((s) => s.groups.flatMap((g) => g.questions)), [sections]);
-  const allQuestionNumbers = useMemo(() => numberQuestions(allQuestions, 1).numbers, [allQuestions]);
   const totalPoints = useMemo(() => allQuestions.reduce((sum, q) => sum + (q.points || 1), 0), [allQuestions]);
   const earnedPoints = useMemo(
     () => allQuestions.reduce((sum, q) => sum + (resultsByQ[q.id]?.earned ?? 0), 0),
     [allQuestions, resultsByQ]
   );
-  const correctCount = allQuestions.filter((q) => resultsByQ[q.id]?.isCorrect).length;
-  const incorrectCount = allQuestions.filter((q) => resultsByQ[q.id] && !resultsByQ[q.id].isCorrect).length;
   const skill = assignment?.type === "Listening" ? "listening" : "reading";
   const autoBand = computeIeltsBand(earnedPoints, totalPoints, skill, assignment?.reading_test_type);
   const displayBand = feedbackRow?.band || (autoBand != null ? autoBand : null);

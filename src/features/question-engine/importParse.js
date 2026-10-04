@@ -39,7 +39,6 @@ export const IMPORT_TYPES = [
 
 const COMPLETION_TYPES = new Set(["notes", "table", "form", "flowchart", "sentences", "summary", "wordbank"]);
 const LETTER_TYPES = new Set(["info", "features", "endings", "map"]);
-export const isCompletionType = (t) => COMPLETION_TYPES.has(t);
 
 const ROMAN = ["i", "ii", "iii", "iv", "v", "vi", "vii", "viii", "ix", "x", "xi", "xii", "xiii", "xiv", "xv", "xvi", "xvii", "xviii", "xix", "xx"];
 const LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");

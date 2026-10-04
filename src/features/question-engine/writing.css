@@ -96,8 +96,6 @@
 .qe-wr-view-empty { color: var(--ink-soft); font-style: italic; }
 
 /* ---------- Teacher correction screen ---------- */
-.qe-wrv-status { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; font-weight: 600; color: var(--ink-soft); background: var(--paper); border: 1px solid var(--line); border-radius: 999px; padding: 4px 10px; }
-.qe-wrv-status.published { color: var(--teal); background: var(--teal-soft); border-color: var(--teal); }
 
 .qe-wrv-tabs { display: flex; gap: 6px; padding: 12px 28px 0; border-bottom: 1px solid var(--line); background: var(--paper-raised); flex-shrink: 0; }
 .qe-wrv-tab { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 8px 16px 10px; border: 1px solid transparent; border-bottom: none; border-radius: 8px 8px 0 0; background: none; font-family: inherit; font-size: 13.5px; font-weight: 700; color: var(--ink-soft); cursor: pointer; margin-bottom: -1px; }
@@ -120,8 +118,6 @@
 .qe-wrv-editor { height: 62vh; min-height: 360px; display: flex; flex-direction: column; }
 .qe-wrv-original .qe-wr-view { min-height: 62vh; }
 .qe-wrv-hint { font-size: 12.5px; color: var(--ink-soft); margin: 8px 0 0; line-height: 1.5; }
-
-.qe-wrv-overall { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
 .qe-wrv-overall-input { max-width: 120px; margin-top: 6px; text-align: center; font-size: 16px; font-weight: 700; }
 .qe-wrv-invalid { border-color: var(--rose) !important; background: var(--rose-soft, #FBEAEC); }
 .qe-wrv-small { font-weight: 500; font-size: 12px; }
@@ -129,25 +125,9 @@
 .qe-wrv-actions { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
 
 /* ---------- Student feedback screen ---------- */
-.qe-wrf-summary { display: flex; gap: 16px; margin-top: 18px; flex-wrap: wrap; }
-.qe-wrf-band { flex: 0 0 auto; min-width: 150px; background: var(--teal); color: #fff; border-radius: 12px; padding: 16px 20px; }
-.qe-wrf-band .qe-wrf-band-label { color: rgba(255, 255, 255, 0.8); }
-.qe-wrf-band-label { display: flex; align-items: center; gap: 6px; font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; letter-spacing: 0.09em; text-transform: uppercase; color: var(--ink-soft); }
-.qe-wrf-band-value { font-family: 'Fraunces', serif; font-size: 40px; font-weight: 600; line-height: 1.1; margin-top: 4px; }
-.qe-wrf-comment { flex: 1; min-width: 260px; background: var(--paper-raised); border: 1px solid var(--line); border-radius: 12px; padding: 14px 18px; }
-.qe-wrf-comment p { margin: 8px 0 0; font-size: 14.5px; line-height: 1.6; white-space: pre-wrap; }
-
-.qe-wrf-body { display: flex; gap: 24px; margin-top: 18px; align-items: flex-start; }
-.qe-wrf-text { flex: 2; min-width: 0; }
-.qe-wrf-side { flex: 1; min-width: 260px; max-width: 360px; display: flex; flex-direction: column; gap: 14px; position: sticky; top: 56px; }
-.qe-wrf-markcount { font-size: 12.5px; color: #A4231A; font-weight: 600; }
 .qe-wrf-note { border: 1px solid #E8A7A7; background: #FFF5F5; border-radius: 10px; padding: 12px 14px; }
 .qe-wrf-note-quote { font-size: 13px; font-weight: 700; color: #A4231A; margin-bottom: 6px; }
 .qe-wrf-note p { margin: 0 0 8px; font-size: 14px; line-height: 1.55; white-space: pre-wrap; }
-@media (max-width: 900px) {
-  .qe-wrf-body { flex-direction: column; }
-  .qe-wrf-side { max-width: none; width: 100%; position: static; }
-}
 .qe-wrf-note .qe-wrv-link { font-size: 12.5px; }
 
 /* Tablet and phone: the Task panel and the answer panel take turns

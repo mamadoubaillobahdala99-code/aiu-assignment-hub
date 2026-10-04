@@ -118,8 +118,6 @@ body.qe-resizing { user-select: none; cursor: col-resize; }
 
 .qe-section-instruction { font-size: 13.5px; color: var(--ink); font-style: italic; margin: 0 0 20px; white-space: pre-line; }
 .qe-form { max-width: 480px; }
-.qe-incorrect { background: var(--rose-soft) !important; }
-.qe-incorrect .feedback-band { color: var(--rose) !important; }
 
 /* ---------- Exam start screen ---------- */
 /* align-items: flex-start + margin:auto on the card keeps the card
@@ -144,11 +142,9 @@ body.qe-resizing { user-select: none; cursor: col-resize; }
 .qe-exam-sidebar-toggle { position: absolute; top: 14px; right: -13px; z-index: 5; width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--line); background: var(--paper); color: var(--ink); display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; }
 .qe-exam-sidebar-inner { padding: 22px 18px; overflow-y: auto; display: flex; flex-direction: column; height: 100%; box-sizing: border-box; }
 .qe-exam-sidebar-title { font-family: 'Fraunces', serif; font-size: 17px; font-weight: 600; line-height: 1.35; color: #fff; margin-bottom: 18px; }
-.qe-exam-sidebar-class { font-size: 12.5px; opacity: 0.75; margin-top: 4px; }
 .qe-exam-sidebar-section { margin-top: 22px; }
 .qe-exam-sidebar-label { font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; letter-spacing: 0.09em; text-transform: uppercase; opacity: 0.6; margin-bottom: 6px; }
 .qe-exam-sidebar-value { font-size: 13.5px; }
-.qe-exam-sidebar-timer { display: flex; align-items: center; gap: 7px; font-family: 'IBM Plex Mono', monospace; font-size: 17px; font-weight: 500; color: #fff; }
 .qe-exam-sidebar-submit { width: 100%; justify-content: center; margin-top: auto; }
 .qe-exam-sidebar-exit { display: flex; align-items: center; gap: 7px; background: none; border: none; color: #E8E8E3; opacity: 0.65; font-family: inherit; font-size: 12.5px; cursor: pointer; padding: 12px 0 0; }
 .qe-exam-sidebar-exit:hover { opacity: 1; }

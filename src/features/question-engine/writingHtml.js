@@ -85,14 +85,6 @@ export function countWords(text) {
   return matches ? matches.length : 0;
 }
 
-// Plain text of a stored HTML answer (paragraphs → line breaks).
-export function writingHtmlToText(html) {
-  const doc = new DOMParser().parseFromString(`<body>${sanitizeWritingHtml(html)}</body>`, "text/html");
-  doc.querySelectorAll("br").forEach((br) => br.replaceWith("\n"));
-  doc.querySelectorAll("p").forEach((p) => p.append("\n"));
-  return doc.body.textContent || "";
-}
-
 // IELTS-style rounding to the nearest half band (6.25 → 6.5, 6.17 → 6.0).
 export function roundHalf(x) {
   return Math.round(x * 2) / 2;

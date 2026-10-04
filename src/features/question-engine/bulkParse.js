@@ -258,7 +258,6 @@ export function parseMatchingItems(text) {
 }
 
 export function defaultInstructionForMatching(matchingType, options) {
-  const bank = (options?.choices || []).map((c) => c.text).join(", ");
   if (matchingType === "matching_headings") {
     return `Choose the correct heading for each paragraph from the list of headings below.`;
   }

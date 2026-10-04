@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { BookOpen, Users, Plus, Check, Clock, AlertTriangle, LogOut, GraduationCap, FileText, ChevronRight, X, Copy, CheckCircle2, Headphones, PenLine, Mic, ListChecks, ArrowLeft, Loader2, Timer, Highlighter } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { supabase } from "../../supabaseClient";
 import { PasswordField, passwordProblem, PASSWORD_RULE_TEXT } from "../../components/PasswordField";
 

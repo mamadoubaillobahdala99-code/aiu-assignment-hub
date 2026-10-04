@@ -1,9 +1,9 @@
 
 import React, { useState, useEffect, useCallback } from "react";
-import { BookOpen, Users, Plus, Check, Clock, AlertTriangle, LogOut, GraduationCap, FileText, ChevronRight, X, Copy, CheckCircle2, Headphones, PenLine, Mic, ListChecks, ArrowLeft, Loader2, Timer, Highlighter, Trash2, UserMinus, ChevronDown } from "lucide-react";
+import { BookOpen, Users, Plus, AlertTriangle, FileText, ChevronRight, Copy, CheckCircle2, Headphones, PenLine, Mic, ArrowLeft, Trash2, UserMinus, ChevronDown } from "lucide-react";
 import { supabase } from "../../supabaseClient";
-import { uid, makeCode, TYPES, fmtDate, daysUntil, wordCount, isPdfUrl } from "../../lib/utils";
-import { AttachmentPreview, PageHeader, EmptyState, CenterSpinner, Modal, StatusBadge } from "../../components/shared";
+import { fmtDate } from "../../lib/utils";
+import { EmptyState, CenterSpinner, Modal, StatusBadge } from "../../components/shared";
 import { AssignmentsTab } from "./AssignmentsTab";
 import { confirmDialog } from "../../lib/confirmDialog";
 import { dueInfo } from "../../lib/due";

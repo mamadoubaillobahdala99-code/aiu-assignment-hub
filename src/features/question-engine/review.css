@@ -1,11 +1,3 @@
-.qe-review-shell { max-width: 760px; margin: 0 auto; padding: 8px 0 60px; }
-.qe-review-header { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin: 20px 0 16px; flex-wrap: wrap; }
-.qe-review-counts { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; font-size: 13.5px; flex-wrap: wrap; }
-.qe-review-nav { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 24px; }
-.qe-review-nav-pill { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 8px; font-size: 12.5px; font-weight: 600; text-decoration: none; border: 1px solid var(--line); color: var(--ink); }
-button.qe-review-nav-pill { font-family: inherit; padding: 0; cursor: pointer; }
-.qe-review-nav-pill.correct { background: var(--color-success-soft); color: var(--color-success); border-color: transparent; }
-.qe-review-nav-pill.incorrect { background: var(--color-error-soft); color: var(--color-error); border-color: transparent; }
 /* The questions are no longer inside a card: no frame, no tinted
    background, no indent. Only the information panels below keep theirs,
    because they are separate notes rather than the paper itself. */
@@ -16,7 +8,6 @@ button.qe-review-nav-pill { font-family: inherit; padding: 0; cursor: pointer; }
 .qe-review-question:last-child { margin-bottom: 0; }
 .qe-review-correct-answer { font-size: 12.5px; color: var(--ink-soft); margin-top: 4px; }
 .qe-review-correct-inline { display: block; font-size: 12px; color: var(--color-error); margin-top: 4px; }
-.qe-review-feedback-panel { background: var(--paper-raised); border: 1px solid var(--line); border-radius: 14px; padding: 22px 26px; }
 
 /* Shared score ring */
 .qe-score-ring { position: relative; flex-shrink: 0; }
@@ -26,11 +17,6 @@ button.qe-review-nav-pill { font-family: inherit; padding: 0; cursor: pointer; }
 
 /* Student feedback screen — separate page, same card language as the
    Listening layout, but always scrollable regardless of length. */
-.qe-feedback-shell { max-width: 760px; margin: 0 auto; padding: 24px 0 60px; }
-.qe-feedback-top { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 10px; margin-bottom: 28px; }
-.qe-feedback-teacher-note { background: var(--color-info-soft); border: 1px solid var(--line); border-radius: 12px; padding: 16px 20px; margin-bottom: 24px; }
-.qe-feedback-teacher-note .field-label { color: var(--info); }
-.qe-feedback-content { padding: 0; }
 .qe-feedback-locked { text-align: center; padding: 60px 20px; color: var(--ink-soft); }
 
 .qe-review-passage { margin: 10px 0 18px; }
