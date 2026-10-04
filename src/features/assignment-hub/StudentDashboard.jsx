@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Users, GraduationCap, Plus, ShieldCheck } from "lucide-react";
 import { EmptyState, CenterSpinner } from "../../components/shared";
-import { loadStudentWork, isDone, sortTodo, sortDone, actionLabel, resultLabel } from "./studentWork";
+import { loadStudentWork, rememberedStudentWork, isDone, sortTodo, sortDone, actionLabel, resultLabel } from "./studentWork";
 import { TypeIcon, DuePill } from "./StudentHome";
 
 // Livraison 71 — the student's Home: what to do next, the figures that
@@ -20,7 +20,8 @@ function pct(r) {
 }
 
 export function StudentDashboard({ userId, profile, setScreen }) {
-  const [data, setData] = useState(null);
+  // Livraison 82: what this page last read is shown at once, then refreshed.
+  const [data, setData] = useState(() => rememberedStudentWork(userId));
   const load = useCallback(async () => { setData(await loadStudentWork(userId)); }, [userId]);
   useEffect(() => { load(); }, [load]);
 
