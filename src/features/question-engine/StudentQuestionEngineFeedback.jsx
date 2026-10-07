@@ -4,12 +4,12 @@ import { supabase } from "../../supabaseClient";
 import { CenterSpinner } from "../../components/shared";
 import { ScoreRing } from "./ScoreRing";
 import { ReviewContent } from "./ReviewContent";
-import { formatAnswerValue } from "./answerFormat";
+import { formatAnswerValue, formatCorrectShort } from "./answerFormat";
 import { numberQuestions } from "./bulkParse";
 import { loadPaperTree, toReviewSections } from "./paperTree";
 import { computeIeltsBand } from "./bandConversion";
 import { Breadcrumb } from "../../components/DropMenu";
-import { buildSheet, sheetCounts, QuestionDots, AnswerSheet, goToQuestion, fmtWhen } from "./ResultParts";
+import { buildSheet, sheetCounts, AnswerSheet, fmtWhen } from "./ResultParts";
 
 // Livraison 74 — the student's result for a Reading / Listening paper:
 // score + band, the teacher's comment, then the answer sheet ("My
@@ -104,6 +104,14 @@ export function StudentQuestionEngineFeedback({ assignmentId, userId, setScreen,
     }
     return map;
   }, [allQuestions, correctByQ]);
+  // Livraison 90: on the answer sheet, the letter only.
+  const correctShort = useMemo(() => {
+    const map = {};
+    for (const q of allQuestions) {
+      if (correctByQ[q.id] !== undefined) map[q.id] = formatCorrectShort(q, correctByQ[q.id]);
+    }
+    return map;
+  }, [allQuestions, correctByQ]);
 
   if (loading || !assignment) return <CenterSpinner />;
 
@@ -132,7 +140,6 @@ export function StudentQuestionEngineFeedback({ assignmentId, userId, setScreen,
             {canSeeAnswers ? ` · ${counts.right} correct · ${counts.wrong + counts.partial} to review` : ""}
             {handedAt ? ` · handed in ${fmtWhen(handedAt)}` : ""}
           </div>
-          {canSeeAnswers && <QuestionDots rows={rows} resultsByQ={resultsByQ} onPick={(row) => { if (view !== "sheet" && view !== "paper") setView("sheet"); setTimeout(() => goToQuestion(row), 50); }} />}
         </div>
       </div>
 
@@ -153,7 +160,7 @@ export function StudentQuestionEngineFeedback({ assignmentId, userId, setScreen,
             {estimated && <span className="rs-hint">Band estimated on a 40-question scale.</span>}
           </div>
           {view === "sheet" ? (
-            <AnswerSheet rows={rows} answersByQ={answersByQ} resultsByQ={resultsByQ} correctFormatted={correctAnswersFormatted} showCorrect={showCorrect} mine />
+            <AnswerSheet rows={rows} answersByQ={answersByQ} resultsByQ={resultsByQ} correctFormatted={correctShort} showCorrect={showCorrect} mine />
           ) : (
             <ReviewContent
               sections={sections}
