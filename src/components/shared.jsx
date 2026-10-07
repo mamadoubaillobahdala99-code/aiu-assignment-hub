@@ -1,5 +1,5 @@
 import React from "react";
-import { Check, Clock, FileText, X, CheckCircle2, Loader2, Timer } from "lucide-react";
+import { Check, Clock, FileText, X, CheckCircle2, Loader2, Timer, WifiOff, RotateCcw } from "lucide-react";
 import { Eye } from "lucide-react";
 import { isPdfUrl, isAudioUrl } from "../lib/utils";
 
@@ -40,6 +40,19 @@ export function EmptyState({ icon, title, body }) {
       <div className="empty-icon">{icon}</div>
       <div className="empty-title">{title}</div>
       {body && <div className="empty-body">{body}</div>}
+    </div>
+  );
+}
+
+// Livraison 93 — a read failed: say so, never show an empty screen that
+// looks like « nothing there » (and could then be saved over real work).
+export function LoadFailed({ what = "this page", onRetry }) {
+  return (
+    <div className="empty-state" role="alert">
+      <div className="empty-icon"><WifiOff size={20} /></div>
+      <div className="empty-title">Could not load {what}</div>
+      <div className="empty-body">Check your internet connection and try again. Nothing was changed.</div>
+      {onRetry && <button className="btn-primary" style={{ marginTop: 14 }} onClick={onRetry}><RotateCcw size={14} /> Retry</button>}
     </div>
   );
 }
