@@ -31,6 +31,7 @@ const RETRY_DELAY_MS = 5000;
 const ZOOM_MIN = 0.5;
 const ZOOM_MAX = 3;
 const ZOOM_STEP = 0.25;
+const LOAD_FAILED = "Your writing could not be loaded. Check your internet connection and try again — nothing you saved is lost.";
 
 export function StudentWritingRunner({ userId, assignmentId, setScreen, showToast, onSubmitted }) {
   const [assignment, setAssignment] = useState(null);
@@ -94,20 +95,32 @@ export function StudentWritingRunner({ userId, assignmentId, setScreen, showToas
       }
     }
 
-    const { data: rows } = await supabase
+    // Livraison 93: a failed read must never look like « nothing written
+    // yet ». Before, an error here showed an EMPTY editor, and the next
+    // autosave could replace the student's saved text by that empty page.
+    // Now the editor is not shown at all: « Could not load — Retry ».
+    const { data: rows, error: rowsErr } = await supabase
       .from("exam_sections")
       .select("id, title, passage_text, image_url, task_number, order_index")
       .eq("assignment_id", assignmentId)
       .order("order_index");
+    if (rowsErr) {
+      setLoadError(LOAD_FAILED);
+      return;
+    }
     const built = (rows || [])
       .filter((s) => s.task_number)
       .map((s) => ({ id: s.id, title: s.title, taskNumber: s.task_number, prompt: s.passage_text || "", imageUrl: s.image_url || "" }));
 
-    const { data: saved } = await supabase
+    const { data: saved, error: savedErr } = await supabase
       .from("writing_responses")
       .select("section_id, content_html, word_count, submitted_at")
       .eq("assignment_id", assignmentId)
       .eq("student_id", userId);
+    if (savedErr) {
+      setLoadError(LOAD_FAILED);
+      return;
+    }
     if ((saved || []).some((r) => r.submitted_at)) {
       submittedRef.current = true;
       onSubmitted?.();
@@ -361,6 +374,7 @@ export function StudentWritingRunner({ userId, assignmentId, setScreen, showToas
       <div className="page">
         <button className="back-link" onClick={() => setScreen({ name: "home" })}><ArrowLeft size={14} /> All assignments</button>
         <p className="empty-inline">{loadError}</p>
+        <button className="btn-primary" onClick={() => { setLoadError(""); load(); }}>Retry</button>
       </div>
     );
   }
