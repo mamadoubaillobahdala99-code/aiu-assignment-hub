@@ -1,6 +1,7 @@
 import { supabase } from "../../supabaseClient";
 import { loadAssignmentWork } from "../assignment-hub/assignmentWork";
 import { roundHalf } from "../question-engine/writingHtml";
+import { examRows } from "./examExport";
 
 // Livraison 78 — what the teacher's exam pages show, read with the
 // teacher's OWN rights (the database lets an exam's teachers — its
@@ -184,4 +185,23 @@ export function left(ms) {
   if (m < 1) return "less than a minute";
   if (m < 60) return `${m} min`;
   return `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, "0")}`;
+}
+
+// Livraison 91 — for the Exams list: everything one exam's results need, with the same
+// reads (and the same rights) as the exam page. Read only.
+export async function loadExamForExport(session) {
+  const [{ data: items }, { data: papers }, { data: roster }] = await Promise.all([
+    supabase.from("exam_session_items").select("id, assignment_id, order_index").eq("session_id", session.id).order("order_index"),
+    supabase.from("assignments").select("id, title, type, time_limit_minutes, created_at, listening_audio_url, listening_exam_mode").eq("class_id", session.container_class_id),
+    supabase.from("roster").select("student_id, profiles(name)").eq("class_id", session.container_class_id),
+  ]);
+  const byId = new Map((papers || []).map((a) => [a.id, a]));
+  const list = (items || []).map((x) => ({ ...x, assignment: byId.get(x.assignment_id) || null })).filter((x) => x.assignment);
+  const ids = list.map((x) => x.assignment_id);
+  const { data: secs } = ids.length ? await supabase.from("exam_sections").select("assignment_id").in("assignment_id", ids) : { data: [] };
+  const withContent = new Set((secs || []).map((s) => s.assignment_id));
+  const candidates = (roster || []).map((x) => ({ id: x.student_id, name: x.profiles?.name || "Student" }));
+  const grid = await loadExamGrid(list.map((it) => ({ ...it, structured: withContent.has(it.assignment_id) })), candidates);
+  const cellOf = (sid, it) => grid[`${sid}|${it.assignment_id}`];
+  return { name: session.name, rows: examRows(list, candidates, cellOf) };
 }

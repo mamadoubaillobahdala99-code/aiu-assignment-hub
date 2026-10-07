@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { Plus, ShieldCheck, Search } from "lucide-react";
+import { Plus, ShieldCheck, Search, Download } from "lucide-react";
 import { supabase } from "../../supabaseClient";
 import { EmptyState, CenterSpinner, Modal } from "../../components/shared";
 import { loadExamsList, skillLetter, examStage } from "./examWork";
+import { ExportResultsDialog } from "./ExportResultsDialog";
 
 // An exam session chains several papers in one sitting, behind its own
 // code. It is not a class: it owns a private container the students
@@ -22,6 +23,7 @@ export function ExamSessionsHome({ userId, setScreen, showToast }) {
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const [exportOpen, setExportOpen] = useState(false);   // livraison 91
 
   const load = useCallback(async () => {
     setData(await loadExamsList());
@@ -70,6 +72,9 @@ export function ExamSessionsHome({ userId, setScreen, showToast }) {
           </div>
         </div>
         <div className="ph-actions">
+          {exams.some((e) => e.candidates > 0) && (
+            <button className="btn-ghost" onClick={() => setExportOpen(true)}><Download size={15} /> Export results…</button>
+          )}
           <button className="btn-teal" onClick={() => setShowCreate(true)}><Plus size={16} /> New exam</button>
         </div>
       </div>
@@ -138,6 +143,8 @@ export function ExamSessionsHome({ userId, setScreen, showToast }) {
           )}
         </>
       )}
+
+      {exportOpen && <ExportResultsDialog exams={exams} onClose={() => setExportOpen(false)} showToast={showToast} />}
 
       {showCreate && (
         <Modal title="New exam" onClose={() => setShowCreate(false)}>

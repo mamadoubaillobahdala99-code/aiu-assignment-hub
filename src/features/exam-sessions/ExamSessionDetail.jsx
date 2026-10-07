@@ -13,6 +13,8 @@ import { DropMenu, DropMenuItem, DropMenuSeparator, Breadcrumb } from "../../com
 import { Stepper } from "../question-engine/BuilderLayout";
 import { fmtWhen } from "../question-engine/ResultParts";
 import { examStage, STAGE_NAMES, loadExamGrid, overallBand, average, fmtBand, resultsCsv, downloadText, left } from "./examWork";
+import { examRows } from "./examExport";
+import { ExportResultsDialog } from "./ExportResultsDialog";
 
 // The teacher's screen for one exam session: its code, its papers in
 // order, its settings, the other teachers, and the buttons that run the
@@ -46,6 +48,7 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
   // Manage the exam itself: rename, duplicate for another class, delete.
   const [renaming, setRenaming] = useState(null);   // null | the draft name
   const [dupOpen, setDupOpen] = useState(null);     // null | the draft name
+  const [exportOpen, setExportOpen] = useState(false);   // livraison 91: Excel export
   const [delOpen, setDelOpen] = useState(false);
   const [delTyped, setDelTyped] = useState("");
   const [manageBusy, setManageBusy] = useState("");
@@ -559,7 +562,10 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
   const actions = (
     <div className="ph-actions">
       {stage >= 2 && (
-        <button className="btn-ghost" disabled={grid === null || roster.length === 0} onClick={exportCsv}><Download size={15} /> Export (CSV)</button>
+        <DropMenu label={<><Download size={15} /> Export ▾</>} className="btn-ghost" title="Export the results" disabled={grid === null || roster.length === 0}>
+          <DropMenuItem title="Excel (.xlsx)…" hint="Colours, Speaking to fill in, IELTS average." onClick={() => setExportOpen(true)} />
+          <DropMenuItem title="CSV" hint="Plain table, as before." onClick={exportCsv} />
+        </DropMenu>
       )}
       {stage === 1 && examOpen && session.closes_at && (
         <DropMenu label={<><Plus size={14} /> Time ▾</>} className="btn-ghost" title="Need more time?">
@@ -857,7 +863,7 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
         <span className="panel-note">{watched > 0 ? `${plural(watched, "incident")} noted · ` : ""}updated every 20 s</span>
       </div>
       <div className="dt-wrap exd-scroll">
-        <table className="dt exd-matrix">
+        <table className="dt exd-matrix exd-cards">
           <thead>
             <tr>
               <th>Candidate</th>
@@ -869,16 +875,16 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
           <tbody>
             {shownLive.map(({ st, status }) => (
               <tr key={st.id}>
-                <td><span className="exd-person"><span className="avatar small">{st.name.slice(0, 1).toUpperCase()}</span><b>{st.name}</b></span></td>
+                <td className="exd-name"><span className="exd-person"><span className="avatar small">{st.name.slice(0, 1).toUpperCase()}</span><b>{st.name}</b></span></td>
                 {together && (() => {
                   const first = timed.find((it) => it.room_started_at);
                   const late = first && st.joined_at && new Date(st.joined_at) > new Date(first.room_started_at);
-                  return <td className={`exd-c ${late ? "exd-late" : ""}`}>{st.joined_at ? hm(st.joined_at) : "—"}{late ? " · late" : ""}</td>;
+                  return <td data-label="Arrived" className={`exd-c ${late ? "exd-late" : ""}`}>{st.joined_at ? hm(st.joined_at) : "—"}{late ? " · late" : ""}</td>;
                 })()}
                 {sorted.map((it, i) => {
                   const c = liveCell(st, it, i);
                   return (
-                    <td key={it.id} className={`exd-c exd-${c.kind}`}>
+                    <td key={it.id} data-label={`${i + 1} · ${it.assignment?.type || "Paper"}`} className={`exd-c exd-${c.kind}`}>
                       {c.kind === "lock" ? <Lock size={13} aria-label="locked" /> : c.text}
                       {c.extra > 0 && <span className="exd-extra" title="Extra minutes given">+{c.extra} min</span>}
                       {c.canExtend && (
@@ -888,7 +894,7 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
                     </td>
                   );
                 })}
-                <td className="exd-c"><span className={`pill ${STATUS[status][1]}`}>{STATUS[status][0]}</span></td>
+                <td data-label="Status" className="exd-c"><span className={`pill ${STATUS[status][1]}`}>{STATUS[status][0]}</span></td>
               </tr>
             ))}
           </tbody>
@@ -919,7 +925,7 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
         })}
       </div>
       <div className="dt-wrap exd-scroll">
-        <table className="dt exd-matrix">
+        <table className="dt exd-matrix exd-cards">
           <thead>
             <tr>
               <th>Candidate</th>
@@ -935,7 +941,7 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
               const firstOpen = sorted.find((it) => it.assignment?.type !== "Speaking" && cellOf(st.id, it)?.open);
               return (
                 <tr key={st.id}>
-                  <td><span className="exd-person"><span className="avatar small">{st.name.slice(0, 1).toUpperCase()}</span><b>{st.name}</b></span></td>
+                  <td className="exd-name"><span className="exd-person"><span className="avatar small">{st.name.slice(0, 1).toUpperCase()}</span><b>{st.name}</b></span></td>
                   {sorted.map((it) => {
                     const c = cellOf(st.id, it);
                     const type = it.assignment?.type;
@@ -949,10 +955,10 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
                     } else if (c?.score) {
                       body = <button type="button" className="dt-open" onClick={() => openCopy(st, it)}>{c.score.earned}/{c.score.total ?? "?"} · <b>{fmtBand(c.band)}</b></button>;
                     } else if (c?.status === "in-progress") body = <span className="dt-muted">not handed in</span>;
-                    return <td key={it.id} className="exd-c">{body}</td>;
+                    return <td key={it.id} data-label={it.assignment?.type || "Paper"} className="exd-c">{body}</td>;
                   })}
-                  <td className="exd-c"><b>{o === null ? "—" : o.toFixed(1)}</b></td>
-                  <td style={{ textAlign: "right" }}>
+                  <td data-label="Overall" className="exd-c"><b>{o === null ? "—" : o.toFixed(1)}</b></td>
+                  <td className="exd-act" style={{ textAlign: "right" }}>
                     {firstToMark ? <button className="btn-ghost btn-go" onClick={() => openCopy(st, firstToMark)}>Mark →</button>
                       : firstOpen ? <button className="btn-ghost btn-go" onClick={() => openCopy(st, firstOpen)}>Open →</button> : null}
                   </td>
@@ -1112,6 +1118,14 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
             {manageBusy === "rename" ? "Saving…" : "Save"}
           </button>
         </Modal>
+      )}
+
+      {exportOpen && (
+        <ExportResultsDialog
+          single={{ name: session.name, rows: examRows(sorted.filter((it) => it.assignment), roster, cellOf) }}
+          onClose={() => setExportOpen(false)}
+          showToast={showToast}
+        />
       )}
 
       {dupOpen !== null && (

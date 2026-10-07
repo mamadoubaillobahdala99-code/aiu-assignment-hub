@@ -205,3 +205,32 @@
   .exs-result { width: 100%; justify-content: space-between; margin-top: 4px; }
   .exs-result .btn-ghost { width: auto; margin-top: 0; }
 }
+
+/* ---------- Livraison 91 ---------- */
+/* Export to Excel: the thresholds and the list of exams. */
+.xr-ths { display: flex; flex-direction: column; gap: 8px; }
+.xr-th { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.xr-key { display: inline-block; min-width: 118px; text-align: center; font-weight: 700; font-size: 13px; border-radius: 6px; padding: 5px 10px; }
+.xr-key-achieved { background: #C6EFCE; color: #006100; }
+.xr-key-approaching { background: #FFEB9C; color: #9C5700; }
+.xr-key-not { background: #FFC7CE; color: #9C0006; }
+.xr-from { font-size: 13px; color: var(--ink-soft); }
+.xr-th .xr-select.field-input { width: 96px; margin: 0; padding: 7px 10px; }
+.xr-list { display: flex; flex-direction: column; gap: 2px; max-height: 240px; overflow: auto; border: 1px solid var(--line); border-radius: 10px; padding: 6px; }
+.xr-item { display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 8px; cursor: pointer; flex-wrap: wrap; }
+.xr-item:hover { background: var(--paper); }
+.xr-name { font-weight: 600; flex: 1 1 160px; min-width: 0; }
+
+/* The candidates and results tables become cards on a phone. */
+@media (max-width: 640px) {
+  .exd-matrix.exd-cards { min-width: 0; width: 100%; }
+  .exd-cards thead { display: none; }
+  .exd-cards, .exd-cards tbody { display: block; width: 100%; }
+  .exd-cards tr { display: block; border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; margin-bottom: 10px; background: #fff; }
+  .exd-cards td, .exd-matrix.exd-cards .exd-c { display: flex; width: auto; white-space: normal; justify-content: space-between; align-items: center; gap: 12px; padding: 6px 0; border: none; text-align: right; min-height: 0; }
+  .exd-cards td.exd-name { padding-bottom: 8px; margin-bottom: 4px; border-bottom: 1px solid var(--line); text-align: left; }
+  .exd-cards td[data-label]::before { content: attr(data-label); font-size: 12.5px; font-weight: 600; color: var(--ink-soft); text-align: left; }
+  .exd-cards td.exd-act { justify-content: flex-end; padding-top: 8px; }
+  .exd-cards td.exd-act:empty { display: none; }
+  .exd-scroll:has(.exd-cards) { overflow: visible; border: none; background: transparent; }
+}
