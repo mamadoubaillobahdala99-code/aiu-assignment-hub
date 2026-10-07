@@ -1,7 +1,7 @@
 -- =====================================================================
 --  AIU Assignment Hub — 00_etat_actuel.sql
---  PHOTO de la base Supabase telle qu'elle est le 7 octobre 2026
---  (apres les scripts 09 a 51). Lue en lecture seule, verifiee par
+--  PHOTO de la base Supabase telle qu'elle est le 8 octobre 2026
+--  (apres les scripts 09 a 52). Lue en lecture seule, verifiee par
 --  empreintes (md5) contre la base : voir sql/README.md.
 --
 --  NE PAS EXECUTER SUR LA BASE ACTUELLE : elle contient deja tout ceci.
@@ -474,7 +474,7 @@ alter table public.writing_grades enable row level security;
 alter table public.writing_responses enable row level security;
 
 -- =====================================================================
--- 5. FONCTIONS (86)
+-- 5. FONCTIONS (87)
 --    Chaque corps est celui de la base ; la ligne « Source » dit quel
 --    script l'a ecrit en dernier.
 -- =====================================================================
@@ -594,6 +594,24 @@ as $fn$
                        and f.released_at is not null) )
   );
 $fn$;
+
+-- assignment_class_lock — Source : 52_exam_integrity.sql
+create or replace function public.assignment_class_lock()
+returns trigger
+language plpgsql
+volatile
+set search_path = public
+as $fn$
+begin
+  -- Livraison 94 (B7) : une épreuve ne change jamais de classe depuis le
+  -- site (aucun écran ne le fait). Avant, un prof invité d'un examen pouvait
+  -- déplacer une épreuve — et ses réponses — dans une de ses classes.
+  -- Les fonctions du serveur et l'éditeur SQL (admin) ne sont pas concernés.
+  if current_user = 'authenticated' and new.class_id is distinct from old.class_id then
+    raise exception 'A paper cannot be moved to another class';
+  end if;
+  return new;
+end $fn$;
 
 -- can_read_assignment — Source : 12_exam_sessions.sql
 create or replace function public.can_read_assignment(p_assignment_id uuid)
@@ -802,7 +820,7 @@ begin
   return v_result;
 end $fn$;
 
--- collect_class_papers — Source : 49_answer_backup.sql
+-- collect_class_papers — Source : 52_exam_integrity.sql
 create or replace function public.collect_class_papers(p_assignment_id uuid)
 returns integer
 language plpgsql
@@ -843,7 +861,7 @@ begin
     from exam_attempts a
     where a.assignment_id = p_assignment_id
       and a.submitted_at is null
-      and now() > a.started_at + make_interval(mins => v_limit + 5)
+      and now() > a.started_at + make_interval(mins => v_limit) + interval '2 minutes'
       and (v_teacher or a.student_id = v_uid)
       and exists (select 1 from roster r where r.class_id = v_class and r.student_id = a.student_id)
       and exists (select 1 from exam_answer_drafts x where x.assignment_id = a.assignment_id and x.student_id = a.student_id)
@@ -1292,7 +1310,7 @@ as $fn$
      and p_teacher_id <> auth.uid();
 $fn$;
 
--- exam_collect_papers — Source : 35_pens_down.sql
+-- exam_collect_papers — Source : 52_exam_integrity.sql
 create or replace function public.exam_collect_papers(p_session_id uuid, p_all boolean)
 returns integer
 language plpgsql
@@ -1318,7 +1336,7 @@ begin
       and a.submitted_at is null
       and p.type in ('Reading', 'Listening', 'Writing')
       and (p_all or (p.time_limit_minutes is not null
-                     and now() > a.started_at + make_interval(mins => p.time_limit_minutes + 5)))
+                     and now() > a.started_at + make_interval(mins => p.time_limit_minutes) + interval '2 minutes'))
     for update of a skip locked          -- une remise en cours au même instant garde la main
   loop
    -- Une copie qui poserait un problème imprévu est laissée pour le passage
@@ -2303,7 +2321,7 @@ begin
 end;
 $fn$;
 
--- exam_uncollected_papers — Source : 36_collect_safety.sql
+-- exam_uncollected_papers — Source : 52_exam_integrity.sql
 create or replace function public.exam_uncollected_papers(p_session_id uuid)
 returns integer
 language plpgsql
@@ -2319,7 +2337,7 @@ begin
 
   -- Les memes copies que celles que le ramassage doit prendre :
   -- toutes si l'examen n'est plus ouvert ou publie, sinon celles dont
-  -- le temps (+5 min) est fini.
+  -- le temps (+2 min, livraison 94) est fini.
   v_all := not public.exam_is_open(p_session_id)
            or exists (select 1 from exam_sessions e where e.id = p_session_id and e.results_released_at is not null);
 
@@ -2335,7 +2353,7 @@ begin
       and a.submitted_at is null
       and p.type in ('Reading', 'Listening', 'Writing')
       and (v_all or (p.time_limit_minutes is not null
-                     and now() > a.started_at + make_interval(mins => p.time_limit_minutes + 5)))
+                     and now() > a.started_at + make_interval(mins => p.time_limit_minutes) + interval '2 minutes'))
     for update of a skip locked
   ) as s;
 
@@ -2649,7 +2667,7 @@ begin
   return jsonb_build_object('class_id', v_id, 'name', v_name);
 end $fn$;
 
--- join_exam — Source : 12_exam_sessions.sql
+-- join_exam — Source : 52_exam_integrity.sql
 create or replace function public.join_exam(p_code text)
 returns jsonb
 language plpgsql
@@ -2657,16 +2675,22 @@ volatile
 security definer
 set search_path = public
 as $fn$
-declare v_session uuid; v_class uuid; v_name text;
+declare v_session uuid; v_class uuid; v_name text; v_released timestamptz;
 begin
   if auth.uid() is null then raise exception 'Not authenticated'; end if;
   if p_code is null or length(trim(p_code)) < 4 or length(trim(p_code)) > 12 then
     raise exception 'Invalid code';
   end if;
-  select e.id, e.container_class_id, e.name into v_session, v_class, v_name
+  select e.id, e.container_class_id, e.name, e.results_released_at into v_session, v_class, v_name, v_released
   from exam_sessions e where upper(e.code) = upper(trim(p_code));
   if v_session is null then raise exception 'No exam found with that code'; end if;
   if not public.exam_is_open(v_session) then raise exception 'This exam is not open yet'; end if;
+  -- NOUVEAU (52) : résultats publiés → plus de nouveau candidat (un candidat
+  -- déjà inscrit garde l'accès à son examen, comme avant).
+  if v_released is not null
+     and not exists (select 1 from roster r where r.class_id = v_class and r.student_id = auth.uid()) then
+    raise exception 'This exam is over';
+  end if;
 
   insert into roster (class_id, student_id) values (v_class, auth.uid()) on conflict do nothing;
   return jsonb_build_object('session_id', v_session, 'name', v_name);
@@ -3153,7 +3177,7 @@ begin
   return public.my_teacher_request();
 end $fn$;
 
--- save_answer_drafts — Source : 50_answer_sync.sql
+-- save_answer_drafts — Source : 52_exam_integrity.sql
 create or replace function public.save_answer_drafts(p_assignment_id uuid, p_answers jsonb)
 returns jsonb
 language plpgsql
@@ -3210,7 +3234,14 @@ begin
   if v_session is not null and (v_released is not null or not public.exam_is_open(v_session)) then
     return jsonb_build_object('saved', false, 'reason', 'closed');
   end if;
-  if v_limit is not null and now() > v_started + make_interval(mins => v_limit + 5) then
+  -- NOUVEAU (52) : gelé par le surveillant → rien n'est enregistré tant que
+  -- le prof n'a pas cliqué « Let back in ». La page réessaie toute seule.
+  if v_session is not null and exists (select 1 from exam_incidents x
+       where x.session_id = v_session and x.student_id = v_student and x.freezes and x.cleared_at is null) then
+    return jsonb_build_object('saved', false, 'reason', 'frozen');
+  end if;
+  -- NOUVEAU (52) : 2 minutes de marge réseau après la fin (au lieu de 5).
+  if v_limit is not null and now() > v_started + make_interval(mins => v_limit) + interval '2 minutes' then
     return jsonb_build_object('saved', false, 'reason', 'time');
   end if;
 
@@ -3533,7 +3564,7 @@ begin
                             'answers_remarked', v_remarked, 'level', v_level);
 end $fn$;
 
--- save_writing_draft — Source : (aucun script : créée avant le 09)
+-- save_writing_draft — Source : 52_exam_integrity.sql
 create or replace function public.save_writing_draft(p_section_id uuid, p_content_html text, p_word_count integer)
 returns jsonb
 language plpgsql
@@ -3550,6 +3581,8 @@ declare
   v_limit         integer;
   v_started       timestamptz;
   v_submitted     timestamptz;
+  v_session       uuid;
+  v_released      timestamptz;
 begin
   if v_student_id is null then
     raise exception 'Not authenticated';
@@ -3580,6 +3613,28 @@ begin
     return jsonb_build_object('saved', false, 'reason', 'submitted');
   end if;
 
+  -- NOUVEAU (52) : une épreuve d'EXAMEN suit les mêmes règles que le
+  -- Reading / Listening : examen ouvert (bouton Close et heure de fin),
+  -- épreuve commencée, et rien pendant un gel (la page réessaie toute
+  -- seule toutes les 5 secondes et enregistre dès que le prof libère).
+  select e.id, e.results_released_at into v_session, v_released
+  from exam_session_items i join exam_sessions e on e.id = i.session_id
+  where i.assignment_id = v_assignment_id;
+  if v_session is not null then
+    if v_released is not null or not public.exam_is_open(v_session) then
+      return jsonb_build_object('saved', false, 'reason', 'closed');
+    end if;
+    if not exists (select 1 from exam_attempts t
+                   where t.assignment_id = v_assignment_id and t.student_id = v_student_id) then
+      return jsonb_build_object('saved', false, 'reason', 'not_started');
+    end if;
+    if exists (select 1 from exam_incidents x
+               where x.session_id = v_session and x.student_id = v_student_id
+                 and x.freezes and x.cleared_at is null) then
+      raise exception 'Frozen: wait for your teacher';
+    end if;
+  end if;
+
   if v_limit is not null then
     select started_at into v_started
     from exam_attempts
@@ -3587,7 +3642,8 @@ begin
     if v_started is null then
       return jsonb_build_object('saved', false, 'reason', 'not_started');
     end if;
-    if now() > v_started + make_interval(mins => v_limit + 5) then
+    -- NOUVEAU (52) : 2 minutes de marge réseau après la fin (au lieu de 5).
+    if now() > v_started + make_interval(mins => v_limit) + interval '2 minutes' then
       return jsonb_build_object('saved', false, 'reason', 'time');
     end if;
   end if;
@@ -3703,7 +3759,7 @@ begin
 end;
 $fn$;
 
--- submit_student_answers — Source : 15_exam_locks.sql
+-- submit_student_answers — Source : 52_exam_integrity.sql
 create or replace function public.submit_student_answers(p_assignment_id uuid, p_answers jsonb)
 returns jsonb
 language plpgsql
@@ -3724,6 +3780,7 @@ declare
   v_count      integer := 0;
   v_exam       record;
   v_had_copy   boolean;
+  v_end        timestamptz;
 begin
   if v_student_id is null then
     raise exception 'Not authenticated';
@@ -3780,7 +3837,7 @@ begin
   --     prof garde son travail ; celui qui n'avait rien commence ne
   --     peut plus composer.
   -- ------------------------------------------------------------------
-  select e.closed_at, e.results_released_at into v_exam
+  select e.id, e.closed_at, e.closes_at, e.results_released_at into v_exam
   from exam_session_items i
   join exam_sessions e on e.id = i.session_id
   where i.assignment_id = p_assignment_id;
@@ -3789,12 +3846,34 @@ begin
     if v_exam.results_released_at is not null then
       raise exception 'This exam is over';
     end if;
-    if v_exam.closed_at is not null and not v_had_copy then
-      raise exception 'This exam is closed';
+    -- NOUVEAU (52) : « fermé » = bouton Close OU heure de fin passée
+    -- (avant : seulement le bouton). Une copie déjà commencée garde
+    -- 2 minutes de marge réseau après la fin, pas plus : ensuite le
+    -- serveur ramasse sa copie de secours.
+    if not public.exam_is_open(v_exam.id) then
+      if not v_had_copy then
+        raise exception 'This exam is closed';
+      end if;
+      v_end := least(v_exam.closed_at, v_exam.closes_at);
+      if v_end is null or v_end > now() or now() > v_end + interval '2 minutes' then
+        raise exception 'This exam is closed';
+      end if;
+    end if;
+    -- NOUVEAU (52) : gelé par le surveillant → on remet la copie de secours
+    -- enregistrée AVANT le gel, jamais ce que cet appel envoie.
+    if exists (select 1 from exam_incidents x
+               where x.session_id = v_exam.id and x.student_id = v_student_id
+                 and x.freezes and x.cleared_at is null) then
+      select coalesce(jsonb_object_agg(d.key, d.value), '{}'::jsonb) into p_answers
+      from exam_answer_drafts x, jsonb_each(x.answers) d
+      where x.assignment_id = p_assignment_id and x.student_id = v_student_id
+        and exists (select 1 from assignment_questions aq join exam_sections s on s.id = aq.section_id
+                    where s.assignment_id = p_assignment_id and aq.question_id::text = d.key);
     end if;
   end if;
 
-  if v_limit is not null and now() > v_started + make_interval(mins => v_limit + 5) then
+  -- NOUVEAU (52) : 2 minutes de marge réseau après la fin (au lieu de 5).
+  if v_limit is not null and now() > v_started + make_interval(mins => v_limit) + interval '2 minutes' then
     raise exception 'Time is over';
   end if;
 
@@ -4038,6 +4117,7 @@ end $fn$;
 -- =====================================================================
 
 CREATE TRIGGER exam_paper_lock BEFORE INSERT OR DELETE OR UPDATE ON public.assignment_questions FOR EACH ROW EXECUTE FUNCTION exam_paper_content_guard();
+CREATE TRIGGER assignment_class_lock BEFORE UPDATE OF class_id ON public.assignments FOR EACH ROW EXECUTE FUNCTION assignment_class_lock();
 CREATE TRIGGER exam_paper_lock BEFORE DELETE OR UPDATE ON public.assignments FOR EACH ROW EXECUTE FUNCTION exam_paper_content_guard();
 CREATE TRIGGER guard_exam_paper_release BEFORE INSERT OR UPDATE ON public.assignments FOR EACH ROW EXECUTE FUNCTION exam_paper_release_guard();
 CREATE TRIGGER exam_paper_lock BEFORE INSERT OR DELETE OR UPDATE ON public.exam_sections FOR EACH ROW EXECUTE FUNCTION exam_paper_content_guard();
@@ -4313,7 +4393,7 @@ create policy "students see answer key once released and allowed" on public.ques
      JOIN assignment_questions aq ON ((aq.question_id = sa.question_id)))
      JOIN exam_sections es ON ((es.id = aq.section_id)))
      JOIN assignments a ON ((a.id = es.assignment_id)))
-  WHERE ((sa.question_id = question_answer_key.question_id) AND (sa.student_id = ( SELECT auth.uid() AS uid)) AND (a.show_answer_review = true) AND ((a.auto_release_score = true) OR (EXISTS ( SELECT 1
+  WHERE ((sa.question_id = question_answer_key.question_id) AND (sa.student_id = ( SELECT auth.uid() AS uid)) AND (sa.assignment_id = a.id) AND (a.show_answer_review = true) AND ((a.auto_release_score = true) OR (EXISTS ( SELECT 1
            FROM assignment_feedback af
           WHERE ((af.assignment_id = a.id) AND (af.student_id = ( SELECT auth.uid() AS uid)) AND (af.released_at IS NOT NULL)))))))));
 
@@ -4580,6 +4660,7 @@ revoke all on function public.admin_overview() from public, anon, authenticated;
 grant execute on function public.admin_overview() to authenticated;
 revoke all on function public.answers_released(p_assignment_id uuid) from public, anon, authenticated;
 grant execute on function public.answers_released(p_assignment_id uuid) to authenticated;
+revoke all on function public.assignment_class_lock() from public, anon, authenticated;
 revoke all on function public.can_read_assignment(p_assignment_id uuid) from public, anon, authenticated;
 grant execute on function public.can_read_assignment(p_assignment_id uuid) to authenticated;
 revoke all on function public.can_read_question(p_question_id uuid) from public, anon, authenticated;
