@@ -348,6 +348,7 @@ button.pill:hover { filter: brightness(0.97); }
   .stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .hide-sm { display: none; }
   .show-sm { display: inline; }
+  .rs-sheet-table .show-sm { display: block; margin-top: 2px; }  /* livraison 90: « Correct: B » on its own line */
   .dt td, .dt th { padding: 10px 10px; }
   .dt-search { max-width: none; }
   .dt .dm-list { left: auto; right: 0; min-width: 220px; }
@@ -439,10 +440,6 @@ div.c-card:focus-visible, .act-row:focus-visible { outline: 2px solid var(--teal
 .rs-task-band { border: 1px solid var(--line); border-radius: 10px; padding: 8px 14px; display: flex; flex-direction: column; min-width: 120px; }
 .rs-task-band span { font-size: 11.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-soft); }
 .rs-task-band b { font-family: Georgia, serif; font-size: 22px; }
-.rs-dots { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
-.rs-dot { width: 30px; height: 30px; border-radius: 7px; border: none; font-family: inherit; font-weight: 700; font-size: 12.5px; cursor: pointer; }
-.rs-dot.ok { background: var(--teal-soft); color: var(--teal); }
-.rs-dot.ko { background: var(--rose-soft); color: var(--rose); }
 .rs-teacher-note { background: #F4F8F6; border: 1px solid var(--teal-soft); border-radius: 12px; padding: 13px 16px; margin-bottom: 16px; }
 .rs-teacher-note-h { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; color: var(--teal); }
 .rs-teacher-note p { margin: 6px 0 0; white-space: pre-wrap; font-size: 14px; line-height: 1.55; }
@@ -554,6 +551,8 @@ mark.rs-mark-on { outline: 2px solid var(--rose); outline-offset: 1px; }
 @media (max-width: 900px) {
   .rs-two { grid-template-columns: minmax(0, 1fr); }
   .rs-side { position: static; }
+  /* Livraison 90: on a phone, the teacher sees the score first. */
+  .rs-two-score-first > .rs-side { order: -1; }
   .rs-hero { flex-direction: column; align-items: flex-start; gap: 14px; padding: 16px; }
   .rs-band-box { border-right: none; padding-right: 0; text-align: left; }
   .rs-big { font-size: 32px; }
