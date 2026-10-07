@@ -1,7 +1,7 @@
 -- =====================================================================
 --  AIU Assignment Hub — 00_etat_actuel.sql
 --  PHOTO de la base Supabase telle qu'elle est le 7 octobre 2026
---  (apres les scripts 09 a 49). Lue en lecture seule, verifiee par
+--  (apres les scripts 09 a 50). Lue en lecture seule, verifiee par
 --  empreintes (md5) contre la base : voir sql/README.md.
 --
 --  NE PAS EXECUTER SUR LA BASE ACTUELLE : elle contient deja tout ceci.
@@ -472,7 +472,7 @@ alter table public.writing_grades enable row level security;
 alter table public.writing_responses enable row level security;
 
 -- =====================================================================
--- 5. FONCTIONS (85)
+-- 5. FONCTIONS (86)
 --    Chaque corps est celui de la base ; la ligne « Source » dit quel
 --    script l'a ecrit en dernier.
 -- =====================================================================
@@ -2754,6 +2754,46 @@ begin
 end;
 $fn$;
 
+-- my_answer_draft_state — Source : 50_answer_sync.sql
+create or replace function public.my_answer_draft_state(p_assignment_id uuid, p_since timestamp with time zone DEFAULT NULL::timestamp with time zone)
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = public
+as $fn$
+declare
+  v_student   uuid := auth.uid();
+  v_class     uuid;
+  v_session   uuid;
+  v_released  timestamptz;
+  v_started   timestamptz;
+  v_submitted timestamptz;
+  v_answers   jsonb;
+  v_at        timestamptz;
+begin
+  if v_student is null then raise exception 'Not authenticated'; end if;
+  select class_id into v_class from assignments where id = p_assignment_id;
+  if v_class is null then return null; end if;
+  if not exists (select 1 from roster r where r.class_id = v_class and r.student_id = v_student) then
+    return null;
+  end if;
+  select started_at, submitted_at into v_started, v_submitted
+  from exam_attempts where assignment_id = p_assignment_id and student_id = v_student;
+  if v_started is null or v_submitted is not null then return null; end if;
+  select e.id, e.results_released_at into v_session, v_released
+  from exam_session_items i join exam_sessions e on e.id = i.session_id
+  where i.assignment_id = p_assignment_id;
+  if v_session is not null and (v_released is not null or not public.exam_is_open(v_session)) then
+    return null;
+  end if;
+  select d.answers, d.updated_at into v_answers, v_at from exam_answer_drafts d
+   where d.assignment_id = p_assignment_id and d.student_id = v_student;
+  if v_at is null then return null; end if;
+  return jsonb_build_object('at', v_at,
+    'answers', case when p_since is null or v_at > p_since then v_answers else null end);
+end $fn$;
+
 -- my_answer_drafts — Source : 49_answer_backup.sql
 create or replace function public.my_answer_drafts(p_assignment_id uuid)
 returns jsonb
@@ -3111,7 +3151,7 @@ begin
   return public.my_teacher_request();
 end $fn$;
 
--- save_answer_drafts — Source : 49_answer_backup.sql
+-- save_answer_drafts — Source : 50_answer_sync.sql
 create or replace function public.save_answer_drafts(p_assignment_id uuid, p_answers jsonb)
 returns jsonb
 language plpgsql
@@ -3129,6 +3169,7 @@ declare
   v_submitted timestamptz;
   v_class    uuid;
   v_kind     text;
+  v_at       timestamptz;
 begin
   if v_student is null then raise exception 'Not authenticated'; end if;
 
@@ -3174,9 +3215,11 @@ begin
   insert into exam_answer_drafts (assignment_id, student_id, answers, updated_at)
   values (p_assignment_id, v_student, p_answers, now())
   on conflict (assignment_id, student_id) do update
-    set answers = excluded.answers, updated_at = now();
+    set answers = excluded.answers, updated_at = now()
+  returning updated_at into v_at;
 
-  return jsonb_build_object('saved', true);
+  -- NOUVEAU (50) : l'heure (du serveur) de cette sauvegarde.
+  return jsonb_build_object('saved', true, 'at', v_at);
 end $fn$;
 
 -- save_paper_edits — Source : 29_paper_editor_add_groups.sql
@@ -4642,6 +4685,8 @@ revoke all on function public.list_invitable_teachers(p_session_id uuid) from pu
 grant execute on function public.list_invitable_teachers(p_session_id uuid) to authenticated;
 revoke all on function public.listening_audio_status(p_assignment_id uuid, p_start boolean) from public, anon, authenticated;
 grant execute on function public.listening_audio_status(p_assignment_id uuid, p_start boolean) to authenticated;
+revoke all on function public.my_answer_draft_state(p_assignment_id uuid, p_since timestamp with time zone) from public, anon, authenticated;
+grant execute on function public.my_answer_draft_state(p_assignment_id uuid, p_since timestamp with time zone) to authenticated;
 revoke all on function public.my_answer_drafts(p_assignment_id uuid) from public, anon, authenticated;
 grant execute on function public.my_answer_drafts(p_assignment_id uuid) to authenticated;
 revoke all on function public.my_teacher_request() from public, anon, authenticated;
