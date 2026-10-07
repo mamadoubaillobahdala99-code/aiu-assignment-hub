@@ -35,3 +35,13 @@ export function formatAnswerValue(question, value) {
   if (Array.isArray(value)) return value.join(" / ");
   return String(value);
 }
+
+// Livraison 90: the CORRECT answer on the answer sheet, short — the letter
+// only for a choice ("B", "A, C"); True / False / Not Given and the words
+// of a gap as before.
+export function formatCorrectShort(question, value) {
+  if (value == null || value === "" || (Array.isArray(value) && value.length === 0)) return "(no answer)";
+  if (question.type === "multiple_choice" || question.type.startsWith("matching_")) return String(value);
+  if (question.type === "multiple_selection") return (Array.isArray(value) ? value : [value]).join(", ");
+  return formatAnswerValue(question, value);
+}
