@@ -187,8 +187,10 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
         if (anyGraded) setResults(restoredResults);
       } else {
         // Not submitted yet: bring back the answers kept in this browser.
+        // Livraison 88b: an EMPTY copy here counts as nothing (an older page
+        // can leave one behind) — then the server's copy is asked for.
         const local = readLocalAnswers(userId, assignmentId);
-        if (local) setAnswers(local);
+        if (local && Object.keys(local).length > 0) setAnswers(local);
         else {
           // Livraison 88: nothing in this browser (another computer, a
           // cleared browser) — the backup copy kept on the server, if any.
@@ -232,6 +234,9 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
       if (draftBusyRef.current || submitting) return;
       const now = JSON.stringify(answersRef.current || {});
       if (now === draftSentRef.current) return;
+      // Livraison 88b: a page with no answer yet never sends an empty copy —
+      // it would wipe the backup another computer made.
+      if (draftSentRef.current === "" && Object.keys(answersRef.current || {}).length === 0) return;
       draftBusyRef.current = true;
       try {
         const { data, error } = await supabase.rpc("save_answer_drafts", {
