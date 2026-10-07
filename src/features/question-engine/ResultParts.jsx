@@ -8,7 +8,6 @@ import { sanitizeWritingHtml } from "./writingHtml";
 // CORRECTION screens (teacher), so both sides show a copy the same way:
 //   - the answer sheet: one line per question, the answer given, the
 //     correct answer (only when it may be shown), right / wrong;
-//   - the numbered dots (green / red), as on the answer sheet;
 //   - the list of the teacher's notes in a Writing copy.
 // Nothing here reads the database: the screens pass what they already
 // have, read with the viewer's own rights.
@@ -47,28 +46,6 @@ export function sheetCounts(rows, resultsByQ) {
     if (s === "right") right++; else if (s === "partial") partial++; else wrong++;
   }
   return { right, wrong, partial, all: rows.length };
-}
-
-// The numbered dots. Each answer-sheet number gets its own dot (a
-// "choose TWO" question has two), green when that answer is right.
-export function QuestionDots({ rows, resultsByQ, onPick }) {
-  return (
-    <div className="rs-dots" role="list" aria-label="Questions">
-      {rows.flatMap((row) => {
-        const r = resultsByQ?.[row.q.id];
-        return Array.from({ length: row.slots }, (_, k) => {
-          const right = row.slots > 1 ? k < (r?.earned ?? 0) : Boolean(r?.isCorrect);
-          const n = row.first == null ? "?" : row.first + k;
-          return (
-            <button type="button" role="listitem" key={`${row.q.id}-${k}`} className={`rs-dot ${right ? "ok" : "ko"}`}
-                    title={`Question ${n}: ${right ? "right" : "wrong"}`} onClick={() => onPick?.(row)}>
-              {n}
-            </button>
-          );
-        });
-      })}
-    </div>
-  );
 }
 
 // The answer sheet. `mine` changes the words ("Your answer").
@@ -133,17 +110,6 @@ export function AnswerSheet({ rows, answersByQ, resultsByQ, correctFormatted, sh
       )}
     </div>
   );
-}
-
-// Scroll to a question, in whichever view is on screen.
-export function goToQuestion(row) {
-  const el = document.getElementById(`sheet-${row.q.id}`)
-    || document.getElementById(`review-question-${row.first}`)
-    || document.getElementById(`question-${row.first}`);
-  if (!el) return;
-  el.scrollIntoView({ behavior: "smooth", block: "center" });
-  el.classList.add("rs-flash");
-  setTimeout(() => el.classList.remove("rs-flash"), 1200);
 }
 
 // The teacher's error marks in a corrected Writing copy, in order:
