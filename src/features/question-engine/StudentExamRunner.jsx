@@ -47,9 +47,63 @@ function writeLocalAnswers(userId, assignmentId, answers) {
 function clearLocalAnswers(userId, assignmentId) {
   try {
     window.localStorage.removeItem(localKey(userId, assignmentId));
+    window.localStorage.removeItem(syncKey(userId, assignmentId));
   } catch {
     /* ignore */
   }
+}
+// Livraison 88c: what this browser last sent to (or took from) the server:
+// the copy, and the SERVER time of that backup. A newer backup on the
+// server means another device saved since.
+const syncKey = (userId, assignmentId) => `aiu-exam-sync:${userId}:${assignmentId}`;
+function readSync(userId, assignmentId) {
+  try {
+    const v = JSON.parse(window.localStorage.getItem(syncKey(userId, assignmentId)) || "null");
+    return v && typeof v === "object" && typeof v.at === "string" ? { at: v.at, sent: v.sent && typeof v.sent === "object" ? v.sent : {} } : null;
+  } catch {
+    return null;
+  }
+}
+function writeSync(userId, assignmentId, at, sent) {
+  try {
+    if (at) window.localStorage.setItem(syncKey(userId, assignmentId), JSON.stringify({ at, sent: sent || {} }));
+  } catch {
+    /* storage unavailable */
+  }
+}
+// "2026-10-07T08:13:04.492057+00:00" → milliseconds (fraction cut to 3
+// digits, which every browser reads).
+const timeOf = (at) => {
+  if (!at || typeof at !== "string") return null;
+  const t = Date.parse(at.replace(/(\.\d{3})\d+/, "$1"));
+  return Number.isFinite(t) ? t : null;
+};
+// The same answers always give the same text, whatever the order of the
+// keys (the database re-orders them).
+function canon(v) {
+  if (Array.isArray(v)) return `[${v.map(canon).join(",")}]`;
+  if (v && typeof v === "object") return `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${canon(v[k])}`).join(",")}}`;
+  return JSON.stringify(v === undefined ? null : v);
+}
+// The other device's copy, plus what was changed HERE since this browser
+// last synced (base): nothing typed on either device is lost.
+function mergeCopies(server, local, base) {
+  const out = { ...server };
+  const keys = new Set([...Object.keys(local || {}), ...Object.keys(base || {})]);
+  for (const k of keys) {
+    if (canon(local?.[k]) === canon(base?.[k])) continue;
+    if (local?.[k] === undefined) delete out[k];
+    else out[k] = local[k];
+  }
+  return out;
+}
+// Only the answers to this paper's questions.
+function onlyKnown(answers, ids) {
+  const out = {};
+  if (!answers || typeof answers !== "object" || Array.isArray(answers)) return out;
+  const known = new Set(ids);
+  for (const [qid, v] of Object.entries(answers)) if (known.has(qid)) out[qid] = v;
+  return out;
 }
 
 export function StudentExamRunner({ userId, classId, assignmentId, setScreen, showToast, onSubmitted }) {
@@ -68,6 +122,11 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
   // Livraison 88: time is up but the answers could not be sent (no
   // connection): try again every 5 seconds while this page is open.
   const retryRef = useRef(null);
+  // Livraison 88c: see syncKey above. draftSentRef = the copy last sent to
+  // (or taken from) the server, so it is not sent back for nothing.
+  const syncAtRef = useRef(null);
+  const draftSentRef = useRef("");
+  const allIdsRef = useRef([]);
   const retryToastRef = useRef(false);
   const timeUpRetryRef = useRef(false);   // the time is up and the answers are still to send
   const aliveRef = useRef(true);          // this page is still open
@@ -95,6 +154,10 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
   // while it is still being sat. The server decides whether this paper
   // is watched at all — a class assignment never is.
   const invig = useInvigilation(assignmentId, started && results === null && !timeOver);
+  const invigWatchedRef = useRef(false);
+  invigWatchedRef.current = invig.watched;
+  const showToastRef = useRef(showToast);
+  showToastRef.current = showToast;
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [className, setClassName] = useState("");
   const [audioOpen, setAudioOpen] = useState(false);
@@ -188,18 +251,40 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
       } else {
         // Not submitted yet: bring back the answers kept in this browser.
         // Livraison 88b: an EMPTY copy here counts as nothing (an older page
-        // can leave one behind) — then the server's copy is asked for.
+        // can leave one behind).
         const local = readLocalAnswers(userId, assignmentId);
-        if (local && Object.keys(local).length > 0) setAnswers(local);
-        else {
-          // Livraison 88: nothing in this browser (another computer, a
-          // cleared browser) — the backup copy kept on the server, if any.
-          // Only the student's own, only while the paper is not handed in.
+        const hasLocal = Boolean(local && Object.keys(local).length > 0);
+        // Livraison 88c: the most recent copy wins. The server's backup (the
+        // student's own, only while the paper is not handed in) is newer
+        // than this browser's when another device saved after this one:
+        // then it is taken, plus what was changed here and not yet sent.
+        const known = readSync(userId, assignmentId);
+        const { data: state, error: stateError } = await supabase.rpc("my_answer_draft_state", { p_assignment_id: assignmentId, p_since: null });
+        if (!stateError) {
+          const fromServer = onlyKnown(state?.answers, allQuestionIds);
+          const serverAt = timeOf(state?.at);
+          const serverNewer = serverAt !== null && (timeOf(known?.at) === null || serverAt > timeOf(known?.at));
+          if (Object.keys(fromServer).length > 0 && (!hasLocal || serverNewer)) {
+            const merged = hasLocal ? mergeCopies(fromServer, local, known?.sent || {}) : fromServer;
+            setAnswers(merged);
+            draftSentRef.current = canon(fromServer);
+            syncAtRef.current = state.at;
+            writeSync(userId, assignmentId, state.at, fromServer);
+            if (hasLocal && canon(merged) !== canon(local)) {
+              showToastRef.current?.("Your answers were changed on another device");
+            }
+          } else if (hasLocal) {
+            setAnswers(local);
+            syncAtRef.current = known?.at || null;
+            draftSentRef.current = known ? canon(known.sent) : "";
+          }
+        } else if (hasLocal) {
+          setAnswers(local);
+        } else {
+          // Livraison 88 (if the newer reader is not there): the backup copy.
           const { data: backup, error: backupError } = await supabase.rpc("my_answer_drafts", { p_assignment_id: assignmentId });
-          if (!backupError && backup && typeof backup === "object" && !Array.isArray(backup)) {
-            const known = new Set(allQuestionIds);
-            const restored = {};
-            for (const [qid, v] of Object.entries(backup)) if (known.has(qid)) restored[qid] = v;
+          if (!backupError) {
+            const restored = onlyKnown(backup, allQuestionIds);
             if (Object.keys(restored).length > 0) setAnswers(restored);
           }
         }
@@ -224,7 +309,6 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
   // and serve one purpose: when the teacher closes the exam (or the time
   // runs out while this page is offline), the SERVER hands the paper in
   // with them. The browser copy above stays, for a refresh.
-  const draftSentRef = useRef("");
   const draftBusyRef = useRef(false);
   const answersRef = useRef(answers);
   answersRef.current = answers;
@@ -232,24 +316,59 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
     if (!loaded || !started || results !== null || timeOver || handedIn) return;
     const send = async () => {
       if (draftBusyRef.current || submitting) return;
-      const now = JSON.stringify(answersRef.current || {});
-      if (now === draftSentRef.current) return;
+      const current = answersRef.current || {};
+      const now = canon(current);
       // Livraison 88b: a page with no answer yet never sends an empty copy —
       // it would wipe the backup another computer made.
-      if (draftSentRef.current === "" && Object.keys(answersRef.current || {}).length === 0) return;
+      const changed = now !== draftSentRef.current && !(draftSentRef.current === "" && Object.keys(current).length === 0);
+      // Livraison 88c: on a class paper, ask first whether ANOTHER device
+      // (the same paper open on a tablet and a computer) saved since this
+      // page last did: its answers are then taken, plus what was changed
+      // here. Not in a watched exam (a second device is frozen there
+      // anyway); when nothing changed here, only while the page is on screen.
+      const watched = invigWatchedRef.current;
+      if (!changed && (watched || document.visibilityState !== "visible")) return;
       draftBusyRef.current = true;
       try {
-        const { data, error } = await supabase.rpc("save_answer_drafts", {
-          p_assignment_id: assignmentId, p_answers: answersRef.current || {},
-        });
-        if (!error && data?.saved) draftSentRef.current = now;
+        let toSend = current;
+        if (!watched) {
+          const since = syncAtRef.current;
+          const { data: st, error: stError } = await supabase.rpc("my_answer_draft_state", { p_assignment_id: assignmentId, p_since: since });
+          const newer = !stError && st?.at && st.answers && (!since || timeOf(st.at) > timeOf(since));
+          if (newer) {
+            if (canon(answersRef.current || {}) !== now) return;   // the student is answering: next time
+            const fromServer = onlyKnown(st.answers, allIdsRef.current);
+            const base = draftSentRef.current ? JSON.parse(draftSentRef.current) : {};   // canon() is valid JSON
+            const merged = changed ? mergeCopies(fromServer, current, base) : fromServer;
+            syncAtRef.current = st.at;
+            writeSync(userId, assignmentId, st.at, fromServer);
+            draftSentRef.current = canon(fromServer);
+            if (canon(merged) !== now) {
+              setAnswers(merged);
+              showToastRef.current?.("Your answers were changed on another device");
+            }
+            if (canon(merged) === draftSentRef.current) return;     // nothing of this page's to add
+            toSend = merged;
+          } else if (!changed) {
+            return;
+          }
+        }
+        const json = canon(toSend);
+        const { data, error } = await supabase.rpc("save_answer_drafts", { p_assignment_id: assignmentId, p_answers: toSend });
+        if (!error && data?.saved) {
+          draftSentRef.current = json;
+          if (data.at) {
+            syncAtRef.current = data.at;
+            writeSync(userId, assignmentId, data.at, toSend);
+          }
+        }
       } finally {
         draftBusyRef.current = false;
       }
     };
     const id = setInterval(send, 5000);
     return () => clearInterval(id);
-  }, [loaded, started, results, timeOver, handedIn, assignmentId, submitting]);
+  }, [loaded, started, results, timeOver, handedIn, assignmentId, submitting, userId]);
 
   // Livraison 88: handed in (here or by the server) — no more retries.
   useEffect(() => {
@@ -422,6 +541,7 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
   }, [activeIndex, sections, assignment, started, mobileTab, compact]);
 
   const allQuestions = sections.flatMap((s) => s.groups.flatMap((g) => g.questions));
+  allIdsRef.current = allQuestions.map((q) => q.id);
 
   // A "choose TWO letters" question holds two answer-sheet numbers (21 and
   // 22): both appear in the bottom bar, and both lead to the question,
