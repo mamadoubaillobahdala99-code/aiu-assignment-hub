@@ -4,13 +4,13 @@ import { supabase } from "../../supabaseClient";
 import { CenterSpinner } from "../../components/shared";
 import { ScoreRing } from "./ScoreRing";
 import { ReviewContent } from "./ReviewContent";
-import { formatAnswerValue } from "./answerFormat";
+import { formatAnswerValue, formatCorrectShort } from "./answerFormat";
 import { numberQuestions } from "./bulkParse";
 import { loadPaperTree, toReviewSections } from "./paperTree";
 import { computeIeltsBand } from "./bandConversion";
 import { Breadcrumb } from "../../components/DropMenu";
 import { confirmDialog } from "../../lib/confirmDialog";
-import { buildSheet, sheetCounts, QuestionDots, AnswerSheet, goToQuestion, fmtWhen } from "./ResultParts";
+import { buildSheet, sheetCounts, AnswerSheet, fmtWhen } from "./ResultParts";
 
 // Livraison 74 — one Reading / Listening copy, for the teacher: the
 // answer sheet (or the whole paper) on the left; on the right, always in
@@ -95,6 +95,14 @@ export function TeacherQuestionEngineReview({ assignmentId, studentId, studentNa
     }
     return map;
   }, [allQuestions, correctByQ]);
+  // Livraison 90: on the answer sheet, the letter only.
+  const correctShort = useMemo(() => {
+    const map = {};
+    for (const q of allQuestions) {
+      if (correctByQ[q.id] !== undefined) map[q.id] = formatCorrectShort(q, correctByQ[q.id]);
+    }
+    return map;
+  }, [allQuestions, correctByQ]);
 
   async function saveFeedback(release) {
     setSaving(true);
@@ -169,7 +177,7 @@ export function TeacherQuestionEngineReview({ assignmentId, studentId, studentNa
         )}
       </div>
 
-      <div className="rs-two">
+      <div className="rs-two rs-two-score-first">
         <div className="rs-main">
           <div className="rs-viewbar">
             <div className="rs-seg" role="tablist">
@@ -178,7 +186,7 @@ export function TeacherQuestionEngineReview({ assignmentId, studentId, studentNa
             </div>
           </div>
           {view === "sheet" ? (
-            <AnswerSheet rows={rows} answersByQ={answersByQ} resultsByQ={resultsByQ} correctFormatted={correctAnswersFormatted} showCorrect />
+            <AnswerSheet rows={rows} answersByQ={answersByQ} resultsByQ={resultsByQ} correctFormatted={correctShort} showCorrect />
           ) : (
             <ReviewContent
               sections={sections}
@@ -198,7 +206,6 @@ export function TeacherQuestionEngineReview({ assignmentId, studentId, studentNa
             <div className="rs-ring"><ScoreRing score={earnedPoints} total={totalPoints} band={displayBand} size={120} /></div>
             {autoBand != null && !feedbackRow?.band && <p className="rs-hint rs-center">Estimated band (scaled to 40 questions)</p>}
             <div className="rs-counts"><span className="rs-ok">{counts.right} correct</span><span className="rs-ko">{counts.wrong + counts.partial} wrong</span></div>
-            <QuestionDots rows={rows} resultsByQ={resultsByQ} onPick={(row) => goToQuestion(row)} />
 
             <label className="field-label" style={{ marginTop: 14 }}>Band (optional — replaces the estimate)</label>
             <input className="field-input" placeholder={autoBand != null ? String(autoBand) : "—"} value={bandDraft} onChange={(e) => setBandDraft(e.target.value)} />
