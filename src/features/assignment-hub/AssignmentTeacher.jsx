@@ -9,7 +9,7 @@ import { TeacherPaperPreview } from "../question-engine/TeacherPaperPreview";
 import { deleteUnusedSpeakingFiles } from "../question-engine/speaking";
 import { confirmDialog } from "../../lib/confirmDialog";
 import { DropMenu, DropMenuItem, DropMenuSeparator, Breadcrumb } from "../../components/DropMenu";
-import { loadAssignmentWork, assignmentStats, sortRows } from "./assignmentWork";
+import { loadAssignmentWork, assignmentStats, sortRows, collectExpiredCopies } from "./assignmentWork";
 import { AssignmentStats, StudentsTable, QuestionsTable } from "./AssignmentStudents";
 
 
@@ -136,6 +136,7 @@ export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen,
     } else {
       setExam(null);
       if (a?.class_id) className = supabase.from("classes").select("name").eq("id", a.class_id).maybeSingle();
+      if (structured) await collectExpiredCopies(a);
     }
 
     // Livraison 73: one reader for the statuses, times and results (same

@@ -1,7 +1,7 @@
 -- =====================================================================
 --  AIU Assignment Hub — 00_etat_actuel.sql
---  PHOTO de la base Supabase telle qu'elle est le 4 octobre 2026
---  (apres les scripts 09 a 48). Lue en lecture seule, verifiee par
+--  PHOTO de la base Supabase telle qu'elle est le 7 octobre 2026
+--  (apres les scripts 09 a 49). Lue en lecture seule, verifiee par
 --  empreintes (md5) contre la base : voir sql/README.md.
 --
 --  NE PAS EXECUTER SUR LA BASE ACTUELLE : elle contient deja tout ceci.
@@ -472,7 +472,7 @@ alter table public.writing_grades enable row level security;
 alter table public.writing_responses enable row level security;
 
 -- =====================================================================
--- 5. FONCTIONS (83)
+-- 5. FONCTIONS (85)
 --    Chaque corps est celui de la base ; la ligne « Source » dit quel
 --    script l'a ecrit en dernier.
 -- =====================================================================
@@ -798,6 +798,90 @@ begin
   ) into v_result;
 
   return v_result;
+end $fn$;
+
+-- collect_class_papers — Source : 49_answer_backup.sql
+create or replace function public.collect_class_papers(p_assignment_id uuid)
+returns integer
+language plpgsql
+volatile
+security definer
+set search_path = public
+as $fn$
+declare
+  v_uid     uuid := auth.uid();
+  v_class   uuid;
+  v_kind    text;
+  v_type    text;
+  v_limit   integer;
+  v_teacher boolean;
+  v_att     record;
+  v_key     text;
+  v_value   jsonb;
+  v_qid     uuid;
+  v_ok      boolean;
+  v_pts     numeric;
+  v_count   integer := 0;
+begin
+  if v_uid is null then raise exception 'Not authenticated'; end if;
+  select a.class_id, a.type, a.time_limit_minutes, c.kind into v_class, v_type, v_limit, v_kind
+  from assignments a join classes c on c.id = a.class_id where a.id = p_assignment_id;
+  if v_class is null then raise exception 'Assignment not found'; end if;
+  if v_kind is distinct from 'class' or v_type not in ('Reading', 'Listening') or v_limit is null
+     or exists (select 1 from exam_session_items i where i.assignment_id = p_assignment_id) then
+    return 0;
+  end if;
+  v_teacher := public.is_class_teacher(v_class);
+  if not v_teacher and not exists (select 1 from roster r where r.class_id = v_class and r.student_id = v_uid) then
+    raise exception 'Not allowed';
+  end if;
+
+  for v_att in
+    select a.student_id, a.started_at
+    from exam_attempts a
+    where a.assignment_id = p_assignment_id
+      and a.submitted_at is null
+      and now() > a.started_at + make_interval(mins => v_limit + 5)
+      and (v_teacher or a.student_id = v_uid)
+      and exists (select 1 from roster r where r.class_id = v_class and r.student_id = a.student_id)
+      and exists (select 1 from exam_answer_drafts x where x.assignment_id = a.assignment_id and x.student_id = a.student_id)
+    for update of a skip locked
+  loop
+   begin
+    if not exists (select 1 from student_answers sa
+                   where sa.assignment_id = p_assignment_id and sa.student_id = v_att.student_id) then
+      for v_key, v_value in
+        select d.key, d.value
+        from exam_answer_drafts x, jsonb_each(x.answers) d
+        where x.assignment_id = p_assignment_id and x.student_id = v_att.student_id
+      loop
+        begin
+          v_qid := v_key::uuid;
+        exception when others then
+          continue;
+        end;
+        if exists (select 1 from assignment_questions aq join exam_sections s on s.id = aq.section_id
+                   where aq.question_id = v_qid and s.assignment_id = p_assignment_id) then
+          begin
+            select g.is_correct, g.points_earned into v_ok, v_pts from grade_student_answer(v_qid, v_value) g;
+          exception when others then
+            v_ok := false; v_pts := 0;
+          end;
+          insert into student_answers (assignment_id, student_id, question_id, response, is_correct, points_earned)
+          values (p_assignment_id, v_att.student_id, v_qid, v_value, coalesce(v_ok, false), coalesce(v_pts, 0))
+          on conflict (student_id, question_id) do nothing;
+        end if;
+      end loop;
+    end if;
+    update exam_attempts set submitted_at = v_att.started_at + make_interval(mins => v_limit)
+     where assignment_id = p_assignment_id and student_id = v_att.student_id and submitted_at is null;
+    delete from exam_answer_drafts where assignment_id = p_assignment_id and student_id = v_att.student_id;
+    v_count := v_count + 1;
+   exception when others then
+    null;
+   end;
+  end loop;
+  return v_count;
 end $fn$;
 
 -- create_exam_session — Source : 12_exam_sessions.sql
@@ -2670,6 +2754,41 @@ begin
 end;
 $fn$;
 
+-- my_answer_drafts — Source : 49_answer_backup.sql
+create or replace function public.my_answer_drafts(p_assignment_id uuid)
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = public
+as $fn$
+declare
+  v_student   uuid := auth.uid();
+  v_class     uuid;
+  v_session   uuid;
+  v_released  timestamptz;
+  v_started   timestamptz;
+  v_submitted timestamptz;
+begin
+  if v_student is null then raise exception 'Not authenticated'; end if;
+  select class_id into v_class from assignments where id = p_assignment_id;
+  if v_class is null then return null; end if;
+  if not exists (select 1 from roster r where r.class_id = v_class and r.student_id = v_student) then
+    return null;
+  end if;
+  select started_at, submitted_at into v_started, v_submitted
+  from exam_attempts where assignment_id = p_assignment_id and student_id = v_student;
+  if v_started is null or v_submitted is not null then return null; end if;
+  select e.id, e.results_released_at into v_session, v_released
+  from exam_session_items i join exam_sessions e on e.id = i.session_id
+  where i.assignment_id = p_assignment_id;
+  if v_session is not null and (v_released is not null or not public.exam_is_open(v_session)) then
+    return null;
+  end if;
+  return (select d.answers from exam_answer_drafts d
+          where d.assignment_id = p_assignment_id and d.student_id = v_student);
+end $fn$;
+
 -- my_teacher_request — Source : 40_teacher_requests.sql
 create or replace function public.my_teacher_request()
 returns jsonb
@@ -2992,7 +3111,7 @@ begin
   return public.my_teacher_request();
 end $fn$;
 
--- save_answer_drafts — Source : 35_pens_down.sql
+-- save_answer_drafts — Source : 49_answer_backup.sql
 create or replace function public.save_answer_drafts(p_assignment_id uuid, p_answers jsonb)
 returns jsonb
 language plpgsql
@@ -3008,6 +3127,8 @@ declare
   v_released timestamptz;
   v_started  timestamptz;
   v_submitted timestamptz;
+  v_class    uuid;
+  v_kind     text;
 begin
   if v_student is null then raise exception 'Not authenticated'; end if;
 
@@ -3020,9 +3141,19 @@ begin
   from exam_session_items i join exam_sessions e on e.id = i.session_id
   where i.assignment_id = p_assignment_id;
   if v_session is null then
-    return jsonb_build_object('saved', false, 'reason', 'not_exam');
+    -- NOUVEAU (49) : un devoir de classe ordinaire, pour un élève inscrit.
+    select a.class_id, c.kind into v_class, v_kind
+    from assignments a join classes c on c.id = a.class_id
+    where a.id = p_assignment_id;
+    if v_kind is distinct from 'class' then
+      return jsonb_build_object('saved', false, 'reason', 'not_exam');
+    end if;
+    if not exists (select 1 from roster r where r.class_id = v_class and r.student_id = v_student) then
+      raise exception 'Not enrolled in this class';
+    end if;
+  elsif not public.is_exam_candidate(v_session) then
+    raise exception 'Not allowed';
   end if;
-  if not public.is_exam_candidate(v_session) then raise exception 'Not allowed'; end if;
 
   if p_answers is null or jsonb_typeof(p_answers) <> 'object' then raise exception 'Invalid answers'; end if;
   if (select count(*) from jsonb_object_keys(p_answers)) > 500 or length(p_answers::text) > 200000 then
@@ -3033,7 +3164,7 @@ begin
   from exam_attempts where assignment_id = p_assignment_id and student_id = v_student;
   if v_started is null then return jsonb_build_object('saved', false, 'reason', 'not_started'); end if;
   if v_submitted is not null then return jsonb_build_object('saved', false, 'reason', 'submitted'); end if;
-  if v_released is not null or not public.exam_is_open(v_session) then
+  if v_session is not null and (v_released is not null or not public.exam_is_open(v_session)) then
     return jsonb_build_object('saved', false, 'reason', 'closed');
   end if;
   if v_limit is not null and now() > v_started + make_interval(mins => v_limit + 5) then
@@ -4416,6 +4547,8 @@ revoke all on function public.can_write_class_file(p_folder text) from public, a
 grant execute on function public.can_write_class_file(p_folder text) to authenticated;
 revoke all on function public.class_overview(p_class_id uuid) from public, anon, authenticated;
 grant execute on function public.class_overview(p_class_id uuid) to authenticated;
+revoke all on function public.collect_class_papers(p_assignment_id uuid) from public, anon, authenticated;
+grant execute on function public.collect_class_papers(p_assignment_id uuid) to authenticated;
 revoke all on function public.create_exam_session(p_name text) from public, anon, authenticated;
 grant execute on function public.create_exam_session(p_name text) to authenticated;
 revoke all on function public.delete_exam_session(p_session_id uuid) from public, anon, authenticated;
@@ -4509,6 +4642,8 @@ revoke all on function public.list_invitable_teachers(p_session_id uuid) from pu
 grant execute on function public.list_invitable_teachers(p_session_id uuid) to authenticated;
 revoke all on function public.listening_audio_status(p_assignment_id uuid, p_start boolean) from public, anon, authenticated;
 grant execute on function public.listening_audio_status(p_assignment_id uuid, p_start boolean) to authenticated;
+revoke all on function public.my_answer_drafts(p_assignment_id uuid) from public, anon, authenticated;
+grant execute on function public.my_answer_drafts(p_assignment_id uuid) to authenticated;
 revoke all on function public.my_teacher_request() from public, anon, authenticated;
 grant execute on function public.my_teacher_request() to authenticated;
 revoke all on function public.normalize_answer_text(p_text text) from public, anon, authenticated;

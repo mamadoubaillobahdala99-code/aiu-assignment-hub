@@ -31,6 +31,9 @@
    and can be zoomed; the panel scrolls when the image gets bigger. */
 .qe-wr-prompt-panel { display: flex; flex-direction: column; }
 .qe-wr-prompt { font-size: 15px; line-height: 1.65; color: var(--ink); white-space: pre-line; overflow-wrap: break-word; margin-bottom: 16px; }
+/* Watched exam: the task cannot be selected, so a tablet's own menu
+   (Share, Search, Translate…) cannot carry it out of the exam (88). */
+.qe-noselect { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 .qe-wr-image-block { display: flex; flex-direction: column; min-height: 0; }
 .qe-wr-zoom-bar { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
 .qe-wr-zoom-btn { width: 30px; height: 30px; border-radius: 6px; border: 1px solid var(--line); background: #fff; color: var(--ink); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; }

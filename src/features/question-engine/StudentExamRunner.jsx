@@ -65,6 +65,19 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
   const [startError, setStartError] = useState("");
   const [starting, setStarting] = useState(false);
   const autoSubmittedRef = useRef(false);
+  // Livraison 88: time is up but the answers could not be sent (no
+  // connection): try again every 5 seconds while this page is open.
+  const retryRef = useRef(null);
+  const retryToastRef = useRef(false);
+  const timeUpRetryRef = useRef(false);   // the time is up and the answers are still to send
+  const aliveRef = useRef(true);          // this page is still open
+  useEffect(() => {
+    aliveRef.current = true;
+    return () => {
+      aliveRef.current = false;
+      clearTimeout(retryRef.current);
+    };
+  }, []);
   const timer = useExamTimer(assignmentId, true);
   // One audio for the whole Listening test (listening_audio_url on the
   // assignment). Parts with their own audio file keep working as before.
@@ -86,6 +99,9 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
   const [className, setClassName] = useState("");
   const [audioOpen, setAudioOpen] = useState(false);
   const [teacherName, setTeacherName] = useState("");
+  // Livraison 88: a paper of an EXAM (the exam's private class) — its
+  // Listening recording starts with « Start exam ».
+  const [inExam, setInExam] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   // Handed in by the SERVER (livraison 56): "closed" | "time" | "handed".
   const [handedIn, setHandedIn] = useState(null);
@@ -141,8 +157,9 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
     // student's saved answers instead of one after the other.
     const namesDone = (async () => {
       if (!a?.class_id) return;
-      const { data: cls } = await supabase.from("classes").select("name, teacher_id").eq("id", a.class_id).single();
+      const { data: cls } = await supabase.from("classes").select("name, teacher_id, kind").eq("id", a.class_id).single();
       if (cls?.name) setClassName(cls.name);
+      setInExam(cls?.kind === "exam");
       if (cls?.teacher_id) {
         const { data: t } = await supabase.from("profiles").select("name").eq("id", cls.teacher_id).single();
         if (t?.name) setTeacherName(t.name);
@@ -172,6 +189,18 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
         // Not submitted yet: bring back the answers kept in this browser.
         const local = readLocalAnswers(userId, assignmentId);
         if (local) setAnswers(local);
+        else {
+          // Livraison 88: nothing in this browser (another computer, a
+          // cleared browser) — the backup copy kept on the server, if any.
+          // Only the student's own, only while the paper is not handed in.
+          const { data: backup, error: backupError } = await supabase.rpc("my_answer_drafts", { p_assignment_id: assignmentId });
+          if (!backupError && backup && typeof backup === "object" && !Array.isArray(backup)) {
+            const known = new Set(allQuestionIds);
+            const restored = {};
+            for (const [qid, v] of Object.entries(backup)) if (known.has(qid)) restored[qid] = v;
+            if (Object.keys(restored).length > 0) setAnswers(restored);
+          }
+        }
       }
     }
     await namesDone;
@@ -188,8 +217,8 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
   }, [answers, loaded, started, results, timeOver, userId, assignmentId]);
 
   // ---------- the answers also kept on the server (livraison 56) ----------
-  // In a watched exam, the answers are sent to the server every 5 seconds
-  // when they changed. They stay unreadable there — even for the student —
+  // The answers are sent to the server every 5 seconds when they changed
+  // (livraison 88: class papers too — before, only in a watched exam). They stay unreadable there — even for the student —
   // and serve one purpose: when the teacher closes the exam (or the time
   // runs out while this page is offline), the SERVER hands the paper in
   // with them. The browser copy above stays, for a refresh.
@@ -198,7 +227,7 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
   const answersRef = useRef(answers);
   answersRef.current = answers;
   useEffect(() => {
-    if (!loaded || !started || results !== null || timeOver || handedIn || !invig.watched) return;
+    if (!loaded || !started || results !== null || timeOver || handedIn) return;
     const send = async () => {
       if (draftBusyRef.current || submitting) return;
       const now = JSON.stringify(answersRef.current || {});
@@ -215,7 +244,12 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
     };
     const id = setInterval(send, 5000);
     return () => clearInterval(id);
-  }, [loaded, started, results, timeOver, handedIn, invig.watched, assignmentId, submitting]);
+  }, [loaded, started, results, timeOver, handedIn, assignmentId, submitting]);
+
+  // Livraison 88: handed in (here or by the server) — no more retries.
+  useEffect(() => {
+    if (handedIn || results !== null || timeOver) clearTimeout(retryRef.current);
+  }, [handedIn, results, timeOver]);
 
   // The server says this paper is handed in (it collected it), or the exam
   // is over: pens down. Never in the middle of the student's own submit —
@@ -469,6 +503,9 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
       p_answers: payload,
     });
     setSubmitting(false);
+    // Livraison 88: a retry that ends after the student left this page
+    // must not bring him back here (the teacher's page hands it in later).
+    if (timeUpRetryRef.current && !aliveRef.current) return;
 
     if (error) {
       const msg = error.message || "";
@@ -480,6 +517,18 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
         if (data?.submitted) {
           clearLocalAnswers(userId, assignmentId);
           setHandedIn(data.closed || data.released ? "closed" : "time");
+          return;
+        }
+      }
+      if (/Time is over/i.test(msg) && !invig.watched) {
+        // Livraison 88: a class paper whose time (+ 5 min) is over. If its
+        // backup copy reached the server, the server hands it in with it.
+        const { data: collected, error: collectError } = await supabase.rpc("collect_class_papers", { p_assignment_id: assignmentId });
+        if (!collectError && Number(collected) > 0) {
+          clearLocalAnswers(userId, assignmentId);
+          showToast?.("Time is up — your answers were handed in");
+          if (onSubmitted) { onSubmitted(); return; }
+          setScreen({ name: "assignment-student", classId, assignmentId });
           return;
         }
       }
@@ -498,6 +547,23 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
         // Already sent earlier (e.g. from another tab): show the result screen.
         clearLocalAnswers(userId, assignmentId);
         if (onSubmitted) onSubmitted();
+        return;
+      }
+      if (timeUp || timeUpRetryRef.current) {
+        // Livraison 88: the time is up and nothing got through (no
+        // connection). Keep trying every 5 seconds while the page is open:
+        // the server accepts them up to 5 minutes after the end. (A press
+        // on « Submit » meanwhile that fails too keeps the retries going.)
+        timeUpRetryRef.current = true;
+        if (!aliveRef.current) return;
+        if (!retryToastRef.current) {
+          retryToastRef.current = true;
+          showToast?.("Time is up — no connection. Your answers will be handed in as soon as it comes back. Keep this page open.");
+        }
+        clearTimeout(retryRef.current);
+        retryRef.current = setTimeout(() => {
+          if (aliveRef.current) submitRef.current?.(true);
+        }, 5000);
         return;
       }
       autoSubmittedRef.current = false;
@@ -833,6 +899,7 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
                   audio={listeningAudio}
                   onTimeUp={onAudioTimeUp}
                   disabled={results !== null || timeOver}
+                  autoStart={inExam && started}
                 />
               </div>
             )}

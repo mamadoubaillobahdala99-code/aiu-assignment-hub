@@ -18,6 +18,20 @@ import { loadPaperTree } from "../question-engine/paperTree";
 
 const roundHalf = (x) => Math.round(x * 2) / 2;
 
+// Livraison 88: a timed Reading / Listening class paper whose time is over
+// but was never handed in (internet cut, computer off…) is handed in from
+// its 5-second backup copy before the page reads the results. The
+// database decides everything (only class papers, only expired ones, only
+// with a backup, only for the class's teachers). Never blocks the page.
+export async function collectExpiredCopies(assignment) {
+  if (!assignment || !["Reading", "Listening"].includes(assignment.type) || !assignment.time_limit_minutes) return;
+  try {
+    await supabase.rpc("collect_class_papers", { p_assignment_id: assignment.id });
+  } catch {
+    /* the page reads what is there */
+  }
+}
+
 export async function loadAssignmentWork({ assignment, roster, structured }) {
   const id = assignment.id;
   const type = assignment.type;

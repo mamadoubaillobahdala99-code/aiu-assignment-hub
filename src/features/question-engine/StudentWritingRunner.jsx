@@ -506,7 +506,7 @@ export function StudentWritingRunner({ userId, assignmentId, setScreen, showToas
             >
               <p className="qe-part-tag">{active.title}</p>
               <h2 className="qe-passage-title">Writing Task {active.taskNumber}</h2>
-              {active.prompt && <div className="qe-wr-prompt">{active.prompt}</div>}
+              {active.prompt && <div className={`qe-wr-prompt ${invig.watched ? "qe-noselect" : ""}`}>{active.prompt}</div>}
               {active.imageUrl && (
                 <div className="qe-wr-image-block">
                   <div className="qe-wr-zoom-bar">

@@ -175,9 +175,9 @@ export function useInvigilation(assignmentId, active) {
     };
     const onFocus = () => clearTimeout(blurTimerRef.current);
 
-    // These three are blocked outright, and noted. They never freeze —
+    // These are blocked outright, and noted. They never freeze —
     // the server decides that, and it does not freeze a room for a
-    // reflex.
+    // reflex. "Cut" is a copy too (noted as one).
     const onPaste = (e) => { e.preventDefault(); report("paste"); };
     const onCopy = (e) => { e.preventDefault(); report("copy"); };
     const onContextMenu = (e) => { e.preventDefault(); report("context_menu"); };
@@ -188,6 +188,7 @@ export function useInvigilation(assignmentId, active) {
     window.addEventListener("focus", onFocus);
     document.addEventListener("paste", onPaste);
     document.addEventListener("copy", onCopy);
+    document.addEventListener("cut", onCopy);
     document.addEventListener("contextmenu", onContextMenu);
     return () => {
       clearTimeout(blurTimerRef.current);
@@ -197,6 +198,7 @@ export function useInvigilation(assignmentId, active) {
       window.removeEventListener("focus", onFocus);
       document.removeEventListener("paste", onPaste);
       document.removeEventListener("copy", onCopy);
+      document.removeEventListener("cut", onCopy);
       document.removeEventListener("contextmenu", onContextMenu);
     };
   }, [active, assignmentId, report]);

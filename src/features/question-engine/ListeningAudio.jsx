@@ -85,7 +85,11 @@ export function useListeningAudio(assignmentId, enabled) {
 
 const DRIFT_SEC = 2.5;
 
-export function ListeningAudioBar({ url, filename, audio, onTimeUp, disabled = false }) {
+// autoStart (exam day): the recording starts by itself as soon as the
+// paper is open — the "Start exam" press is the student's "I'm ready".
+// If the browser refuses to play sound without a new tap, a button asks
+// for that one tap and the recording goes on from the right second.
+export function ListeningAudioBar({ url, filename, audio, onTimeUp, disabled = false, autoStart = false }) {
   const ref = useRef(null);
   const [duration, setDuration] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -93,7 +97,9 @@ export function ListeningAudioBar({ url, filename, audio, onTimeUp, disabled = f
   const [volume, setVolume] = useState(1);
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState("");
+  const [blocked, setBlocked] = useState(false);
   const timeUpRef = useRef(false);
+  const autoTriedRef = useRef(false);
   // Signed link (3 hours). If it ever stops working mid-recording, a new
   // one is fetched and the sound goes on from the same second (in exam
   // mode the server clock below puts it back in step anyway).
@@ -117,7 +123,7 @@ export function ListeningAudioBar({ url, filename, audio, onTimeUp, disabled = f
       return;
     }
     if (Math.abs(el.currentTime - elapsedSec) > DRIFT_SEC) el.currentTime = Math.min(elapsedSec, duration - 0.1);
-    if (examMode && el.paused) el.play().catch(() => {});
+    if (examMode && el.paused) el.play().catch(() => setBlocked(true));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [startedAt, duration, examMode, disabled]);
 
@@ -156,8 +162,24 @@ export function ListeningAudioBar({ url, filename, audio, onTimeUp, disabled = f
     const el = ref.current;
     if (el) {
       el.currentTime = 0;
-      el.play().catch(() => setStartError("Your browser blocked the sound. Press play once to allow it."));
+      el.play().catch(() => setBlocked(true));
     }
+  }
+
+  // Exam day: start once, by itself. On failure the usual button stays.
+  useEffect(() => {
+    if (!autoStart || autoTriedRef.current || audio.loading || startedAt || !media.src || disabled) return;
+    autoTriedRef.current = true;
+    handleStart();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoStart, audio.loading, startedAt, media.src, disabled]);
+
+  // The browser blocked the sound: one tap plays it, at the right second.
+  function playBlocked() {
+    const el = ref.current;
+    if (!el) return;
+    if (examMode && startedAt && duration) el.currentTime = Math.min(elapsedSec, duration - 0.1);
+    el.play().then(() => setBlocked(false)).catch(() => setBlocked(true));
   }
 
   function togglePlay() {
@@ -171,7 +193,7 @@ export function ListeningAudioBar({ url, filename, audio, onTimeUp, disabled = f
   // the tab losing focus) is undone immediately.
   function handleNativePause() {
     const el = ref.current;
-    if (examMode && startedAt && el && !el.ended && duration && elapsedSec < duration) el.play().catch(() => {});
+    if (examMode && startedAt && el && !el.ended && duration && elapsedSec < duration) el.play().catch(() => setBlocked(true));
   }
 
   return (
@@ -183,7 +205,10 @@ export function ListeningAudioBar({ url, filename, audio, onTimeUp, disabled = f
         onError={media.onError}
         onLoadedMetadata={media.onLoadedMetadata}
         onTimeUpdate={(e) => setCurrentTime(e.target.currentTime)}
-        onPlay={() => setPlaying(true)}
+        onPlay={() => {
+          setPlaying(true);
+          setBlocked(false);
+        }}
         onPause={() => {
           setPlaying(false);
           handleNativePause();
@@ -202,7 +227,7 @@ export function ListeningAudioBar({ url, filename, audio, onTimeUp, disabled = f
       {!startedAt ? (
         <div className="qe-lsa-startrow">
           <button type="button" className="btn-primary" disabled={starting || disabled || !media.src} onClick={handleStart}>
-            {starting ? "Starting…" : "I'm ready — start the recording"}
+            {starting ? (autoStart ? "Starting the recording…" : "Starting…") : "I'm ready — start the recording"}
           </button>
           <span className="qe-lsa-note">
             {examMode
@@ -213,6 +238,14 @@ export function ListeningAudioBar({ url, filename, audio, onTimeUp, disabled = f
         </div>
       ) : (
         <>
+          {blocked && !playing && !ended && (
+            <div className="qe-lsa-startrow">
+              <button type="button" className="btn-primary" disabled={disabled} onClick={playBlocked}>
+                <Volume2 size={15} /> Tap to hear the recording
+              </button>
+              <span className="qe-lsa-note">Your browser blocked the sound. The recording has started — tap once to hear it.</span>
+            </div>
+          )}
           <div className="qe-lsa-controls">
             <button type="button" className="qe-lsa-play" onClick={togglePlay} disabled={examMode || ended} title={examMode ? "The recording plays straight through" : playing ? "Pause" : "Play"}>
               {playing ? <Pause size={16} /> : <Play size={16} />}
