@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { ArrowLeft, CheckCircle2, Eye, PenLine, RotateCcw, ChevronLeft, ChevronRight } from "lucide-react";
 import { supabase } from "../../supabaseClient";
-import { CenterSpinner } from "../../components/shared";
+import { CenterSpinner, LoadFailed } from "../../components/shared";
 import { WritingEditor } from "./WritingEditor";
 import { WritingView } from "./WritingView";
 import { taskBandFrom, overallWritingBand } from "./writingHtml";
@@ -78,13 +78,22 @@ export function TeacherWritingReview({ assignmentId, studentId, studentName, onB
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [loadFailed, setLoadFailed] = useState(false);
   const editorBoxRef = useRef(null);
+  const loadIdRef = useRef(0);
 
+  // Livraison 93: if ONE of the five reads fails, nothing is shown and
+  // nothing can be saved — « Could not load — Retry ». Before, a failed
+  // read of the marks showed empty criteria and an empty comment, and
+  // « Save » then wrote those empty values over the teacher's work.
+  // Each load has a number: an older answer arriving late is ignored.
   const load = useCallback(async () => {
+    const myId = ++loadIdRef.current;
     setLoading(true);
+    setLoadFailed(false);
     // Livraison 81: the five reads are asked at the same time (before: one
     // after the other). Same reads, same rights.
-    const [{ data: a }, { data: rows }, { data: wr }, { data: grades }, { data: fb }] = await Promise.all([
+    const answers = await Promise.all([
       supabase.from("assignments").select("*").eq("id", assignmentId).single(),
       supabase
         .from("exam_sections")
@@ -107,7 +116,14 @@ export function TeacherWritingReview({ assignmentId, studentId, studentName, onB
         .eq("assignment_id", assignmentId)
         .eq("student_id", studentId)
         .maybeSingle(),
-    ]);
+    ]).catch(() => null);
+    if (myId !== loadIdRef.current) return;
+    if (!answers || answers.some((x) => x.error) || !answers[0].data) {
+      setLoadFailed(true);
+      setLoading(false);
+      return;
+    }
+    const [{ data: a }, { data: rows }, { data: wr }, { data: grades }, { data: fb }] = answers;
     setAssignment(a || null);
     const built = (rows || [])
       .filter((s) => s.task_number)
@@ -149,7 +165,7 @@ export function TeacherWritingReview({ assignmentId, studentId, studentName, onB
     setLoading(false);
   }, [assignmentId, studentId]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); return () => { loadIdRef.current++; }; }, [load]);
 
   const bandsBySection = useMemo(() => {
     const m = {};
@@ -245,6 +261,15 @@ export function TeacherWritingReview({ assignmentId, studentId, studentName, onB
     setReleasedAt(fb?.released_at || releasedAt);
     setDirty(false);
     showToast?.(publish && !releasedAt ? "Published to the student" : releasedAt ? "Saved — the student sees the update" : "Draft saved (not visible to the student)");
+  }
+
+  if (loadFailed) {
+    return (
+      <div className="page">
+        <button className="back-link" onClick={onBack}><ArrowLeft size={14} /> Back to the list of students</button>
+        <LoadFailed what="this copy" onRetry={load} />
+      </div>
+    );
   }
 
   if (loading || !assignment) return <CenterSpinner />;
