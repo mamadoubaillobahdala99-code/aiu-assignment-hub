@@ -33,6 +33,10 @@ export function WritingEditor({
   onBlockedPasteRef.current = onBlockedPaste;
   const allowPasteRef = useRef(allowPaste);
   allowPasteRef.current = allowPaste;
+  // Livraison 89: on a tablet, touching the « Mark error » button often
+  // clears the text selection before the button reacts. The last words
+  // selected in the text are kept here and used when that happens.
+  const savedRangeRef = useRef(null);
   const sanitizeOpts = { allowMarks };
 
   useEffect(() => {
@@ -60,6 +64,13 @@ export function WritingEditor({
   useEffect(() => {
     function onSel() {
       const sel = document.getSelection();
+      // A real selection in the text is remembered (see savedRangeRef). It
+      // is forgotten when the teacher touches or types in the text again —
+      // not when the selection merely disappears on the way to the button.
+      if (allowMarks && ref.current && sel && sel.rangeCount > 0 && !sel.isCollapsed
+          && ref.current.contains(sel.anchorNode) && ref.current.contains(sel.focusNode)) {
+        savedRangeRef.current = { range: sel.getRangeAt(0).cloneRange(), at: Date.now() };
+      }
       if (!ref.current || !sel || sel.rangeCount === 0 || !ref.current.contains(sel.anchorNode)) return;
       setActive({
         bold: document.queryCommandState("bold"),
@@ -69,7 +80,7 @@ export function WritingEditor({
     }
     document.addEventListener("selectionchange", onSel);
     return () => document.removeEventListener("selectionchange", onSel);
-  }, []);
+  }, [allowMarks]);
 
   function report() {
     const el = ref.current;
@@ -135,6 +146,16 @@ export function WritingEditor({
     if (readOnly) return;
     const el = ref.current;
     const sel = document.getSelection();
+    const live = el && sel && sel.rangeCount > 0 && !sel.isCollapsed && el.contains(sel.anchorNode) && el.contains(sel.focusNode);
+    // Only a selection made in the last 20 seconds (the time to reach the
+    // button), never an old one the teacher has forgotten about.
+    const saved = savedRangeRef.current && Date.now() - savedRangeRef.current.at < 20000 ? savedRangeRef.current.range : null;
+    if (!live && el && sel && saved && !saved.collapsed && el.contains(saved.startContainer) && el.contains(saved.endContainer)) {
+      // Livraison 89 (tablet): the selection was lost on the way to the button.
+      sel.removeAllRanges();
+      sel.addRange(saved);
+    }
+    savedRangeRef.current = null;
     if (!el || !sel || sel.rangeCount === 0 || sel.isCollapsed || !el.contains(sel.anchorNode) || !el.contains(sel.focusNode)) {
       onHint?.("Select the words you want to mark first.");
       return;
@@ -222,6 +243,7 @@ export function WritingEditor({
               className="qe-wr-mark-btn"
               title="Mark the selected words as an error"
               disabled={readOnly}
+              onPointerDown={(e) => e.preventDefault()}
               onMouseDown={(e) => e.preventDefault()}
               onClick={markError}
             >
@@ -252,6 +274,8 @@ export function WritingEditor({
         onDrop={onDrop}
         onDragOver={(e) => e.preventDefault()}
         onClick={onEditorClick}
+        onPointerDown={() => { savedRangeRef.current = null; }}
+        onKeyDown={() => { savedRangeRef.current = null; }}
       />
 
       {notePopup && (

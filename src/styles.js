@@ -446,6 +446,7 @@ div.c-card:focus-visible, .act-row:focus-visible { outline: 2px solid var(--teal
 .rs-teacher-note { background: #F4F8F6; border: 1px solid var(--teal-soft); border-radius: 12px; padding: 13px 16px; margin-bottom: 16px; }
 .rs-teacher-note-h { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; color: var(--teal); }
 .rs-teacher-note p { margin: 6px 0 0; white-space: pre-wrap; font-size: 14px; line-height: 1.55; }
+.rs-task-note { margin-top: 12px; margin-bottom: 12px; }
 .rs-viewbar { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
 .rs-seg { display: inline-flex; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; background: #fff; }
 .rs-seg button { border: none; background: none; padding: 8px 14px; font-family: inherit; font-weight: 600; font-size: 13px; color: var(--ink-soft); cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }

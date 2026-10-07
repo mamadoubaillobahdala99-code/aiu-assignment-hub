@@ -17,7 +17,7 @@ Il est dépassé : ne pas l'exécuter. Il est gardé tel quel pour l'histoire.
 
 | Fichier | À quoi il sert |
 |---|---|
-| `00_etat_actuel.sql` | **Photo de la base au 07/10/2026** (après le 50) : 26 tables, contraintes, index, RLS, 86 fonctions, déclencheurs, 63 règles (58 sur `public`, 5 sur le stockage), droits (dont « jamais anon » du 33 et les droits par défaut), stockage. Aucune donnée. Voir section 3. |
+| `00_etat_actuel.sql` | **Photo de la base au 07/10/2026** (après le 51) : 26 tables, contraintes, index, RLS, 86 fonctions, déclencheurs, 63 règles (58 sur `public`, 5 sur le stockage), droits (dont « jamais anon » du 33 et les droits par défaut), stockage. Aucune donnée. Voir section 3. |
 | `09_rls_exam_content.sql` | Sécurité, étape 1 : le contenu des examens n'est plus lisible par tout compte ; la correction n'est plus visible avant publication. |
 | `10_rls_copies_classes.sql` | Sécurité, étape 2 : copies et notes privées, code de classe protégé, un étudiant ne peut plus se déclarer prof ni se noter. |
 | `11_rls_storage_profiles.sql` | Sécurité, étape 3 : dépôt de fichiers limité à ses dossiers, profils visibles seulement entre membres d'une classe. |
@@ -62,6 +62,7 @@ Il est dépassé : ne pas l'exécuter. Il est gardé tel quel pour l'histoire.
 | `48_cleanup_feedback.sql` | Nettoyage + notes (livraison 86) : supprime l'ANCIEN système de rendu, vide et plus utilisé — table `submissions` (avec ses 4 règles, son déclencheur, ses index), fonctions `submissions_guard()` et `submit_student_answer(uuid, uuid, jsonb)` (`is_assignment_teacher` est gardée : la règle de `listening_plays` s'en sert). Resserre `assignment_feedback` : un prof (ou un prof d'examen) ne peut plus créer ni modifier une note que pour un élève INSCRIT dans la classe du devoir — seule la partie « with check » change ; lire et supprimer ne changent pas ; aucune ligne existante touchée. Garde-fou au début (règles d'avant, empreinte `5647f84a…`, ou d'après, `65c8a9cc…` ; table `submissions` vide), 5 vérifications à la fin. Ré-exécutable. Retour arrière exact en bas (testé : tout revient à l'identique). Après le 48, ne plus relancer le 47 (son garde-fou l'arrête, sans rien changer). À lancer AVANT : `48_test_annule.sql` (crée une classe, un devoir et un examen de test avec 2 profs et 3 élèves existants, 16 essais avant et après le 48, dans une transaction annulée ; attendu « RESULTATS : 37 OK / 0 KO » ; seuls 4 essais changent : une note pour un compte non inscrit devient refusée). |
 | `49_answer_backup.sql` | Les réponses ne se perdent plus (livraison 88) : la copie de secours des réponses Reading / Listening (envoyée toutes les 5 s) marche aussi pour un devoir de CLASSE (`save_answer_drafts` ; pour un examen rien ne change). Nouvelle `my_answer_drafts(uuid)` : l'élève relit SA copie de secours tant qu'elle n'est pas rendue (autre ordinateur). Nouvelle `collect_class_papers(uuid)` : un devoir de classe chronométré dont le temps (+ 5 min) est fini et jamais rendu est rendu avec sa copie de secours, heure de remise = fin du temps — par l'élève (la sienne) ou par un prof de la classe (toutes) ; jamais pour un examen. Aucune table, aucune règle RLS, aucun droit de table changés ; les 2 nouvelles fonctions : `authenticated` seulement, jamais `anon`. Garde-fou au début (règles `65c8a9cc…`, versions des fonctions), 4 vérifications à la fin. Ré-exécutable. Retour arrière exact en bas (testé). À lancer AVANT : `49_test_annule.sql` (transaction annulée ; attendu « RESULTATS : 29 OK / 0 KO »). |
 | `50_answer_sync.sql` | La copie la plus récente gagne (livraison 88c) : `save_answer_drafts` répond aussi l'heure (du serveur) de la sauvegarde ; nouvelle `my_answer_draft_state(uuid, timestamptz)` : l'élève lit l'heure de SA copie de secours et ses réponses (mêmes règles que `my_answer_drafts` du 49 ; avec une heure donnée, les réponses ne sont renvoyées que si la copie est plus récente). Sert à reprendre sur un autre appareil la version la plus récente (tablette ↔ ordinateur) et à mettre à jour une page restée ouverte. Aucune table, aucune règle RLS, aucun droit de table changés ; nouvelle fonction : `authenticated` seulement, jamais `anon`. À lancer APRÈS le 49 (garde-fou). 4 vérifications, ré-exécutable, retour arrière exact en bas (testé). À lancer AVANT : `50_test_annule.sql` (transaction annulée ; attendu « RESULTATS : 23 OK / 0 KO »). |
+| `51_task_feedback.sql` | Un commentaire par tâche en Writing (livraison 89) : nouvelle colonne `writing_grades.task_feedback` (texte, 5 000 caractères au plus) — le commentaire du prof pour la Task 1 ou la Task 2 ; le commentaire général (`assignment_feedback.feedback`) ne change pas. Aucune règle RLS, aucun droit, aucune fonction changés : les règles existantes s'appliquent (l'élève ne le lit qu'après la publication ; seuls les profs de la classe ou de l'examen l'écrivent). 4 vérifications, ré-exécutable, retour arrière en bas (efface les commentaires par tâche). À lancer AVANT : `51_test_annule.sql` (transaction annulée ; attendu « RESULTATS : 14 OK / 0 KO »). |
 | `nommer_prof.sql` | **Outil, pas une étape.** Donne le rôle prof à un compte existant (remplacer `<EMAIL>`). Lancé par Mamadou seulement ; ne jamais enregistrer une vraie adresse dans le dépôt. |
 | `reinitialiser_mot_de_passe.sql` | **Outil, pas une étape.** Donne un mot de passe provisoire (règle : 8+ caractères, une lettre, un chiffre) à un compte qui a oublié le sien ; ne change rien d'autre. Option commentée : déconnecter les autres appareils (compte volé). Lancé par Mamadou seulement ; ne jamais enregistrer une vraie adresse ni un vrai mot de passe dans le dépôt. |
 
@@ -140,13 +141,13 @@ Ils sont tous présents en base.
   - le déclencheur `on_auth_user_created`.
 - Une seule différence d'écriture : la contrainte `writing_grades_scores` est réécrite par Postgres avec moins de parenthèses. Le sens est identique.
 
-**4 bis. `00_etat_actuel.sql` régénéré le 07/10/2026 (livraison 88c, après le 50 ; même méthode qu'aux livraisons 86 et 88)**
+**4 bis. `00_etat_actuel.sql` régénéré le 07/10/2026 (livraison 89, après le 51 ; même méthode qu'aux livraisons 86, 88 et 88c)**
 
 - Fabriqué automatiquement à partir du catalogue d'une copie locale de la base, après avoir vérifié que cette copie
   était IDENTIQUE à la vraie base (empreintes md5 : règles, fonctions, droits des tables, des colonnes et des
-  fonctions, colonnes, contraintes, index, déclencheurs, règles du stockage), puis les scripts 49 et 50 appliqués.
+  fonctions, colonnes, contraintes, index, déclencheurs, règles du stockage), puis les scripts 49, 50 et 51 appliqués.
 - Rechargé dans une base PostgreSQL **vide** : il reconstruit exactement la même chose (mêmes empreintes, partout).
-- Comparé ensuite à la vraie base, après que Mamadou a lancé le 50 (voir la livraison 88c).
+- Comparé ensuite à la vraie base, après que Mamadou a lancé le 51 (voir la livraison 89).
 - Ce qui vient directement de la vraie base (Postgres 17) car la copie locale (Postgres 16) l'écrit autrement :
   le texte de la contrainte `writing_grades_scores`, la liste des extensions et les droits par défaut.
 - La ligne « Source » de chaque fonction = le dernier script du dossier qui la crée (les retours arrière entre
@@ -160,7 +161,7 @@ Une recherche automatique de clés, jetons, mots de passe, e-mails et identifian
 
 ## 4. Règles pour les prochains scripts
 
-1. Un nouveau script prend le numéro suivant (`51_…`) et s'ajoute ici avec une ligne dans le tableau.
+1. Un nouveau script prend le numéro suivant (`52_…`) et s'ajoute ici avec une ligne dans le tableau.
 2. Il est complet et ré-exécutable, avec un retour arrière dans un bloc `/* … */`.
 3. Il est d'abord testé dans une transaction annulée, puis exécuté par Mamadou dans Supabase.
 4. Nouvelles tables : droits pour `authenticated` seulement, jamais `anon`. La RLS n'est jamais affaiblie.

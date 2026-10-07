@@ -59,7 +59,7 @@ export function StudentWritingFeedback({ assignmentId, userId, setScreen, inExam
         .eq("student_id", userId),
       supabase
         .from("writing_grades")
-        .select("section_id, corrected_html, score_ta, score_cc, score_lr, score_gra, task_band")
+        .select("section_id, corrected_html, score_ta, score_cc, score_lr, score_gra, task_band, task_feedback")
         .eq("assignment_id", assignmentId)
         .eq("student_id", userId),
       supabase
@@ -124,7 +124,7 @@ export function StudentWritingFeedback({ assignmentId, userId, setScreen, inExam
       </div>
 
       <div className="rs-teacher-note">
-        <div className="rs-teacher-note-h"><MessageSquare size={14} /> Feedback from your teacher</div>
+        <div className="rs-teacher-note-h"><MessageSquare size={14} /> {sections.length > 1 ? "General feedback from your teacher" : "Feedback from your teacher"}</div>
         <p>{feedback?.feedback || "No general comment."}</p>
       </div>
 
@@ -142,6 +142,13 @@ export function StudentWritingFeedback({ assignmentId, userId, setScreen, inExam
       {active && (
         <div className="rs-two">
           <div className="rs-main">
+            {/* Livraison 89: the teacher's comment on THIS task. */}
+            {grade?.task_feedback && (
+              <div className="rs-teacher-note rs-task-note">
+                <div className="rs-teacher-note-h"><MessageSquare size={14} /> Your teacher on Task {active.taskNumber}</div>
+                <p>{grade.task_feedback}</p>
+              </div>
+            )}
             <details className="qe-wrv-question">
               <summary>Question — Writing Task {active.taskNumber}</summary>
               {active.prompt && <div className="qe-wr-prompt">{active.prompt}</div>}

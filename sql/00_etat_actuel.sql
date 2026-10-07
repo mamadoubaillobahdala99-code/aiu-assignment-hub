@@ -1,7 +1,7 @@
 -- =====================================================================
 --  AIU Assignment Hub — 00_etat_actuel.sql
 --  PHOTO de la base Supabase telle qu'elle est le 7 octobre 2026
---  (apres les scripts 09 a 50). Lue en lecture seule, verifiee par
+--  (apres les scripts 09 a 51). Lue en lecture seule, verifiee par
 --  empreintes (md5) contre la base : voir sql/README.md.
 --
 --  NE PAS EXECUTER SUR LA BASE ACTUELLE : elle contient deja tout ceci.
@@ -274,7 +274,8 @@ create table public.writing_grades (
   score_gra numeric(2,1),
   task_band numeric(2,1),
   created_at timestamp with time zone not null default now(),
-  updated_at timestamp with time zone not null default now()
+  updated_at timestamp with time zone not null default now(),
+  task_feedback text
 );
 
 create table public.writing_responses (
@@ -343,6 +344,7 @@ alter table public.profiles add constraint profiles_role_check CHECK ((role = AN
 alter table public.question_groups add constraint question_groups_image_url_https CHECK (((image_url IS NULL) OR ((image_url ~~ 'https://%'::text) AND (length(image_url) <= 2000))));
 alter table public.teacher_requests add constraint teacher_requests_status_check CHECK ((status = ANY (ARRAY['pending'::text, 'approved'::text, 'declined'::text])));
 alter table public.writing_grades add constraint writing_grades_scores CHECK ((((score_ta IS NULL) OR (((score_ta >= (0)::numeric) AND (score_ta <= (9)::numeric)) AND ((score_ta * (2)::numeric) = trunc((score_ta * (2)::numeric))))) AND ((score_cc IS NULL) OR (((score_cc >= (0)::numeric) AND (score_cc <= (9)::numeric)) AND ((score_cc * (2)::numeric) = trunc((score_cc * (2)::numeric))))) AND ((score_lr IS NULL) OR (((score_lr >= (0)::numeric) AND (score_lr <= (9)::numeric)) AND ((score_lr * (2)::numeric) = trunc((score_lr * (2)::numeric))))) AND ((score_gra IS NULL) OR (((score_gra >= (0)::numeric) AND (score_gra <= (9)::numeric)) AND ((score_gra * (2)::numeric) = trunc((score_gra * (2)::numeric))))) AND ((task_band IS NULL) OR (((task_band >= (0)::numeric) AND (task_band <= (9)::numeric)) AND ((task_band * (2)::numeric) = trunc((task_band * (2)::numeric)))))));
+alter table public.writing_grades add constraint writing_grades_task_feedback_size CHECK (((task_feedback IS NULL) OR (length(task_feedback) <= 5000)));
 alter table public.writing_grades add constraint writing_grades_text_size CHECK ((length(corrected_html) <= 300000));
 alter table public.app_admins add constraint app_admins_user_id_fkey FOREIGN KEY (user_id) REFERENCES profiles(id) ON DELETE CASCADE;
 alter table public.assignment_feedback add constraint assignment_feedback_assignment_id_fkey FOREIGN KEY (assignment_id) REFERENCES assignments(id) ON DELETE CASCADE;

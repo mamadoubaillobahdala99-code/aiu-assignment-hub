@@ -67,6 +67,7 @@ export function TeacherWritingReview({ assignmentId, studentId, studentName, onB
   const [responses, setResponses] = useState({}); // sectionId -> { html, words, submittedAt }
   const [corrected, setCorrected] = useState({}); // sectionId -> html
   const [scores, setScores] = useState({}); // sectionId -> { ta, cc, lr, gra }
+  const [taskFeedback, setTaskFeedback] = useState({}); // sectionId -> text (livraison 89)
   const [overallDraft, setOverallDraft] = useState("");
   const [overallTouched, setOverallTouched] = useState(false);
   const [feedbackDraft, setFeedbackDraft] = useState("");
@@ -97,7 +98,7 @@ export function TeacherWritingReview({ assignmentId, studentId, studentName, onB
         .eq("student_id", studentId),
       supabase
         .from("writing_grades")
-        .select("section_id, corrected_html, score_ta, score_cc, score_lr, score_gra")
+        .select("section_id, corrected_html, score_ta, score_cc, score_lr, score_gra, task_feedback")
         .eq("assignment_id", assignmentId)
         .eq("student_id", studentId),
       supabase
@@ -117,13 +118,16 @@ export function TeacherWritingReview({ assignmentId, studentId, studentName, onB
     setResponses(resp);
     const corr = {};
     const sc = {};
+    const tf = {};
     for (const s of built) {
       const g = (grades || []).find((x) => x.section_id === s.id);
       corr[s.id] = g ? g.corrected_html : resp[s.id]?.html || "";
       sc[s.id] = g ? { ta: toStr(g.score_ta), cc: toStr(g.score_cc), lr: toStr(g.score_lr), gra: toStr(g.score_gra) } : { ...EMPTY_SCORES };
+      tf[s.id] = g?.task_feedback || "";
     }
     setCorrected(corr);
     setScores(sc);
+    setTaskFeedback(tf);
     setFeedbackDraft(fb?.feedback || "");
     setReleasedAt(fb?.released_at || null);
     // A saved overall band that simply equals the automatic one keeps
@@ -208,6 +212,7 @@ export function TeacherWritingReview({ assignmentId, studentId, studentName, onB
           score_lr: toNum(sc.lr),
           score_gra: toNum(sc.gra),
           task_band: bandsBySection[s.id],
+          task_feedback: (taskFeedback[s.id] || "").trim() || null,
           updated_at: new Date().toISOString(),
         },
         { onConflict: "section_id,student_id" }
@@ -386,6 +391,20 @@ export function TeacherWritingReview({ assignmentId, studentId, studentName, onB
             </p>
           </div>
 
+          <div className="panel">
+            <label className="field-label" style={{ marginTop: 0 }} htmlFor="rs-task-feedback">Feedback on Task {active.taskNumber}</label>
+            <textarea
+              id="rs-task-feedback"
+              className="field-input textarea rs-task-feedback"
+              style={{ minHeight: 110 }}
+              maxLength={5000}
+              placeholder={`What went well and what to improve in Task ${active.taskNumber}…`}
+              value={taskFeedback[active.id] || ""}
+              onChange={(e) => { const v = e.target.value; setTaskFeedback((prev) => ({ ...prev, [active.id]: v })); setDirty(true); }}
+            />
+            {sections.length > 1 && <p className="field-hint" style={{ margin: "4px 0 0" }}>Shown to the student with Task {active.taskNumber} only.</p>}
+          </div>
+
           {view === "corrected" && (
             <div className="panel">
               <div className="panel-h"><h2>Errors marked</h2><span className="panel-note">{marks.length}</span></div>
@@ -394,7 +413,7 @@ export function TeacherWritingReview({ assignmentId, studentId, studentName, onB
           )}
 
           <div className="panel">
-            <label className="field-label" style={{ marginTop: 0 }}>Feedback for the student</label>
+            <label className="field-label" style={{ marginTop: 0 }}>{sections.length > 1 ? "General feedback (both tasks)" : "General feedback"}</label>
             <textarea
               className="field-input textarea"
               style={{ minHeight: 140 }}
