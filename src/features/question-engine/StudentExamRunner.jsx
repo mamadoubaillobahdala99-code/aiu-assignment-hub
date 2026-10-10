@@ -147,11 +147,21 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
     })().catch(() => {});
 
     if (allQuestionIds.length > 0) {
-      const { data: existing } = await supabase
+      // Livraison 99b: the answers of THIS paper only (a question shared by
+      // two papers would otherwise bring the other paper's answers), and a
+      // failed read says « Connection problem — Try again » instead of
+      // opening the paper as if nothing had been handed in.
+      const { data: existing, error: existingError } = await supabase
         .from("student_answers")
         .select("question_id, response, is_correct, points_earned")
+        .eq("assignment_id", assignmentId)
         .eq("student_id", userId)
         .in("question_id", allQuestionIds);
+      if (existingError) {
+        await namesDone;
+        setLoadState("error");
+        return;
+      }
       if (existing && existing.length > 0) {
         const restoredAnswers = {};
         const restoredResults = {};
@@ -563,7 +573,7 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
         }
       }
       if (/Time is over/i.test(msg) && !invig.watched) {
-        // Livraison 88: a class paper whose time (+ 5 min) is over. If its
+        // Livraison 88: a class paper whose time (+ 2 min since script 52) is over. If its
         // backup copy reached the server, the server hands it in with it.
         const { data: collected, error: collectError } = await supabase.rpc("collect_class_papers", { p_assignment_id: assignmentId });
         if (!collectError && Number(collected) > 0) {
@@ -594,7 +604,7 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
       if (timeUp || timeUpRetryRef.current) {
         // Livraison 88: the time is up and nothing got through (no
         // connection). Keep trying every 5 seconds while the page is open:
-        // the server accepts them up to 5 minutes after the end. (A press
+        // the server accepts them up to 2 minutes after the end (script 52). (A press
         // on « Submit » meanwhile that fails too keeps the retries going.)
         timeUpRetryRef.current = true;
         if (!aliveRef.current) return;
