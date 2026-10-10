@@ -49,6 +49,40 @@ const GAP_SRC = "(?:_{3,}|[.…](?:\\s?[.…]){3,}|…{2,})";
 const GAP_RE = new RegExp(GAP_SRC);
 const GAP_RE_G = new RegExp(GAP_SRC, "g");
 
+// Livraison 97b — a SHORT gap right after its question number: "7…",
+// "24….", "9.." (a real test PDF wrote its gaps that way, and three groups
+// out of nine were refused with "Found 0 gaps"). Only a number of the
+// group's own range counts, and only when the dots touch it, so a year
+// ("in 1990..") or a sentence ("…in 3. Then") is never read as a gap.
+// The short gap is rewritten as an ordinary one ("7 ……"), so everything
+// downstream reads it the way it already knows.
+// Only in a group whose instructions ask to complete or label something,
+// and only for a number that has no ordinary gap anywhere in the group.
+const SHORT_GAP_RE = /(^|[\s(\[])(\d{1,2})([)\]]?)(…+[.…]*|\.{2,}[.…]*)/g;
+const FILL_INSTRUCTION = /\b(complete|label)/i;
+function expandShortGaps(lines, start, end) {
+  const head = lines.filter(Boolean).slice(0, 6).join(" ");
+  if (!FILL_INSTRUCTION.test(head)) return lines;
+  const text = markGaps(lines.join("\n"));
+  const hasFullGap = (n) => new RegExp(`(?:^|[^\\d])${n}\\)?\\s*⁂|⁂\\s*\\(\\s*${n}\\s*\\)`).test(text);
+  // A number with two short-gap candidates ("aged 5.." and "Name: 5…")
+  // is ambiguous: none is expanded, and the missing-gap message tells the
+  // teacher which number to fix.
+  const seen = {};
+  for (const line of lines) for (const m of String(line).matchAll(SHORT_GAP_RE)) if (!GAP_RE.test(m[4])) seen[+m[2]] = (seen[+m[2]] || 0) + 1;
+  return lines.map((line) =>
+    String(line).replace(SHORT_GAP_RE, (m, before, n, close, dots) => {
+      if (+n < start || +n > end || GAP_RE.test(dots) || hasFullGap(+n) || seen[+n] !== 1) return m;
+      return `${before}${n}${close} ……`;
+    })
+  );
+}
+// Every ordinary gap becomes one mark (one pass, so a very long run of
+// dots never makes the searches below slow).
+function markGaps(text) {
+  return String(text).replace(GAP_RE_G, "⁂");
+}
+
 // A picture read from a Word file (or inserted by the teacher) is a line
 // of its own: "[[image:local:3]]" / "[[image:https://…]]".
 const IMAGE_LINE = /^\[\[image:[^\s\]]+\]\]$/;
@@ -135,7 +169,9 @@ export function normalizeText(raw) {
     if (/^\(?\d{1,2}[.)]?$/.test(l)) {
       let j = i + 1;
       while (j < lines.length && !lines[j]) j++;
-      if (j < lines.length && !/^\(?\d{1,2}[.)]?$/.test(lines[j]) && !/^questions?\b/i.test(lines[j])) {
+      // (never a part heading: "3" then "SECTION 2" made "3 SECTION 2",
+      // and the whole section slid into the part above — livraison 97b)
+      if (j < lines.length && !/^\(?\d{1,2}[.)]?$/.test(lines[j]) && !/^questions?\b/i.test(lines[j]) && !partHeading(lines[j], "reading") && !partHeading(lines[j], "listening")) {
         merged.push(`${l.replace(/[()]/g, "").replace(/[.)]$/, "")} ${lines[j]}`);
         i = j;
         continue;
@@ -193,14 +229,18 @@ function partHeading(line, skill) {
   // heading is still a heading — without this, a whole section was read
   // as the body of the previous one and its ten questions vanished.
   const rest = m[2].trim().replace(/^\|\s*/, "");
-  if (rest === "" || /^questions?\s+\d/i.test(rest)) return { rest };
+  if (rest === "" || /^questions?\s+\d/i.test(rest)) return { rest, num: +m[1] };
   // "PASSAGE 1 – The History of Glass" / "PASSAGE 1: …"
   const sep = /^[:.\-–—]\s*(.*)$/.exec(rest);
-  if (sep) return { rest: sep[1] };
+  if (sep) return { rest: sep[1], num: +m[1] };
   return null;
 }
 const GROUP_RE = /^questions?\s+(\d{1,2})(?:\s*(?:[-–—]|to|and|&)\s*(\d{1,2}))?(?![\d])[\s:.,]*(.*)$/i;
 const DROP_LINE = /^(you should spend about|(academic|general training)?\s*(reading|listening)(\s+test)?(\s*\d+)?$|test\s*\d+$)/i;
+// Livraison 97b — the audio player of a test web page, copied with the
+// test: "Audio Player", "00:00", "Use Up/Down Arrow keys to increase or
+// decrease volume." Never part of a real test.
+const PLAYER_LINE = /^(audio player|0?0:00(\s*\/\s*\d{1,2}:\d{2})?|use up\/down arrow keys to (increase|decrease) or (increase|decrease) volume\.?)$/i;
 
 function numberedItemIn(lines, start, end) {
   return lines.some((l) => {
@@ -231,11 +271,17 @@ export function parseTest(text, skill = "reading") {
   };
 
   for (const line of lines) {
-    if (DROP_LINE.test(line)) continue;
+    if (DROP_LINE.test(line) || PLAYER_LINE.test(line)) continue;
 
     const pm = partHeading(line, skill);
     if (pm) {
-      openPart(line);
+      // Livraison 97b — "SECTION 1" printed twice in a row (once above the
+      // web page's audio player, once above the questions) is ONE part.
+      // Before, the first copy became an empty part that asked for its own
+      // audio file. Only when nothing at all came in between.
+      const repeatedHeading = part && part.num === pm.num && part.groups.length === 0 && !part.preamble.some(Boolean);
+      if (!repeatedHeading) openPart(line);
+      part.num = pm.num;
       const rest = pm.rest;
       // "PASSAGE 1: The Evolution of Urban Green Spaces" → passage title
       if (rest && !/^questions?\b/i.test(rest)) part.headingTitle = rest;
@@ -316,7 +362,7 @@ export function parseTest(text, skill = "reading") {
         id: g.id,
         start: g.start,
         end: g.end,
-        source: trimBlankLines(fillListNumbers(g.lines, g.start, g.end)).join("\n"),
+        source: trimBlankLines(fillListNumbers(expandShortGaps(g.lines, g.start, g.end), g.start, g.end)).join("\n"),
         type: null, // null = automatic detection
         imageUrl: "",
         lastLetter: "",
@@ -753,11 +799,15 @@ function sortNumberedRuns(lines) {
 
 // context.passageText: the part's passage, used to find paragraph letters.
 export function analyseGroup(group, skill = "reading", context = {}) {
-  const rawLines = String(group.source || "")
-    .split("\n")
-    .map((l) => l.trim())
-    .filter((l) => !IMAGE_LINE.test(l)); // pictures belong to the group image, never to a question
   const { start, end } = group;
+  const rawLines = expandShortGaps(
+    String(group.source || "")
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => !IMAGE_LINE.test(l)), // pictures belong to the group image, never to a question
+    start,
+    end
+  );
   const expectedCount = end - start + 1;
   // The type is detected on the text read line by line; only a table
   // keeps its "|" cells (see unpipe).
@@ -840,7 +890,7 @@ export function analyseGroup(group, skill = "reading", context = {}) {
     }
     result.questions = qs;
     const shown = countShownGaps(result.payload);
-    if (qs.length !== expectedCount) issues.push({ level: "error", msg: `Found ${qs.length} gap${qs.length === 1 ? "" : "s"}, expected ${expectedCount} (Questions ${start}–${end}).` });
+    if (qs.length !== expectedCount) issues.push({ level: "error", msg: `Found ${qs.length} gap${qs.length === 1 ? "" : "s"}, expected ${expectedCount} (Questions ${start}–${end}).` + missingGapsHint(body, start, end) });
     else if (shown !== qs.length) issues.push({ level: "error", msg: "Some gaps are outside the text — check the lines." });
     return result;
   }
@@ -863,6 +913,35 @@ export function analyseGroup(group, skill = "reading", context = {}) {
     if (choices.length < required + 1) issues.push({ level: "error", msg: "The answer options (A, B, C…) were not found." });
     if (!prompt) issues.push({ level: "warn", msg: "Question text not found." });
     return result;
+  }
+
+  // Livraison 97b — two layouts that the detected type cannot read, tried
+  // only when the teacher has not chosen the type himself:
+  //  - gaps answered with a letter from a list (a timetable, a table);
+  //  - "Choose the correct letter, A, B or C" where the A/B/C list is
+  //    printed ONCE above the questions (a matching task, not a QCM).
+  if ((!group.type || group.type === "features") && (type === "mcq" || LETTER_TYPES.has(type)) && type !== "info" && type !== "map") {
+    const probe = parseItems(body, start, end, { choices: type === "mcq", letters: type !== "mcq" });
+    const shared = dedupeLetters(probe.options);
+    if (probe.items.length === 0 && shared.length >= 2) {
+      const gapItems = gapMatchingItems(rawLines, start, end);
+      if (gapItems) {
+        result.type = "features";
+        if (!group.type) result.detectedType = "features";
+        result.letters = shared.map((c) => c.letter);
+        result.questions = gapItems.map((it) => ({ number: it.number, prompt: it.prompt, dbType: "matching_features", options: { choices: shared } }));
+        issues.push({ level: "warn", msg: "Read as matching: one question per gap, answered with a letter from the list. Check the text of each question." });
+        return result;
+      }
+    }
+    if (!group.type && type === "mcq" && probe.items.length > 0 && probe.items.every((it) => it.choices.length === 0) && shared.length >= 2) {
+      result.type = result.detectedType = "features";
+      result.letters = shared.map((c) => c.letter);
+      result.questions = probe.items.map((it) => ({ number: it.number, prompt: it.prompt, dbType: "matching_features", options: { choices: shared } }));
+      if (probe.items.length !== expectedCount) issues.push({ level: "error", msg: `Found ${probe.items.length} question${probe.items.length === 1 ? "" : "s"}, expected ${expectedCount} (Questions ${start}–${end}).` });
+      result.questions.forEach((q) => { if (!q.prompt) issues.push({ level: "error", msg: `Question ${q.number}: text is empty.` }); });
+      return result;
+    }
   }
 
   if (type === "mcq") {
@@ -921,6 +1000,65 @@ export function analyseGroup(group, skill = "reading", context = {}) {
     if (!q.prompt) issues.push({ level: "error", msg: `Question ${q.number}: text is empty.` });
   });
   return result;
+}
+
+// Livraison 97b — which numbers have no gap, and whether the number is
+// in the text without its gap ("… and 38" with the dots missing).
+function missingGapsHint(body, start, end) {
+  const text = markGaps(body.join("\n"));
+  const noGap = [];
+  const bare = [];
+  for (let n = start; n <= end; n++) {
+    const withGap = new RegExp(`(?:^|[^\\d])${n}\\)?\\s*⁂|⁂\\s*\\(\\s*${n}\\s*\\)`).test(text);
+    if (withGap) continue;
+    noGap.push(n);
+    if (new RegExp(`(?:^|[^\\d.,])${n}(?![\\d.,])`).test(text)) bare.push(n);
+  }
+  if (!noGap.length || noGap.length === end - start + 1) return noGap.length ? " No gap (…… or ___) was found in this text." : "";
+  let hint = ` No gap found for: ${noGap.join(", ")}.`;
+  if (bare.length) hint += ` ${bare.length === 1 ? "Number" : "Numbers"} ${bare.join(", ")} ${bare.length === 1 ? "is" : "are"} in the text without a gap — add …… after ${bare.length === 1 ? "it" : "them"} (Edit the text of this group).`;
+  return hint;
+}
+
+// Livraison 97b — a table (or notes) with gaps that are answered with a
+// LETTER from a list ("Complete the timetable. Write the correct letter,
+// A–H"): one matching question per gap. Its text is the row and the
+// column of the gap when the table kept its cells, otherwise the words
+// just before the gap. Returns null when the gaps don't match the range.
+function gapMatchingItems(lines, start, end) {
+  const found = [];
+  let header = null;
+  let lastText = "";
+  const isOption = (l) => /^\(?[A-Z](?:[.)]\s*|\s+)\S/.test(l);
+  const gapAt = new RegExp(`(^|[^\\d])(\\d{1,2})\\)?\\s*⁂`, "g");
+  for (const raw of lines) {
+    const l = markGaps(String(raw || "").trim());
+    if (!l) continue;
+    // (a leading "|" is an empty first cell: the corner above the row labels)
+    const cells = l.includes("|") ? l.replace(/\|$/, "").split("|").map((c) => c.trim()) : null;
+    const gaps = [...l.matchAll(gapAt)].filter((m) => +m[2] >= start && +m[2] <= end);
+    if (!gaps.length) {
+      if (cells && cells.filter(Boolean).length >= 2 && !header) header = cells;
+      else if (!isOption(l) && !/^[A-Z]$/.test(l) && !/^[xX-]$/.test(l)) lastText = l.replace(/\|/g, " ").replace(/\s{2,}/g, " ").trim();
+      continue;
+    }
+    for (const m of gaps) {
+      let prompt = "";
+      if (cells) {
+        const idx = cells.findIndex((c) => new RegExp(`(?:^|[^\\d])${m[2]}\\)?\\s*⁂`).test(c));
+        const row = idx > 0 ? cells[0] : "";
+        const col = header && idx >= 0 ? header[idx] || "" : "";
+        prompt = [row, col].filter(Boolean).join(" — ");
+      }
+      if (!prompt) {
+        const own = l.replace(gapAt, "$1 ").replace(/⁂/g, " ").replace(/\|/g, " ").replace(/\s{2,}/g, " ").trim();
+        prompt = own || lastText;
+      }
+      found.push({ number: +m[2], prompt: prompt || `Question ${m[2]}` });
+    }
+  }
+  if (found.length !== end - start + 1 || found.some((f, i) => f.number !== start + i)) return null;
+  return found;
 }
 
 function countShownGaps(payload) {
@@ -983,19 +1121,52 @@ export function scrubInvisible(s) {
 
 function cleanKeyAnswer(a) {
   return a
+    // Livraison 97b — "chart ..." : the dots some keys print after an answer.
+    .replace(/(?:\s*(?:\.{2,}|…+))+\s*$/, "")
     .replace(/\(?\s*(in\s+)?either\s+order\s*\)?/gi, "")
     .replace(/\s{2,}/g, " ")
     .replace(/^[\s:;,.–-]+|[\s;,]+$/g, "")
     .trim();
 }
 
+// Livraison 97b — "Question 14: E", "Q14. E", "Sentence 20-21: C, E":
+// the label goes, and each labelled answer starts its own line (a key
+// pasted as one long line, or printed in three columns, falls into place).
+// Only when the key uses such labels at least twice.
+// The label is written with a capital ("Question", "QUESTION", "Q",
+// "Sentence"), is not inside brackets, and its answer is on the same line:
+// "(Questions 1-13)" or "Questions 1-13:" alone on a line is a heading, and
+// "refer to question 5: C" stays inside its answer.
+const KEY_LABEL_RE = /(^|[^A-Za-z0-9(])(?:Questions?|QUESTIONS?|Q|Sentences?|SENTENCES?)[ \t]*(\d{1,2}(?:[ \t]*[-–][ \t]*\d{1,2})?)[ \t]*[:.)](?=[ \t]*\S)/g;
+// "Passage 2", "SECTION 1", "Part 3": a heading inside the key. Removed at
+// the start of a line ("Section 1 1 engineering"), and at the end of an
+// answer it was glued to ("26 record Passage 3") — written with a capital,
+// and never when it would leave the answer empty.
+const KEY_HEAD = "(?:(?:Reading|READING)\\s+)?(?:Passage|PASSAGE|Section|SECTION|Part|PART)\\s+\\d{1,2}";
+const KEY_HEAD_START = new RegExp(`^(?:${KEY_HEAD}\\b\\s*:?\\s*)+`);
+const KEY_HEAD_END = new RegExp(`^(\\S+\\s+\\S.*?)\\s+${KEY_HEAD}\\s*:?$`);
+
 export function parseAnswerKey(text) {
   const map = {};
-  const lines = scrubInvisible(text)
-    .replace(/\r\n?/g, "\n")
+  let src = scrubInvisible(text).replace(/\r\n?/g, "\n");
+  const labelled = (src.match(KEY_LABEL_RE) || []).length >= 2;
+  if (labelled) {
+    src = src.replace(KEY_LABEL_RE, (m, before, n, offset, all) => {
+      const range = n.replace(/\s+/g, "");
+      // "Questions 1-13: 1 TRUE 2 FALSE" — a heading followed by its own
+      // first number: only the heading goes.
+      const first = range.split(/[-–]/)[0];
+      const rest = all.slice(offset + m.length).replace(/^[ \t]+/, "");
+      if (/[-–]/.test(range) && new RegExp(`^\\(?${first}\\b`).test(rest)) return `${before}\n`;
+      return `${before}\n${range} `;
+    });
+  }
+  const lines = src
     // Keys printed in columns (PDF/Word tables) come as cells: one per line.
     .split(/\n|\t+|\s\|\s/)
-    .map((l) => l.trim())
+    // (a heading glued at the END of an answer only in a labelled key,
+    // where a pasted line runs "… 26: record Passage 3 Question 1: …")
+    .map((l) => { const t = l.trim().replace(KEY_HEAD_START, ""); return (labelled ? t.replace(KEY_HEAD_END, "$1") : t).trim(); })
     .filter(Boolean);
   const put = (a, b, ans) => {
     const v = cleanKeyAnswer(ans);
