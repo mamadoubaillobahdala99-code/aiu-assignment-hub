@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { BookOpen, Plus, PenLine } from "lucide-react";
-import { EmptyState, CenterSpinner } from "../../components/shared";
+import { EmptyState, CenterSpinner, LoadFailed } from "../../components/shared";
 import { loadTeacherWork, loadTeacherExams, ago } from "./teacherWork";
 import { CreateClassModal } from "./TeacherHome";
 import { TypeIcon, DuePill } from "./StudentHome";
@@ -29,13 +29,21 @@ export function TeacherDashboard({ userId, profile, setScreen, showToast }) {
   const [exams, setExams] = useState(null);
   const [showCreate, setShowCreate] = useState(false);
 
+  // Livraison 95d: a failed read is never « No classes yet » / « No exam ».
+  const [loadFailed, setLoadFailed] = useState(false);
   const load = useCallback(async () => {
-    const [w, e] = await Promise.all([loadTeacherWork(userId), loadTeacherExams()]);
-    setData(w);
-    setExams(e);
+    try {
+      const [w, e] = await Promise.all([loadTeacherWork(userId), loadTeacherExams()]);
+      setData(w);
+      setExams(e);
+      setLoadFailed(false);
+    } catch {
+      setLoadFailed(true);
+    }
   }, [userId]);
   useEffect(() => { load(); }, [load]);
 
+  if (loadFailed) return <div className="page page-wide"><LoadFailed what="your dashboard" onRetry={() => { setLoadFailed(false); load(); }} /></div>;
   if (data === null) return <CenterSpinner />;
   const openA = (a) => setScreen({ name: "assignment-teacher", classId: a.class_id, assignmentId: a.id });
   const openC = (id) => setScreen({ name: "class", classId: id });

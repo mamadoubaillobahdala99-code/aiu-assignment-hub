@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { Plus, X, Check } from "lucide-react";
 import { supabase } from "../../supabaseClient";
+import { LoadFailed } from "../../components/shared";
 import { TeacherQuestionForm } from "./TeacherQuestionForm";
 import { guessPassageTitle, defaultInstructionFor, parseNotesMarkdown, countBlanksInTexts, parseCompletionPayload, parseSentenceCompletion, numberQuestions, splitAlternatives, FORM_INSTRUCTION, FLOWCHART_INSTRUCTION, WORDBANK_INSTRUCTION, SHORT_ANSWER_INSTRUCTION } from "./bulkParse";
 import { SentenceCompletion } from "./SentenceCompletion";
@@ -50,25 +51,36 @@ export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast
   // by design: rebuilding the full content here and replacing the old
   // structure on save, rather than trying to reconstruct every existing
   // question back into an editable form.
+  // Livraison 95d: if the saved assignment (or its counts) cannot be read,
+  // the form is NOT shown empty, and a count is never taken as « 0 ».
+  const [loadFailed, setLoadFailed] = useState("");   // "" | "error" | "gone"
+  const [loadTry, setLoadTry] = useState(0);
   useEffect(() => {
     if (!editAssignmentId) return;
+    let alive = true;
     (async () => {
-      const { data: a } = await supabase.from("assignments").select("title, due_date, due_time, time_limit_minutes, auto_release_score, show_answer_review, reading_test_type").eq("id", editAssignmentId).single();
-      if (a) {
-        setTitle(a.title || "");
-        setTitleTouched(true);
-        setDueDate(a.due_date || "");
-        setDueTime(a.due_time || "");
-        setTimeLimit(a.time_limit_minutes ? String(a.time_limit_minutes) : "");
-        setAutoReleaseScore(a.auto_release_score ?? true);
-        setShowAnswerReview(a.show_answer_review ?? true);
-      }
-      const { count } = await supabase.from("student_answers").select("id", { count: "exact", head: true }).eq("assignment_id", editAssignmentId);
+      setLoadFailed("");
+      const { data: a, error: aErr } = await supabase.from("assignments").select("title, due_date, due_time, time_limit_minutes, auto_release_score, show_answer_review, reading_test_type").eq("id", editAssignmentId).maybeSingle();
+      if (!alive) return;
+      if (aErr || !a) { setLoadFailed(aErr ? "error" : "gone"); return; }
+      setTitle(a.title || "");
+      setTitleTouched(true);
+      setDueDate(a.due_date || "");
+      setDueTime(a.due_time || "");
+      setTimeLimit(a.time_limit_minutes ? String(a.time_limit_minutes) : "");
+      setAutoReleaseScore(a.auto_release_score ?? true);
+      setShowAnswerReview(a.show_answer_review ?? true);
+      const { count, error: cErr } = await supabase.from("student_answers").select("id", { count: "exact", head: true }).eq("assignment_id", editAssignmentId);
+      let stored;
+      try { stored = await countStoredQuestions(editAssignmentId); } catch { stored = null; }
+      if (!alive) return;
+      if (cErr || stored === null) { setLoadFailed("error"); return; }
       setExistingAnswerCount(count || 0);
-      setStoredQuestionCount(await countStoredQuestions(editAssignmentId));
+      setStoredQuestionCount(stored);
       setLoadingExisting(false);
     })();
-  }, [editAssignmentId]);
+    return () => { alive = false; };
+  }, [editAssignmentId, loadTry]);
 
   function handlePassageChange(partLocalId, text) {
     setParts((prev) =>
@@ -444,7 +456,11 @@ export function TeacherReadingBuilder({ classId, teacherId, setScreen, showToast
   if (loadingExisting) {
     return (
       <div className="page page-wide">
-        <p className="empty-inline">Loading assignment…</p>
+        {loadFailed === "gone"
+          ? <p className="empty-inline">This assignment no longer exists.</p>
+          : loadFailed
+            ? <LoadFailed what="this assignment" onRetry={() => setLoadTry((n) => n + 1)} />
+            : <p className="empty-inline">Loading assignment…</p>}
       </div>
     );
   }

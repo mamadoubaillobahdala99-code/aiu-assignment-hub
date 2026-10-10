@@ -337,6 +337,9 @@ export function ClassDetail({ classId, setScreen, showToast }) {
 function StudentInClassDetail({ student, classId, assignments, onBack, setScreen, showToast }) {
   const [statuses, setStatuses] = useState(null); // assignmentId -> status string
   const [removing, setRemoving] = useState(false);
+  // Livraison 95d: a failed read is never « everything pending ».
+  const [statusFailed, setStatusFailed] = useState(false);
+  const [statusTry, setStatusTry] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -351,7 +354,8 @@ function StudentInClassDetail({ student, classId, assignments, onBack, setScreen
       // one after the other). Same reads, same rights, same statuses.
       const writingAll = assignments.filter((x) => x.type === "Writing").map((x) => x.id);
       const speakingAll = assignments.filter((x) => x.type === "Speaking").map((x) => x.id);
-      const [{ data: qeSections }, { data: answers }, { data: attempts }, { data: wr }, { data: sv }, { data: fb }] = await Promise.all([
+      if (!cancelled) setStatusFailed(false);
+      const reads = await Promise.all([
         supabase.from("exam_sections").select("assignment_id").in("assignment_id", assignmentIds),
         supabase.from("student_answers").select("assignment_id").eq("student_id", student.studentId).in("assignment_id", assignmentIds),
         supabase.from("exam_attempts").select("assignment_id").eq("student_id", student.studentId).in("assignment_id", assignmentIds),
@@ -359,6 +363,9 @@ function StudentInClassDetail({ student, classId, assignments, onBack, setScreen
         speakingAll.length ? supabase.from("speaking_views").select("assignment_id").eq("student_id", student.studentId).in("assignment_id", speakingAll) : { data: [] },
         supabase.from("assignment_feedback").select("assignment_id, released_at").eq("student_id", student.studentId).in("assignment_id", assignmentIds),
       ]);
+      if (cancelled) return;
+      if (reads.some((x) => x.error)) { setStatusFailed(true); return; }
+      const [{ data: qeSections }, { data: answers }, { data: attempts }, { data: wr }, { data: sv }, { data: fb }] = reads;
       const qeIds = new Set((qeSections || []).map((s) => s.assignment_id));
 
       let submittedQe = new Set();
@@ -398,7 +405,7 @@ function StudentInClassDetail({ student, classId, assignments, onBack, setScreen
       if (!cancelled) setStatuses(map);
     })();
     return () => { cancelled = true; };
-  }, [student.studentId, assignments]);
+  }, [student.studentId, assignments, statusTry]);
 
   async function removeStudent() {
     if (!(await confirmDialog({ title: "Remove this student?", message: `Remove ${student.name} from this class? They'll need the class code to rejoin.`, confirmLabel: "Remove", danger: true }))) return;
@@ -413,6 +420,14 @@ function StudentInClassDetail({ student, classId, assignments, onBack, setScreen
     onBack();
   }
 
+  if (statusFailed && statuses === null) {
+    return (
+      <div className="page">
+        <button className="back-link" onClick={onBack}><ArrowLeft size={14} /> Back to the class</button>
+        <LoadFailed what={`${student.name}'s work`} onRetry={() => setStatusTry((n) => n + 1)} />
+      </div>
+    );
+  }
   if (statuses === null) return <CenterSpinner />;
 
   const completedCount = assignments.filter((a) => statuses[a.id] === "submitted" || statuses[a.id] === "graded").length;

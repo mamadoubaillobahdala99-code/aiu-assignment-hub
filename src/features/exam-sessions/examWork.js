@@ -37,11 +37,13 @@ const scored = (type) => type === "Listening" || type === "Reading" || type === 
 // The Exams list: every exam this teacher runs or was invited to (the
 // database decides), with its papers' skills, its candidates and its
 // Writing copies waiting for a mark.
+// Livraison 95d: a failed read throws (never « No exam yet », 0 candidates).
 export async function loadExamsList() {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("exam_sessions")
     .select("id, name, code, created_by, opened_at, closed_at, opens_at, closes_at, results_released_at, created_at, container_class_id")
     .order("created_at", { ascending: false });
+  if (error) throw new Error("Could not load");
   const rows = data || [];
   const ids = rows.map((r) => r.id);
   const boxes = rows.map((r) => r.container_class_id).filter(Boolean);
@@ -49,6 +51,7 @@ export async function loadExamsList() {
     ids.length ? supabase.from("exam_session_items").select("session_id, assignment_id, order_index, assignments(type)").in("session_id", ids) : { data: [] },
     boxes.length ? supabase.from("roster").select("class_id, student_id").in("class_id", boxes) : { data: [] },
   ]);
+  if (items.error || roster.error) throw new Error("Could not load");
   const papers = new Map();
   for (const it of items.data || []) {
     if (!papers.has(it.session_id)) papers.set(it.session_id, []);
@@ -201,16 +204,22 @@ export function left(ms) {
 
 // Livraison 91 — for the Exams list: everything one exam's results need, with the same
 // reads (and the same rights) as the exam page. Read only.
+// Livraison 95d: any failed read THROWS — a results file is never made
+// from a partial reading (missing candidates or bands, without a word);
+// the dialog then says « The file could not be made ».
 export async function loadExamForExport(session) {
-  const [{ data: items }, { data: papers }, { data: roster }] = await Promise.all([
+  const first = await Promise.all([
     supabase.from("exam_session_items").select("id, assignment_id, order_index").eq("session_id", session.id).order("order_index"),
     supabase.from("assignments").select("id, title, type, time_limit_minutes, created_at, listening_audio_url, listening_exam_mode").eq("class_id", session.container_class_id),
     supabase.from("roster").select("student_id, profiles(name)").eq("class_id", session.container_class_id),
   ]);
+  if (first.some((x) => x.error)) throw new Error("Could not load");
+  const [{ data: items }, { data: papers }, { data: roster }] = first;
   const byId = new Map((papers || []).map((a) => [a.id, a]));
   const list = (items || []).map((x) => ({ ...x, assignment: byId.get(x.assignment_id) || null })).filter((x) => x.assignment);
   const ids = list.map((x) => x.assignment_id);
-  const { data: secs } = ids.length ? await supabase.from("exam_sections").select("assignment_id").in("assignment_id", ids) : { data: [] };
+  const { data: secs, error: sErr } = ids.length ? await supabase.from("exam_sections").select("assignment_id").in("assignment_id", ids) : { data: [], error: null };
+  if (sErr) throw new Error("Could not load");
   const withContent = new Set((secs || []).map((s) => s.assignment_id));
   const candidates = (roster || []).map((x) => ({ id: x.student_id, name: x.profiles?.name || "Student" }));
   const grid = await loadExamGrid(list.map((it) => ({ ...it, structured: withContent.has(it.assignment_id) })), candidates);

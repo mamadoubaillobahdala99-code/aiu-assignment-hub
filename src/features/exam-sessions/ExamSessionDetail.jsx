@@ -1,11 +1,11 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   ArrowLeft, Copy, CheckCircle2, Plus, FileText, Users, Play, Square,
   Send, Trash2, ChevronUp, ChevronDown, UserPlus, X, Headphones, ShieldCheck,
   ChevronRight, Pencil, Files, ShieldAlert, Unlock, RotateCcw, Download, Lock, Clock, Check,
 } from "lucide-react";
 import { supabase } from "../../supabaseClient";
-import { CenterSpinner, EmptyState, Modal } from "../../components/shared";
+import { CenterSpinner, EmptyState, Modal, LoadFailed } from "../../components/shared";
 import { TYPES, fmtDate } from "../../lib/utils";
 import { ExamStateBadge } from "./ExamSessionsHome";
 import { confirmDialog } from "../../lib/confirmDialog";
@@ -73,6 +73,15 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
   const [attempts, setAttempts] = useState([]);
   const [withContent, setWithContent] = useState(null);   // Set(assignment_id) | null = unknown
   const [grid, setGrid] = useState(null);                 // see examWork.loadExamGrid
+  // Livraison 95d: a failed read is never « 0 candidates », « Papers (0) »
+  // or « This exam no longer exists ». First load: « Could not load —
+  // Retry ». A later refresh that fails keeps what is on screen and says
+  // so (never blanks the board during an exam). The results grid: never
+  // shown (nor exported) from a failed read.
+  const [readFailed, setReadFailed] = useState(false);
+  const [gridFailed, setGridFailed] = useState(false);
+  const loadIdRef = useRef(0);   // a late answer of an older reading is ignored
+  const gridIdRef = useRef(0);
   const [tab, setTab] = useState(null);                   // null = the stage's default
   const [now, setNow] = useState(Date.now());
   const [filter, setFilter] = useState("all");
@@ -85,17 +94,22 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
   // after the other (up to 11). Same reads, same rights, same results;
   // the only write (adopting a paper just built) is unchanged.
   const load = useCallback(async () => {
+    const myId = ++loadIdRef.current;
+    const stale = () => myId !== loadIdRef.current;
     const itemsQuery = () => supabase
       .from("exam_session_items")
       .select("id, assignment_id, order_index, audio_started_at, room_started_at")
       .eq("session_id", sessionId)
       .order("order_index");
-    const [{ data: s }, { data: firstRows }, { data: st }, { data: xt }] = await Promise.all([
+    const firstReads = await Promise.all([
       supabase.from("exam_sessions").select("*").eq("id", sessionId).maybeSingle(),
       itemsQuery(),
       supabase.from("exam_session_staff").select("teacher_id, role, profiles(name)").eq("session_id", sessionId),
       supabase.from("exam_extra_time").select("assignment_id, student_id, minutes").eq("session_id", sessionId),
     ]);
+    if (stale()) return;
+    if (firstReads.some((x) => x.error)) { setReadFailed(true); return; }
+    const [{ data: s }, { data: firstRows }, { data: st }, { data: xt }] = firstReads;
     if (!s) { setSession(false); return; }
     setSession(s);
     let rows = firstRows || [];
@@ -107,12 +121,12 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
           supabase.from("exam_attempts").select("student_id, assignment_id, started_at, submitted_at").in("assignment_id", ids),
           supabase.from("exam_sections").select("assignment_id, audio_url, max_plays").in("assignment_id", ids),
         ])
-      : Promise.resolve([{ data: [] }, { data: [] }]);
+      : Promise.resolve([{ data: [], error: null }, { data: [], error: null }]);
 
     // Papers built inside this exam. Anything sitting in the private
     // container that is not yet a paper of this exam has just been
     // built — adopt it, in the order it was created.
-    let [{ data: inContainer }, { data: r }, paperReads] = await Promise.all([
+    let [containerRead, rosterRead, paperReads] = await Promise.all([
       supabase
         .from("assignments")
         .select("id, title, type, time_limit_minutes, created_at, listening_audio_url, listening_exam_mode")
@@ -121,6 +135,10 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
       supabase.from("roster").select("student_id, joined_at, profiles(name)").eq("class_id", s.container_class_id),
       perPaper(rows.map((x) => x.assignment_id)),
     ]);
+    if (stale()) return;
+    if (containerRead.error || rosterRead.error || paperReads.some((x) => x.error)) { setSession(s); setReadFailed(true); return; }
+    const inContainer = containerRead.data;
+    const r = rosterRead.data;
 
     const known = new Set(rows.map((x) => x.assignment_id));
     const orphans = (inContainer || []).filter((a) => !known.has(a.id));
@@ -128,9 +146,13 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
       let next = rows.reduce((m, x) => Math.max(m, x.order_index), 0);
       const toAdd = orphans.map((a) => ({ session_id: sessionId, assignment_id: a.id, order_index: ++next }));
       await supabase.from("exam_session_items").insert(toAdd);
-      const { data: again } = await itemsQuery();
+      const { data: again, error: againErr } = await itemsQuery();
+      if (stale()) return;
+      if (againErr) { setSession(s); setReadFailed(true); return; }
       rows = again || [];
       paperReads = await perPaper(rows.map((x) => x.assignment_id));
+      if (stale()) return;
+      if (paperReads.some((x) => x.error)) { setSession(s); setReadFailed(true); return; }
     }
     const [{ data: att }, { data: secs }] = paperReads;
 
@@ -148,6 +170,7 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
     setRoster((r || []).map((x) => ({ id: x.student_id, name: x.profiles?.name || "Student", joined_at: x.joined_at })));
     setStaff((st || []).map((x) => ({ id: x.teacher_id, role: x.role, name: x.profiles?.name || "Teacher" })));
     setLoaded(true);
+    setReadFailed(false);
 
     if (rows.length > 0) {
       setAttempts(att || []);
@@ -187,7 +210,13 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
   const loadGrid = useCallback(async () => {
     if (!loaded || withContent === null) return;
     const list = items.filter((it) => it.assignment).map((it) => ({ ...it, structured: withContent.has(it.assignment_id) }));
-    try { setGrid(await loadExamGrid(list, roster)); } catch { setGrid({}); }
+    const myId = ++gridIdRef.current;
+    try {
+      const g = await loadExamGrid(list, roster);
+      if (myId === gridIdRef.current) { setGrid(g); setGridFailed(false); }
+    } catch {
+      if (myId === gridIdRef.current) setGridFailed(true);
+    }   // keep the last good grid (or none): never an empty one
   }, [loaded, items, roster, withContent]);
   useEffect(() => { loadGrid(); }, [loadGrid]);
   // Also keeps refreshing after Close while some papers are still left:
@@ -421,7 +450,18 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
     });
   }
 
+  if (readFailed && !loaded) {
+    return (
+      <div className="page page-dash">
+        <Breadcrumb items={[{ label: "Exams", onClick: () => setScreen({ name: "exams" }) }, { label: "Exam" }]} />
+        <LoadFailed what="this exam" onRetry={() => { setReadFailed(false); load(); }} />
+      </div>
+    );
+  }
   if (session === null) return <CenterSpinner />;
+  // Livraison 95d: until everything is read, a spinner — never « 0
+  // candidates » / « Papers (0) » for a moment.
+  if (session !== false && !loaded) return <CenterSpinner />;
   if (session === false) {
     return (
       <div className="page page-dash">
@@ -515,6 +555,7 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
   const overallOf = (st) => overallBand(sorted.filter((it) => it.assignment), (it) => cellOf(st.id, it));
   const overalls = roster.map(overallOf).filter((b) => b !== null);
   function exportCsv() {
+    if (gridFailed || grid === null) { showToast?.("The results could not be loaded — try again before exporting."); return; }
     const csv = resultsCsv(session.name, sorted.filter((it) => it.assignment), roster, (sid, it) => cellOf(sid, it));
     // A plain-ASCII file name: some browsers drop a name with accents or dashes like « — ».
     const safe = session.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Za-z0-9 ._()-]+/g, "-").replace(/\s+/g, " ").trim() || "exam";
@@ -563,7 +604,7 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
     <div className="ph-actions">
       {stage >= 2 && (
         <DropMenu label={<><Download size={15} /> Export ▾</>} className="btn-ghost" title="Export the results" disabled={grid === null || roster.length === 0}>
-          <DropMenuItem title="Excel (.xlsx)…" hint="Colours, Speaking to fill in, IELTS average." onClick={() => setExportOpen(true)} />
+          <DropMenuItem title="Excel (.xlsx)…" hint="Colours, Speaking to fill in, IELTS average." onClick={() => { if (gridFailed || grid === null) { showToast?.("The results could not be loaded — try again before exporting."); return; } setExportOpen(true); }} />
           <DropMenuItem title="CSV" hint="Plain table, as before." onClick={exportCsv} />
         </DropMenu>
       )}
@@ -905,6 +946,8 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
 
   const resultsTab = roster.length === 0 ? (
     <p className="empty-inline">Nobody sat this exam.</p>
+  ) : grid === null && gridFailed ? (
+    <LoadFailed what="the results" onRetry={() => { setGridFailed(false); loadGrid(); }} />
   ) : grid === null ? <CenterSpinner /> : (
     <>
       <div className="stat-grid">
@@ -981,6 +1024,15 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
   return (
     <div className="page page-dash">
       <Breadcrumb items={[{ label: "Exams", onClick: () => setScreen({ name: "exams" }) }, { label: session.name }]} />
+
+      {(readFailed || (gridFailed && grid !== null)) && (
+        <div className="cd-del-warning" role="alert" style={{ marginBottom: 12 }}>
+          <span>
+            Could not refresh this page — what you see may be out of date. Check your internet connection and{" "}
+            <button type="button" className="panel-link" onClick={() => { setReadFailed(false); load(); loadGrid(); }}>try again</button>.
+          </span>
+        </div>
+      )}
 
       <div className="ph">
         <div className="ph-main">

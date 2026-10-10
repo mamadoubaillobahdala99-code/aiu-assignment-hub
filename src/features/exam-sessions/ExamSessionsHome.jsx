@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Plus, ShieldCheck, Search, Download } from "lucide-react";
 import { supabase } from "../../supabaseClient";
-import { EmptyState, CenterSpinner, Modal } from "../../components/shared";
+import { EmptyState, CenterSpinner, Modal, LoadFailed } from "../../components/shared";
 import { loadExamsList, skillLetter, examStage } from "./examWork";
 import { ExportResultsDialog } from "./ExportResultsDialog";
 
@@ -25,8 +25,10 @@ export function ExamSessionsHome({ userId, setScreen, showToast }) {
   const [err, setErr] = useState("");
   const [exportOpen, setExportOpen] = useState(false);   // livraison 91
 
+  const [loadFailed, setLoadFailed] = useState(false);   // livraison 95d
   const load = useCallback(async () => {
-    setData(await loadExamsList());
+    try { setData(await loadExamsList()); setLoadFailed(false); }
+    catch { setLoadFailed(true); }
   }, [userId]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { load(); }, [load]);
@@ -46,6 +48,7 @@ export function ExamSessionsHome({ userId, setScreen, showToast }) {
     setScreen({ name: "exam-session", sessionId: d.session_id });
   }
 
+  if (loadFailed) return <div className="page page-wide"><LoadFailed what="your exams" onRetry={() => { setLoadFailed(false); load(); }} /></div>;
   if (data === null) return <CenterSpinner />;
   const exams = data.exams;
   const now = Date.now();

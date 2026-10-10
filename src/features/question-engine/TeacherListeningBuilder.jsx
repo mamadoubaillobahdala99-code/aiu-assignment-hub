@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import { Plus, X, Check } from "lucide-react";
 import { supabase } from "../../supabaseClient";
+import { LoadFailed } from "../../components/shared";
 import { TeacherQuestionForm } from "./TeacherQuestionForm";
 import { defaultInstructionFor, numberQuestions, FORM_INSTRUCTION, FLOWCHART_INSTRUCTION, WORDBANK_INSTRUCTION, SHORT_ANSWER_INSTRUCTION } from "./bulkParse";
 import { AudioFilePicker } from "./AudioFilePicker";
@@ -65,28 +66,39 @@ export function TeacherListeningBuilder({ classId, teacherId, setScreen, showToa
   // Same approach as the Reading builder: only the assignment's own
   // metadata is prefilled — Parts/questions always start fresh and
   // replace the old structure entirely on save.
+  // Livraison 95d: if the saved assignment (or its counts) cannot be read,
+  // the form is NOT shown empty, and a count is never taken as « 0 ».
+  const [loadFailed, setLoadFailed] = useState("");   // "" | "error" | "gone"
+  const [loadTry, setLoadTry] = useState(0);
   useEffect(() => {
     if (!editAssignmentId) return;
+    let alive = true;
     (async () => {
-      const { data: a } = await supabase.from("assignments").select("title, due_date, due_time, time_limit_minutes, auto_release_score, show_answer_review, listening_audio_url, listening_exam_mode, listening_check_minutes").eq("id", editAssignmentId).single();
-      if (a) {
-        setTitle(a.title || "");
-        setDueDate(a.due_date || "");
-        setDueTime(a.due_time || "");
-        setTimeLimit(a.time_limit_minutes ? String(a.time_limit_minutes) : "");
-        setAutoReleaseScore(a.auto_release_score ?? true);
-        setShowAnswerReview(a.show_answer_review ?? true);
-        setAudioMode(a.listening_audio_url ? "single" : "parts");
-        setSingleAudio(a.listening_audio_url ? { url: a.listening_audio_url, filename: "Listening recording" } : null);
-        setExamMode(Boolean(a.listening_exam_mode));
-        setCheckMinutes(String(a.listening_check_minutes ?? 2));
-      }
-      const { count } = await supabase.from("student_answers").select("id", { count: "exact", head: true }).eq("assignment_id", editAssignmentId);
+      setLoadFailed("");
+      const { data: a, error: aErr } = await supabase.from("assignments").select("title, due_date, due_time, time_limit_minutes, auto_release_score, show_answer_review, listening_audio_url, listening_exam_mode, listening_check_minutes").eq("id", editAssignmentId).maybeSingle();
+      if (!alive) return;
+      if (aErr || !a) { setLoadFailed(aErr ? "error" : "gone"); return; }
+      setTitle(a.title || "");
+      setDueDate(a.due_date || "");
+      setDueTime(a.due_time || "");
+      setTimeLimit(a.time_limit_minutes ? String(a.time_limit_minutes) : "");
+      setAutoReleaseScore(a.auto_release_score ?? true);
+      setShowAnswerReview(a.show_answer_review ?? true);
+      setAudioMode(a.listening_audio_url ? "single" : "parts");
+      setSingleAudio(a.listening_audio_url ? { url: a.listening_audio_url, filename: "Listening recording" } : null);
+      setExamMode(Boolean(a.listening_exam_mode));
+      setCheckMinutes(String(a.listening_check_minutes ?? 2));
+      const { count, error: cErr } = await supabase.from("student_answers").select("id", { count: "exact", head: true }).eq("assignment_id", editAssignmentId);
+      let stored;
+      try { stored = await countStoredQuestions(editAssignmentId); } catch { stored = null; }
+      if (!alive) return;
+      if (cErr || stored === null) { setLoadFailed("error"); return; }
       setExistingAnswerCount(count || 0);
-      setStoredQuestionCount(await countStoredQuestions(editAssignmentId));
+      setStoredQuestionCount(stored);
       setLoadingExisting(false);
     })();
-  }, [editAssignmentId]);
+    return () => { alive = false; };
+  }, [editAssignmentId, loadTry]);
 
   function handleAudioChange(partLocalId, f) {
     setParts((prev) => prev.map((p) => (p.localId === partLocalId ? { ...p, audioUrl: f?.url || "", audioFilename: f?.filename || "" } : p)));
@@ -449,7 +461,11 @@ export function TeacherListeningBuilder({ classId, teacherId, setScreen, showToa
   if (loadingExisting) {
     return (
       <div className="page page-wide">
-        <p className="empty-inline">Loading assignment…</p>
+        {loadFailed === "gone"
+          ? <p className="empty-inline">This assignment no longer exists.</p>
+          : loadFailed
+            ? <LoadFailed what="this assignment" onRetry={() => setLoadTry((n) => n + 1)} />
+            : <p className="empty-inline">Loading assignment…</p>}
       </div>
     );
   }

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { BookOpen, Plus, Copy, Check, Users, FileText } from "lucide-react";
 import { supabase } from "../../supabaseClient";
 import { makeCode } from "../../lib/utils";
-import { EmptyState, CenterSpinner, Modal } from "../../components/shared";
+import { EmptyState, CenterSpinner, Modal, LoadFailed } from "../../components/shared";
 import { loadTeacherWork } from "./teacherWork";
 
 // Livraison 72 — the teacher's classes as cards: join code (copy button),
@@ -54,9 +54,15 @@ export function TeacherHome({ userId, setScreen, showToast }) {
   const [data, setData] = useState(null);
   const [showCreate, setShowCreate] = useState(false);
 
-  const load = useCallback(async () => { setData(await loadTeacherWork(userId)); }, [userId]);
+  // Livraison 95d: a failed read is never « No classes yet ».
+  const [loadFailed, setLoadFailed] = useState(false);
+  const load = useCallback(async () => {
+    try { setData(await loadTeacherWork(userId)); setLoadFailed(false); }
+    catch { setLoadFailed(true); }
+  }, [userId]);
   useEffect(() => { load(); }, [load]);
 
+  if (loadFailed) return <div className="page page-wide"><LoadFailed what="your classes" onRetry={() => { setLoadFailed(false); load(); }} /></div>;
   if (data === null) return <CenterSpinner />;
   const openClass = (c) => setScreen({ name: "class", classId: c.id });
   const n = (v) => (v === null || v === undefined ? "—" : v);

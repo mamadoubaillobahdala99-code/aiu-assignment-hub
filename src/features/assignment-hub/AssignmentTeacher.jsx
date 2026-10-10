@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { Users, Copy, CheckCircle2, Trash2, Pencil, Eye } from "lucide-react";
+import { Users, Copy, CheckCircle2, Trash2, Pencil, Eye, ArrowLeft } from "lucide-react";
 import { supabase } from "../../supabaseClient";
 import { TYPES, fmtDueDateTime } from "../../lib/utils";
-import { EmptyState, CenterSpinner } from "../../components/shared";
+import { EmptyState, CenterSpinner, LoadFailed } from "../../components/shared";
 import { TeacherQuestionEngineReview } from "../question-engine/TeacherQuestionEngineReview";
 import { TeacherWritingReview } from "../question-engine/TeacherWritingReview";
 import { TeacherPaperPreview } from "../question-engine/TeacherPaperPreview";
@@ -93,9 +93,21 @@ export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen,
   // Livraison 82: the page's reads are asked at the same time (before:
   // up to 12 requests one after the other). Same reads, same rights, same
   // results; the class name and the students' work follow right after.
+  // Livraison 95d: a failed read is never shown as « 0 handed in » (it also
+  // hid the « N students submitted » warning before a deletion, and could
+  // hide the exam lock); the page says « Could not load — Retry ».
+  const [loadFailed, setLoadFailed] = useState("");   // "" | "error" | "gone"
+  const loadIdRef = useRef(0);
+  const shownRef = useRef(null);   // which assignment is on screen: a failed RE-read of it keeps it
+  const failedRead = useCallback(() => {
+    if (shownRef.current === assignmentId) showToast?.("Could not refresh this page. Check your connection.");
+    else setLoadFailed("error");
+  }, [showToast, assignmentId]);
   const load = useCallback(async () => {
-    const [{ data: a }, { data: item }, { data: r }, { count: sectionCount }, targetsRes] = await Promise.all([
-      supabase.from("assignments").select("*").eq("id", assignmentId).single(),
+    const myId = ++loadIdRef.current;
+    setLoadFailed("");
+    const first = await Promise.all([
+      supabase.from("assignments").select("*").eq("id", assignmentId).maybeSingle(),
       // Livraison 69: its exam, if any, and the names for the breadcrumb.
       supabase
         .from("exam_session_items")
@@ -115,7 +127,11 @@ export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen,
       // the team of that have not started yet (the database decides).
       teacherId ? supabase.rpc("duplicate_targets") : Promise.resolve(null),
     ]);
-    setAssignment(a || null);
+    if (myId !== loadIdRef.current) return;
+    if (first.slice(0, 4).some((x) => x.error)) { failedRead(); return; }
+    const [{ data: a }, { data: item }, { data: r }, { count: sectionCount }, targetsRes] = first;
+    if (!a) { setLoadFailed("gone"); return; }
+    setAssignment(a);
     const people = (r || []).map((x) => ({ id: x.student_id, name: x.profiles?.name || "Unknown" }));
     setRoster(people);
     const structured = (sectionCount || 0) > 0;
@@ -141,16 +157,24 @@ export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen,
 
     // Livraison 73: one reader for the statuses, times and results (same
     // "handed in" rules as before and as the class page).
-    const [cls, w] = await Promise.all([
-      className,
-      a ? loadAssignmentWork({ assignment: a, roster: people, structured }) : null,
-    ]);
+    let cls, w;
+    try {
+      [cls, w] = await Promise.all([
+        className,
+        a ? loadAssignmentWork({ assignment: a, roster: people, structured }) : null,
+      ]);
+    } catch {
+      if (myId === loadIdRef.current) failedRead();
+      return;
+    }
+    if (myId !== loadIdRef.current) return;
+    shownRef.current = assignmentId;
     if (cls) setHomeName(cls.data?.name || "Class");
     if (w) {
       setWork(w);
       setStructuredStudentIds(new Set(w.rows.filter((x) => x.open).map((x) => x.id)));
     }
-  }, [classId, assignmentId, teacherId]);
+  }, [classId, assignmentId, teacherId, failedRead]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -158,7 +182,9 @@ export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen,
   // reading the whole page again.
   const refreshWork = useCallback(async () => {
     if (!assignment) return;
-    const w = await loadAssignmentWork({ assignment, roster, structured: isStructured });
+    let w;
+    try { w = await loadAssignmentWork({ assignment, roster, structured: isStructured }); }
+    catch { return; }   // livraison 95d: keep what is on screen (a failed refresh never empties it)
     setWork(w);
     setStructuredStudentIds(new Set(w.rows.filter((x) => x.open).map((x) => x.id)));
   }, [assignment, roster, isStructured]);
@@ -242,6 +268,17 @@ export function AssignmentTeacher({ classId, assignmentId, teacherId, setScreen,
     });
   }
 
+
+  if (loadFailed) {
+    return (
+      <div className="page">
+        <button className="back-link" onClick={() => setScreen(returnTo || { name: "class", classId })}><ArrowLeft size={14} /> Back</button>
+        {loadFailed === "gone"
+          ? <p className="empty-inline">This assignment no longer exists.</p>
+          : <LoadFailed what="this assignment" onRetry={load} />}
+      </div>
+    );
+  }
 
   if (!assignment) return <CenterSpinner />;
 

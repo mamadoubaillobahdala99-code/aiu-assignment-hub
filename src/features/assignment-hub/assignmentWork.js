@@ -32,6 +32,12 @@ export async function collectExpiredCopies(assignment) {
   }
 }
 
+// Livraison 95d: a read that FAILS (network) is never turned into « 0
+// handed in », « no copy yet » or a band computed from nothing: this
+// throws, and the page (or the export) says it could not load.
+const failedRead = (...answers) => answers.some((x) => x && x.error);
+const loadError = () => new Error("Could not load");
+
 export async function loadAssignmentWork({ assignment, roster, structured }) {
   const id = assignment.id;
   const type = assignment.type;
@@ -40,7 +46,8 @@ export async function loadAssignmentWork({ assignment, roster, structured }) {
   if (!structured) { out.rows = [...byStudent.values()]; return out; }
 
   if (type === "Speaking") {
-    const { data: sv } = await supabase.from("speaking_views").select("student_id, first_viewed_at").eq("assignment_id", id);
+    const { data: sv, error: svErr } = await supabase.from("speaking_views").select("student_id, first_viewed_at").eq("assignment_id", id);
+    if (svErr) throw loadError();
     for (const v of sv || []) {
       const r = byStudent.get(v.student_id); if (!r) continue;
       r.status = "viewed"; r.at = v.first_viewed_at;
@@ -54,10 +61,12 @@ export async function loadAssignmentWork({ assignment, roster, structured }) {
   const feedbackQuery = supabase.from("assignment_feedback").select("student_id, band, released_at").eq("assignment_id", id);
 
   if (type === "Writing") {
-    const [{ data: fb }, { data: wr }] = await Promise.all([
+    const wAnswers = await Promise.all([
       feedbackQuery,
       supabase.from("writing_responses").select("student_id, created_at, submitted_at").eq("assignment_id", id),
     ]);
+    if (failedRead(...wAnswers)) throw loadError();
+    const [{ data: fb }, { data: wr }] = wAnswers;
     const feedback = new Map((fb || []).map((f) => [f.student_id, f]));
     for (const w of wr || []) {
       const r = byStudent.get(w.student_id); if (!r) continue;
@@ -82,12 +91,14 @@ export async function loadAssignmentWork({ assignment, roster, structured }) {
   // with its numbers (a multi-answer question takes several numbers) —
   // the whole paper in one call (get_paper, the teacher's own rights),
   // with the feedback, the answers and the copies, all at once.
-  const [{ data: fb }, paper, { data: sa }, { data: att }] = await Promise.all([
+  const rlAnswers = await Promise.all([
     feedbackQuery,
     loadPaperTree(id, { withKeys: false }),
     supabase.from("student_answers").select("student_id, question_id, is_correct, points_earned, answered_at").eq("assignment_id", id),
     supabase.from("exam_attempts").select("student_id, started_at, submitted_at").eq("assignment_id", id),
   ]);
+  if (failedRead(rlAnswers[0], rlAnswers[2], rlAnswers[3]) || rlAnswers[1].status !== "ok") throw loadError();
+  const [{ data: fb }, paper, { data: sa }, { data: att }] = rlAnswers;
   const feedback = new Map((fb || []).map((f) => [f.student_id, f]));
   const questions = [];
   let next = 1;
