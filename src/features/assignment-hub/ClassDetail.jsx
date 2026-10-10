@@ -1,9 +1,9 @@
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { BookOpen, Users, Plus, AlertTriangle, FileText, ChevronRight, Copy, CheckCircle2, Headphones, PenLine, Mic, ArrowLeft, Trash2, UserMinus, ChevronDown } from "lucide-react";
 import { supabase } from "../../supabaseClient";
 import { fmtDate } from "../../lib/utils";
-import { EmptyState, CenterSpinner, Modal, StatusBadge } from "../../components/shared";
+import { EmptyState, CenterSpinner, Modal, StatusBadge, LoadFailed } from "../../components/shared";
 import { AssignmentsTab } from "./AssignmentsTab";
 import { confirmDialog } from "../../lib/confirmDialog";
 import { dueInfo } from "../../lib/due";
@@ -26,17 +26,33 @@ export function ClassDetail({ classId, setScreen, showToast }) {
   const [confirmName, setConfirmName] = useState("");
   // Livraison 70: the class's figures (script 44). null = not available.
   const [overview, setOverview] = useState(null);
+  // Livraison 95: "" | "error" | "gone". A failed read is never shown as an
+  // empty class (it would also make « Delete » look harmless).
+  const [loadFailed, setLoadFailed] = useState("");
+  const loadIdRef = useRef(0);
+  const countIdRef = useRef(0);
 
   // Livraison 82: the four reads are asked at the same time (before: one
   // after the other). Same reads, same rights; an exam's box still leads
   // to its exam, and nothing of it is shown.
   const load = useCallback(async () => {
-    const [{ data: c }, { data: r }, { data: a }, { data: ov, error: ovErr }] = await Promise.all([
-      supabase.from("classes").select("*").eq("id", classId).single(),
+    const myId = ++loadIdRef.current;   // a late answer of an older load is ignored
+    setLoadFailed("");
+    const [{ data: c, error: cErr }, { data: r, error: rErr }, { data: a, error: aErr }, { data: ov, error: ovErr }] = await Promise.all([
+      supabase.from("classes").select("*").eq("id", classId).maybeSingle(),
       supabase.from("roster").select("student_id, joined_at, profiles(name)").eq("class_id", classId),
       supabase.from("assignments").select("*").eq("class_id", classId).order("created_at", { ascending: false }),
       supabase.rpc("class_overview", { p_class_id: classId }),
     ]);
+    if (myId !== loadIdRef.current) return;
+    if (cErr || rErr || aErr) {
+      setLoadFailed("error");
+      return;
+    }
+    if (!c) {
+      setLoadFailed("gone");
+      return;
+    }
     // Livraison 69: an exam keeps its papers in a private box that is a
     // class underneath. It is never shown as a class: whoever lands here
     // (an old link, a refresh) is taken to the exam itself.
@@ -76,11 +92,20 @@ export function ClassDetail({ classId, setScreen, showToast }) {
       setDeleteStats({ copies: 0, answers: 0, writings: 0 });
       return;
     }
-    const [handed, answers, writings] = await Promise.all([
+    const myId = ++countIdRef.current;
+    const counts = await Promise.all([
       supabase.from("exam_attempts").select("assignment_id", { count: "exact", head: true }).in("assignment_id", assignmentIds).not("submitted_at", "is", null),
       supabase.from("student_answers").select("id", { count: "exact", head: true }).in("assignment_id", assignmentIds),
       supabase.from("writing_responses").select("id", { count: "exact", head: true }).in("assignment_id", assignmentIds).not("submitted_at", "is", null),
     ]);
+    if (myId !== countIdRef.current) return;
+    // Livraison 95: a count that failed is never taken as « 0 » — the
+    // dialog says so, and « Delete » stays off until the counts are read.
+    if (counts.some((x) => x.error)) {
+      setDeleteStats({ failed: true });
+      return;
+    }
+    const [handed, answers, writings] = counts;
     setDeleteStats({ copies: handed.count || 0, answers: answers.count || 0, writings: writings.count || 0 });
   }
 
@@ -110,6 +135,17 @@ export function ClassDetail({ classId, setScreen, showToast }) {
     setScreen({ name: "home" });
   }
 
+  if (loadFailed) {
+    return (
+      <div className="page">
+        <button className="back-link" onClick={() => setScreen({ name: "home" })}><ArrowLeft size={14} /> My classes</button>
+        {loadFailed === "gone"
+          ? <p className="empty-inline">This class no longer exists.</p>
+          : <LoadFailed what="this class" onRetry={load} />}
+      </div>
+    );
+  }
+
   if (!cls) return <CenterSpinner />;
 
   if (activeStudent) {
@@ -130,13 +166,23 @@ export function ClassDetail({ classId, setScreen, showToast }) {
       <Breadcrumb items={[{ label: "My classes", onClick: () => setScreen({ name: "home" }) }, { label: cls.name }]} />
 
       {deleteOpen && (() => {
-        const work = deleteStats ? deleteStats.copies + deleteStats.answers + deleteStats.writings : 0;
+        const failed = Boolean(deleteStats?.failed);
+        const work = deleteStats && !failed ? deleteStats.copies + deleteStats.answers + deleteStats.writings : 0;
         const hasWork = work > 0;
-        const ready = deleteStats !== null && (!hasWork || confirmName.trim() === cls.name);
+        const ready = deleteStats !== null && !failed && (!hasWork || confirmName.trim() === cls.name);
         return (
           <Modal title={`Delete "${cls.name}"`} onClose={() => setDeleteOpen(false)}>
             {deleteStats === null ? (
               <p className="muted-p">Checking what this class contains…</p>
+            ) : failed ? (
+              <div className="cd-del-warning" role="alert">
+                <AlertTriangle size={15} />
+                <span>
+                  Could not check what this class contains, so it cannot be deleted right now.
+                  Check your internet connection and{" "}
+                  <button type="button" className="panel-link" style={{ display: "inline", padding: 0 }} onClick={openDeleteDialog}>try again</button>.
+                </span>
+              </div>
             ) : (
               <>
                 <p className="muted-p" style={{ marginTop: 0 }}>
