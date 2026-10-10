@@ -1,23 +1,18 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { ArrowLeft, GripVertical, ChevronLeft, ChevronRight, Headphones, Menu, X, MonitorSmartphone } from "lucide-react";
 import { supabase } from "../../supabaseClient";
-import { QuestionRenderer } from "./QuestionRenderer";
-import { SummaryCompletion } from "./SummaryCompletion";
-import { NotesCompletion } from "./NotesCompletion";
-import { TableCompletion } from "./TableCompletion";
-import { SentenceCompletion } from "./SentenceCompletion";
-import { FormCompletion, FlowchartCompletion, WordBankCompletion } from "./CompletionExtras";
-import { MatchingGrid } from "./MatchingGrid";
-import { AudioPlayer } from "./AudioPlayer";
-import { parseCompletionPayload, numberQuestions, questionSlotCount } from "./bulkParse";
-import { HighlightableText } from "./HighlightableText";
-import { useExamTimer, ExamTimerDisplay } from "./ExamTimer";
-import { useListeningAudio, ListeningAudioBar } from "./ListeningAudio";
-import { GroupImage } from "./GroupImage";
+import { numberQuestions, questionSlotCount } from "./bulkParse";
+import { useExamTimer } from "./ExamTimer";
+import { useListeningAudio } from "./ListeningAudio";
 import { useIsCompact, useVisualViewportHeight, useKeepFocusVisible } from "./useViewport";
 import { useInvigilation } from "./useInvigilation";
-import { ExamStripButtons, ExamFullscreenButton, ExamExitButton } from "./ExamSidebarButtons";
-import { InvigilationOverlay, ExamHandedIn } from "./InvigilationOverlay";
+import { ExamHandedIn } from "./InvigilationOverlay";
+import { readLocalAnswers, writeLocalAnswers, clearLocalAnswers, readSync, writeSync, timeOf, canon, mergeCopies, onlyKnown } from "./examAnswerStore";
+import { loadExamPaper } from "./examPaperLoad";
+import { renderTimeOver, renderLoading, renderStartScreen, PaperUnavailable, PaperLoadError } from "./ExamRunnerScreens";
+import { renderQuestions, renderExamPage } from "./ExamRunnerBody";
+
+// Livraison 99 — still exported from here: AssignmentOpenBridge imports them.
+export { PaperUnavailable, PaperLoadError };
 
 // The countdown comes from useExamTimer: the start time is written once
 // by the server (when the student presses Start) and the remaining time
@@ -27,84 +22,6 @@ import { InvigilationOverlay, ExamHandedIn } from "./InvigilationOverlay";
 // Answers are kept in this browser while the exam is open (a refresh
 // doesn't lose them) and are sent automatically when the time runs out.
 
-const localKey = (userId, assignmentId) => `aiu-exam-answers:${userId}:${assignmentId}`;
-function readLocalAnswers(userId, assignmentId) {
-  try {
-    const raw = window.localStorage.getItem(localKey(userId, assignmentId));
-    const parsed = raw ? JSON.parse(raw) : null;
-    return parsed && typeof parsed === "object" ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-function writeLocalAnswers(userId, assignmentId, answers) {
-  try {
-    window.localStorage.setItem(localKey(userId, assignmentId), JSON.stringify(answers));
-  } catch {
-    /* storage unavailable: the exam still works, only refresh-recovery is lost */
-  }
-}
-function clearLocalAnswers(userId, assignmentId) {
-  try {
-    window.localStorage.removeItem(localKey(userId, assignmentId));
-    window.localStorage.removeItem(syncKey(userId, assignmentId));
-  } catch {
-    /* ignore */
-  }
-}
-// Livraison 88c: what this browser last sent to (or took from) the server:
-// the copy, and the SERVER time of that backup. A newer backup on the
-// server means another device saved since.
-const syncKey = (userId, assignmentId) => `aiu-exam-sync:${userId}:${assignmentId}`;
-function readSync(userId, assignmentId) {
-  try {
-    const v = JSON.parse(window.localStorage.getItem(syncKey(userId, assignmentId)) || "null");
-    return v && typeof v === "object" && typeof v.at === "string" ? { at: v.at, sent: v.sent && typeof v.sent === "object" ? v.sent : {} } : null;
-  } catch {
-    return null;
-  }
-}
-function writeSync(userId, assignmentId, at, sent) {
-  try {
-    if (at) window.localStorage.setItem(syncKey(userId, assignmentId), JSON.stringify({ at, sent: sent || {} }));
-  } catch {
-    /* storage unavailable */
-  }
-}
-// "2026-10-07T08:13:04.492057+00:00" → milliseconds (fraction cut to 3
-// digits, which every browser reads).
-const timeOf = (at) => {
-  if (!at || typeof at !== "string") return null;
-  const t = Date.parse(at.replace(/(\.\d{3})\d+/, "$1"));
-  return Number.isFinite(t) ? t : null;
-};
-// The same answers always give the same text, whatever the order of the
-// keys (the database re-orders them).
-function canon(v) {
-  if (Array.isArray(v)) return `[${v.map(canon).join(",")}]`;
-  if (v && typeof v === "object") return `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${canon(v[k])}`).join(",")}}`;
-  return JSON.stringify(v === undefined ? null : v);
-}
-// The other device's copy, plus what was changed HERE since this browser
-// last synced (base): nothing typed on either device is lost.
-function mergeCopies(server, local, base) {
-  const out = { ...server };
-  const keys = new Set([...Object.keys(local || {}), ...Object.keys(base || {})]);
-  for (const k of keys) {
-    if (canon(local?.[k]) === canon(base?.[k])) continue;
-    if (local?.[k] === undefined) delete out[k];
-    else out[k] = local[k];
-  }
-  return out;
-}
-// Only the answers to this paper's questions.
-function onlyKnown(answers, ids) {
-  const out = {};
-  if (!answers || typeof answers !== "object" || Array.isArray(answers)) return out;
-  const known = new Set(ids);
-  for (const [qid, v] of Object.entries(answers)) if (known.has(qid)) out[qid] = v;
-  return out;
-}
 
 export function StudentExamRunner({ userId, classId, assignmentId, setScreen, showToast, onSubmitted }) {
   const [assignment, setAssignment] = useState(null);
@@ -746,15 +663,7 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
   }
 
   if (timeOver) {
-    return (
-      <div className="page">
-        <button className="back-link" onClick={() => setScreen({ name: "home" })}><ArrowLeft size={14} /> Back to assignments</button>
-        <div className="qe-feedback-locked">
-          <p><strong>The time for this exam is over.</strong></p>
-          <p>No answers could be submitted after the end of the time limit.</p>
-        </div>
-      </div>
-    );
+    return renderTimeOver({ setScreen });
   }
 
   submitRef.current = submitAll;
@@ -766,12 +675,7 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
     return <PaperLoadError onBack={() => setScreen({ name: "home" })} onRetry={load} />;
   }
   if (loadState !== "ok" || !assignment || sections.length === 0) {
-    return (
-      <div className="page">
-        <button className="back-link" onClick={() => setScreen({ name: "home" })}><ArrowLeft size={14} /> All assignments</button>
-        <p className="empty-inline">Loading…</p>
-      </div>
-    );
+    return renderLoading({ setScreen });
   }
 
   const activeSection = sections[activeIndex];
@@ -784,41 +688,7 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
   // until the student presses Start (see the timer effect above), so
   // nobody loses time on a screen they haven't read yet.
   if (!started && results === null) {
-    return (
-      <div className="wf-overlay qe-exam-shell">
-        <div className="qe-start-screen">
-          <div className="qe-start-card">
-            <div className="eyebrow">{assignment.type}</div>
-            <h1 className="page-title" style={{ marginTop: 4 }}>{assignment.title}</h1>
-            <p className="qe-start-meta">
-              {sections.length} part{sections.length > 1 ? "s" : ""} · {totalQuestionCount} question{totalQuestionCount > 1 ? "s" : ""}
-              {assignment.time_limit_minutes ? ` · ${assignment.time_limit_minutes} minutes` : ""}
-            </p>
-            {assignment.time_limit_minutes && (
-              <p className="qe-start-note">
-                Your timer starts when you press Start. When the time runs out, your answers are submitted automatically.
-              </p>
-            )}
-            {compact && (
-              <div className="qe-start-device-note">
-                <MonitorSmartphone size={16} />
-                <span>
-                  You are on a small screen. You can work here, but a real exam is much easier
-                  on a computer or a tablet — the text and the questions then sit side by side.
-                </span>
-              </div>
-            )}
-            {startError && <div className="field-error" style={{ marginTop: 14 }}>{startError}</div>}
-            <button className="btn-primary qe-start-btn" disabled={starting || timer.status === "loading" || timer.status === "expired"} onClick={startExam}>
-              {starting ? "Starting…" : "Start exam"}
-            </button>
-            <button className="back-link" style={{ marginTop: 14 }} onClick={() => setScreen({ name: "home" })}>
-              <ArrowLeft size={14} /> Back to assignments
-            </button>
-          </div>
-        </div>
-      </div>
-    );
+    return renderStartScreen({ assignment, compact, sections, setScreen, startError, startExam, starting, timer, totalQuestionCount });
   }
 
   const perPartMinutes = assignment.time_limit_minutes ? Math.max(1, Math.round(assignment.time_limit_minutes / sections.length)) : null;
@@ -832,428 +702,21 @@ export function StudentExamRunner({ userId, classId, assignmentId, setScreen, sh
 
   const isListening = assignment.type === "Listening";
 
-  const questionsContent = (
-    <>
-      {results && (
-        <div className="feedback-panel" style={{ marginBottom: 16 }}>
-          <div className="feedback-band">{totalPointsEarned} / {totalPointsPossible} points</div>
-        </div>
-      )}
+  // Livraison 99 — the questions and the page are drawn in ExamRunnerBody.jsx.
+  const questionsContent = renderQuestions({
+    activeSection, answers, assignmentId, questionLabel, results, setAnswers, totalPointsEarned,
+    totalPointsPossible, userId,
+  });
 
-      {activeSection.groups.map((group) => (
-        <div key={group.id} className="qe-group-block">
-          <div className="qe-group-heading">
-            {group.startNumber === group.endNumber ? `Question ${group.startNumber}` : `Questions ${group.startNumber}-${group.endNumber}`}
-          </div>
-          {group.instruction && <p className="qe-section-instruction">{group.instruction}</p>}
-          {group.imageUrl && <GroupImage url={group.imageUrl} />}
 
-          {group.passageText ? (
-            (() => {
-              const payload = parseCompletionPayload(group.passageText);
-              const commonProps = {
-                questions: group.questions,
-                answers,
-                onChange: (qid, val) => setAnswers((prev) => ({ ...prev, [qid]: val })),
-                results,
-                disabled: results !== null,
-                startNumber: group.startNumber,
-                assignmentId,
-                userId,
-              };
-              if (payload.style === "notes") return <NotesCompletion blocks={payload.blocks || []} {...commonProps} />;
-              if (payload.style === "table") return <TableCompletion headers={payload.headers || []} rows={payload.rows || []} {...commonProps} />;
-              if (payload.style === "sentences") return <SentenceCompletion sentences={payload.sentences || []} {...commonProps} />;
-              if (payload.style === "form") return <FormCompletion title={payload.title} rows={payload.rows || []} {...commonProps} />;
-              if (payload.style === "flowchart") return <FlowchartCompletion title={payload.title} steps={payload.steps || []} {...commonProps} />;
-              if (payload.style === "wordbank") return <WordBankCompletion text={payload.text} options={payload.options || []} {...commonProps} />;
-              return <SummaryCompletion text={payload.text} {...commonProps} />;
-            })()
-          ) : group.questions[0]?.type?.startsWith("matching_") ? (
-            <MatchingGrid
-              questions={group.questions}
-              answers={answers}
-              onChange={(qid, val) => setAnswers((prev) => ({ ...prev, [qid]: val }))}
-              results={results}
-              disabled={results !== null}
-              startNumber={group.startNumber}
-              assignmentId={assignmentId}
-              userId={userId}
-            />
-          ) : (
-            group.questions.map((q, i) => (
-              <div key={q.id} id={`question-${group.questionNumbers[i]}`} className="qe-numbered-question">
-                <span className="rf-answer-num qe-question-badge">{questionLabel(group.questionNumbers[i], q)}</span>
-                <div style={{ flex: 1 }}>
-                  <QuestionRenderer
-                    question={q}
-                    value={answers[q.id] ?? null}
-                    onChange={(val) => setAnswers((prev) => ({ ...prev, [q.id]: val }))}
-                    disabled={results !== null}
-                    assignmentId={assignmentId}
-                    userId={userId}
-                  />
-                  {results && (
-                    <div className={results[q.id]?.isCorrect ? "qe-result-correct" : "qe-result-incorrect"}>
-                      {q.points > 1
-                        ? `${results[q.id]?.earned ?? 0} / ${q.points} points`
-                        : results[q.id]?.isCorrect ? "Correct" : "Incorrect"}
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-      ))}
-    </>
-  );
-
-  return (
-    <div className={`wf-overlay qe-exam-shell ${compact ? "qe-compact" : ""}`}>
-      <InvigilationOverlay invig={invig} />
-      <div className="qe-exam-layout">
-        {/* On a small screen the panel slides over the page instead of
-            taking a fixed column; tapping the dark backdrop closes it. */}
-        {compact && sidebarOpen && <div className="qe-exam-drawer-backdrop" onClick={() => setSidebarOpen(false)} />}
-        <aside className={`qe-exam-sidebar ${sidebarOpen ? "" : "collapsed"} ${compact ? "qe-exam-drawer" : ""}`}>
-          {!compact && (
-            <button
-              className="qe-exam-sidebar-toggle"
-              onClick={() => setSidebarOpen((v) => !v)}
-              title={sidebarOpen ? "Hide panel" : "Show panel"}
-            >
-              {sidebarOpen ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
-            </button>
-          )}
-
-          {!compact && !sidebarOpen && (
-            <ExamStripButtons
-              showExit={!invig.watched}
-              showSubmit={results === null}
-              submitting={submitting}
-              onSubmit={() => setConfirmOpen(true)}
-              onExit={() => { invig.stopWatching(); setScreen({ name: "home" }); }}
-            />
-          )}
-
-          {sidebarOpen && (
-            <div className="qe-exam-sidebar-inner">
-              {teacherName && <div className="qe-exam-teacher-band">{teacherName}</div>}
-              {compact && (
-                <button className="qe-exam-drawer-close" onClick={() => setSidebarOpen(false)} title="Close">
-                  <X size={16} /> Close
-                </button>
-              )}
-              <div className="qe-exam-sidebar-title">Assignment</div>
-
-              {isListening && !singleAudioUrl && activeSection.audioUrl && (
-                <button
-                  className={`qe-exam-sidebar-item ${audioOpen ? "active" : ""}`}
-                  onClick={() => setAudioOpen((v) => !v)}
-                >
-                  <Headphones size={15} /> Audio file
-                </button>
-              )}
-
-              {className && (
-                <div className="qe-exam-sidebar-section">
-                  <div className="qe-exam-sidebar-label">Class</div>
-                  <div className="qe-exam-sidebar-value">{className}</div>
-                </div>
-              )}
-
-              <ExamFullscreenButton invig={invig} />
-
-              {results === null && (
-                <button className="btn-primary qe-exam-sidebar-submit" disabled={submitting} onClick={() => setConfirmOpen(true)}>
-                  {submitting ? "Submitting…" : "Submit exam"}
-                </button>
-              )}
-
-              <ExamExitButton invig={invig} onExit={() => { invig.stopWatching(); setScreen({ name: "home" }); }} />
-            </div>
-          )}
-        </aside>
-
-        <div className="qe-exam-main">
-          <div className="app-topbar qe-exam-topbar">
-            {compact && (
-              <button className="qe-exam-menu-btn" onClick={() => setSidebarOpen(true)} title="Menu" aria-label="Open the menu">
-                <Menu size={18} />
-              </button>
-            )}
-            Assignment
-            {timer.status === "running" && results === null && <ExamTimerDisplay remainingSec={timer.remainingSec} />}
-          </div>
-
-          {/* Reading on a small screen: the text and the questions take
-              turns instead of sharing a 390px-wide row. */}
-          {compact && !isListening && (
-            <div className="qe-tabbar" role="tablist">
-              <button
-                role="tab"
-                aria-selected={mobileTab === "text"}
-                className={`qe-tab ${mobileTab === "text" ? "active" : ""}`}
-                onClick={() => setMobileTab("text")}
-              >
-                Text
-              </button>
-              <button
-                role="tab"
-                aria-selected={mobileTab === "questions"}
-                className={`qe-tab ${mobileTab === "questions" ? "active" : ""}`}
-                onClick={() => setMobileTab("questions")}
-              >
-                Questions{partRangeStart !== null ? ` ${partRangeStart}-${partRangeEnd}` : ""}
-              </button>
-            </div>
-          )}
-          {isListening ? (
-        <div className="qe-exam-body qe-listening-body" ref={bodyRef}>
-          <div className="qe-listening-panel" ref={questionsPanelRef}>
-            <p className="qe-part-tag">{activeSection.title}</p>
-            {partRangeStart !== null && (
-              <p className="qe-part-quicksummary">Listen and answer questions {partRangeStart}-{partRangeEnd}</p>
-            )}
-            {singleAudioUrl && (
-              <div className="qe-lsa-wrap">
-                <ListeningAudioBar
-                  url={singleAudioUrl}
-                  filename={assignment.title}
-                  audio={listeningAudio}
-                  onTimeUp={onAudioTimeUp}
-                  disabled={results !== null || timeOver}
-                  autoStart={inExam && started}
-                />
-              </div>
-            )}
-            {!singleAudioUrl && activeSection.audioUrl && audioOpen && (
-              <AudioPlayer
-                key={activeSection.id}
-                url={activeSection.audioUrl}
-                maxPlays={activeSection.maxPlays}
-                assignmentId={assignmentId}
-                userId={userId}
-                sectionId={activeSection.id}
-                onClose={() => setAudioOpen(false)}
-              />
-            )}
-            {questionsContent}
-          </div>
-        </div>
-      ) : (
-        <div className="qe-exam-body" ref={bodyRef}>
-          <div
-            className={`qe-passage-panel ${compact && mobileTab !== "text" ? "qe-tab-hidden" : ""}`}
-            style={compact ? undefined : { flexBasis: `${leftWidthPct}%` }}
-          >
-            <div className="qe-passage-panel-inner">
-              <p className="qe-part-tag">{activeSection.title}</p>
-              {partRangeStart !== null && (
-                <p className="qe-part-quicksummary">Read the text and answer questions {partRangeStart}-{partRangeEnd}</p>
-              )}
-              {perPartMinutes !== null && partRangeStart !== null && (
-                <p className="qe-passage-meta">
-                  You should spend about {perPartMinutes} minutes on Questions {partRangeStart}-{partRangeEnd}, which are based on Reading Passage {activeIndex + 1} below.
-                </p>
-              )}
-              {activeTitle && <h2 className="qe-passage-title">{activeTitle}</h2>}
-              <HighlightableText assignmentId={assignmentId} userId={userId} scopeType="passage" scopeId={activeSection.id} text={activePassageText} images />
-            </div>
-          </div>
-
-          {!compact && (
-            <div className="qe-resizer" onPointerDown={startResize}>
-              <GripVertical size={14} />
-            </div>
-          )}
-
-          <div
-            className={`qe-questions-panel ${compact && mobileTab !== "questions" ? "qe-tab-hidden" : ""}`}
-            ref={questionsPanelRef}
-            style={compact ? undefined : { flexBasis: `${100 - leftWidthPct}%` }}
-          >
-            {questionsContent}
-          </div>
-        </div>
-      )}
-
-      <div className="qe-nav-bar" ref={navBarRef}>
-        {sections.map((s, i) => {
-          // Counted in answer-sheet numbers: a "choose TWO" question is two.
-          const total = s.groups.reduce((sum, g) => sum + g.questions.reduce((n, q) => n + questionSlotCount(q), 0), 0);
-          if (i !== activeIndex) {
-            return (
-              <div key={s.id} className="qe-nav-part-segment inactive-part" onClick={() => { holdRef.current = false; setActiveIndex(i); if (compact) setMobileTab("text"); }}>
-                <button className="qe-nav-part-pill">{s.title}: {total} question{total !== 1 ? "s" : ""}</button>
-              </div>
-            );
-          }
-          return (
-            <div key={s.id} className="qe-nav-part-segment qe-nav-seg-numbers">
-              <div className="qe-nav-active-part">
-                <span className="qe-nav-part-label">{s.title}</span>
-                <div className="qe-nav-numbers">
-                  {s.groups.flatMap((group) => group.questions.flatMap((q, qi) => slotsOf(group, q, qi))).map((num) => (
-                    <button
-                      key={num}
-                      className={`qe-question-nav-item ${slotOwner[num] === visibleNum ? "qe-nav-item-visible" : ""}`}
-                      onClick={() => goToNumber(num)}
-                    >
-                      {num}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          );
-        })}
-          </div>
-        </div>
-      </div>
-
-      {confirmOpen && (
-        <div className="qe-confirm-backdrop" onClick={() => setConfirmOpen(false)}>
-          <div className="qe-confirm-card" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
-            <h2 className="qe-confirm-title">Submit exam</h2>
-            <p className="qe-confirm-text">Are you sure you want to finish and submit? You can't change your answers afterwards.</p>
-
-            {unansweredSlots.length > 0 ? (
-              <>
-                <p className="qe-confirm-text" style={{ fontWeight: 600 }}>
-                  {unansweredSlots.length} question{unansweredSlots.length > 1 ? "s have" : " has"} no answer yet:
-                </p>
-                <div className="qe-confirm-unanswered">
-                  {unansweredSlots.map((u) => (
-                    <button key={u.num} className="qe-confirm-chip" onClick={() => jumpToQuestion(u.num, u.partIndex)} title="Go to this question">
-                      {u.num}
-                    </button>
-                  ))}
-                </div>
-              </>
-            ) : (
-              <p className="qe-confirm-text qe-confirm-allset">All questions have an answer.</p>
-            )}
-
-            <div className="qe-confirm-actions">
-              <button className="btn-ghost" onClick={() => setConfirmOpen(false)}>Keep working</button>
-              <button className="btn-primary" disabled={submitting} onClick={() => submitAll(false)}>
-                {submitting ? "Submitting…" : "Submit exam"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
+  return renderExamPage({
+    activeIndex, activePassageText, activeSection, activeTitle, assignment, assignmentId, audioOpen, bodyRef,
+    className, compact, confirmOpen, goToNumber, holdRef, inExam, invig, isListening, jumpToQuestion,
+    leftWidthPct, listeningAudio, mobileTab, navBarRef, onAudioTimeUp, partRangeEnd, partRangeStart,
+    perPartMinutes, questionsContent, questionsPanelRef, results, sections, setActiveIndex, setAudioOpen,
+    setConfirmOpen, setMobileTab, setScreen, setSidebarOpen, sidebarOpen, singleAudioUrl, slotOwner, slotsOf,
+    started, startResize, submitAll, submitting, teacherName, timeOver, timer, unansweredSlots, userId,
+    visibleNum,
+  });
 }
 
-// ---------------------------------------------------------------------------
-// Messages shown instead of the exam. Also used by AssignmentOpenBridge, so a
-// refused paper reads exactly the same wherever it is opened.
-// ---------------------------------------------------------------------------
-
-export function PaperUnavailable({ onBack }) {
-  return (
-    <div className="page">
-      <button className="back-link" onClick={onBack}><ArrowLeft size={14} /> All assignments</button>
-      <div className="qe-feedback-locked">
-        <p><strong>You can't open this paper right now.</strong></p>
-        <p>It may be locked until you finish the previous paper, the exam may be closed, or you may have already submitted it. If this looks wrong, ask your teacher.</p>
-      </div>
-    </div>
-  );
-}
-
-export function PaperLoadError({ onBack, onRetry }) {
-  return (
-    <div className="page">
-      <button className="back-link" onClick={onBack}><ArrowLeft size={14} /> All assignments</button>
-      <div className="qe-feedback-locked">
-        <p><strong>Connection problem.</strong></p>
-        <p>This paper could not be loaded. Check your internet connection and try again.</p>
-        <button className="btn-primary" onClick={onRetry}>Try again</button>
-      </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Loading the paper for the exam. Always WITHOUT the answer key.
-// Result: { status: "ok", assignment, sections } | { status: "refused" } | { status: "error" }
-//   sections = [{ ...section, groups: [{ ...group, questions: [...] }] }]
-// ---------------------------------------------------------------------------
-
-// One call (get_paper, sql/30). It runs with the student's own rights: the
-// answer is null exactly when the paper's own row is not readable — the row
-// that carries the exam locks. null = refused, and then there is NO fallback.
-// Only a real failure (network, server, function missing) falls back.
-async function loadExamPaper(assignmentId) {
-  try {
-    const { data, error } = await supabase.rpc("get_paper", { p_assignment_id: assignmentId, p_with_keys: false });
-    if (!error) {
-      if (data === null) return { status: "refused" };
-      if (data && data.assignment && Array.isArray(data.sections)) {
-        const sections = data.sections.map((s) => ({
-          ...s,
-          groups: (s.groups || []).map((g) => ({ ...g, questions: (g.questions || []).filter(Boolean) })),
-        }));
-        // Readable but no Part: it changed while loading. Not shown; Try again settles it.
-        if (sections.length === 0) return { status: "error" };
-        return { status: "ok", assignment: data.assignment, sections };
-      }
-      console.warn("get_paper returned an unexpected shape, falling back to step-by-step loading.");
-    } else {
-      console.warn("get_paper failed, falling back to step-by-step loading:", error.message);
-    }
-  } catch (e) {
-    console.warn("get_paper failed, falling back to step-by-step loading:", e?.message || e);
-  }
-  return loadExamPaperStepByStep(assignmentId);
-}
-
-// Safety net: the loading this screen has always used, one query at a time.
-// The paper's OWN row decides first. If it is not readable, we stop at once:
-// the parts and questions are never read (their tables do not check the
-// exam locks themselves). maybeSingle: no row = no error, so a refusal is
-// never mistaken for a connection problem.
-async function loadExamPaperStepByStep(assignmentId) {
-  try {
-    const { data: a, error: aError } = await supabase.from("assignments").select("*").eq("id", assignmentId).maybeSingle();
-    if (aError) return { status: "error" };
-    if (!a) return { status: "refused" };
-
-    const { data: sectionRows, error: sError } = await supabase
-      .from("exam_sections")
-      .select("id, title, passage_title, passage_text, audio_url, max_plays, order_index")
-      .eq("assignment_id", assignmentId)
-      .order("order_index");
-    if (sError || !sectionRows || sectionRows.length === 0) return { status: "error" };
-
-    const sections = [];
-    for (const s of sectionRows) {
-      const { data: groupRows, error: gError } = await supabase
-        .from("question_groups")
-        .select("id, instruction, passage_text, image_url, order_index")
-        .eq("section_id", s.id)
-        .order("order_index");
-      if (gError) return { status: "error" };
-
-      const groups = [];
-      for (const g of groupRows || []) {
-        const { data: links, error: lError } = await supabase
-          .from("assignment_questions")
-          .select("order_index, questions(*)")
-          .eq("group_id", g.id)
-          .order("order_index");
-        if (lError) return { status: "error" };
-        groups.push({ ...g, questions: (links || []).map((l) => l.questions).filter(Boolean) });
-      }
-      sections.push({ ...s, groups });
-    }
-    return { status: "ok", assignment: a, sections };
-  } catch {
-    return { status: "error" };
-  }
-}
