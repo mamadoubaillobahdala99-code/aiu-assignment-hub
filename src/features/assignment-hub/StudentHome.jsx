@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { Users, FileText, Search } from "lucide-react";
 import { TYPES } from "../../lib/utils";
-import { EmptyState, CenterSpinner } from "../../components/shared";
+import { EmptyState, CenterSpinner, LoadFailed } from "../../components/shared";
 import { loadStudentWork, rememberedStudentWork, isDone, sortTodo, sortDone, actionLabel, resultLabel } from "./studentWork";
 
 // Livraison 71 — the student's full list of assignments ("My assignments"),
@@ -121,10 +121,16 @@ export function useListFilter(items) {
 export function StudentAssignments({ userId, setScreen }) {
   // Livraison 82: what this page last read is shown at once, then refreshed.
   const [data, setData] = useState(() => rememberedStudentWork(userId));
-  const load = useCallback(async () => { setData(await loadStudentWork(userId)); }, [userId]);
+  // Livraison 95c: a failed read says so (never « no class » / « Start » on a paper handed in).
+  const [loadFailed, setLoadFailed] = useState(false);
+  const load = useCallback(async () => {
+    try { setData(await loadStudentWork(userId)); setLoadFailed(false); }
+    catch { setLoadFailed(true); }
+  }, [userId]);
   useEffect(() => { load(); }, [load]);
   const { filtered, bar, reset, active } = useListFilter(data?.items);
 
+  if (loadFailed) return <div className="page page-wide"><LoadFailed what="your assignments" onRetry={() => { setLoadFailed(false); load(); }} /></div>;
   if (data === null) return <CenterSpinner />;
   const open = (it) => setScreen({ name: "assignment-student", classId: it.class_id, assignmentId: it.id });
   const todo = sortTodo(filtered.filter((it) => !isDone(it)));

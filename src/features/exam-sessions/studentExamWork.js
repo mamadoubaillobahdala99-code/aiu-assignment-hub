@@ -11,9 +11,9 @@ import { overallBand } from "./examWork";
 //     shows (StudentQuestionEngineFeedback).
 //   - Writing: the teacher's band, once the correction is published.
 //   - Speaking: no band.
-// The overall band follows the teacher's rule (examWork.overallBand): the
-// average of the Listening / Reading / Writing bands, rounded like IELTS,
-// only when every one of them has a band.
+// The overall band follows the teacher's rule (examWork.overallBand, like
+// IELTS since livraison 95b: one band per skill, then their average), only
+// when every Listening / Reading / Writing paper has a band.
 // Nothing here writes to the database.
 const SCORED = ["Listening", "Reading", "Writing"];
 
@@ -21,10 +21,12 @@ export async function loadMyExamBands(userId, sessionIds) {
   const out = new Map();   // sessionId -> { overall, papers: Map(assignmentId -> { type, band, handed }) }
   if (!userId || !sessionIds.length) return out;
 
-  const { data: items } = await supabase
+  // Livraison 95c: a failed read throws (never « Band 1.0 » from 0 points).
+  const { data: items, error: itemsErr } = await supabase
     .from("exam_session_items")
     .select("session_id, assignment_id, order_index, assignments(id, type, reading_test_type)")
     .in("session_id", sessionIds);
+  if (itemsErr) throw new Error("Could not load");
   const list = (items || []).filter((it) => it.assignments);
   const scoredIds = list.filter((it) => SCORED.includes(it.assignments.type)).map((it) => it.assignment_id);
 
@@ -36,10 +38,12 @@ export async function loadMyExamBands(userId, sessionIds) {
       supabase.from("exam_attempts").select("assignment_id, submitted_at").eq("student_id", userId).in("assignment_id", scoredIds),
       supabase.from("exam_sections").select("id, assignment_id").in("assignment_id", scoredIds),
     ]);
+    if (sa.error || fb.error || att.error || sc.error) throw new Error("Could not load");
     answers = sa.data || []; feedback = fb.data || []; attempts = att.data || []; secs = sc.data || [];
     const secIds = secs.map((s) => s.id);
     if (secIds.length) {
-      const { data } = await supabase.from("assignment_questions").select("section_id, questions(points)").in("section_id", secIds);
+      const { data, error } = await supabase.from("assignment_questions").select("section_id, questions(points)").in("section_id", secIds);
+      if (error) throw new Error("Could not load");
       links = data || [];
     }
   }

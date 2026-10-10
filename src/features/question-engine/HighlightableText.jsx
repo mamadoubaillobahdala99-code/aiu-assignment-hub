@@ -25,12 +25,19 @@ export function HighlightableText({ assignmentId, userId, scopeType, scopeId, op
   const containerRef = useRef(null);
   const toolbarRef = useRef(null);
   const draggingRef = useRef(false);
+  // Livraison 95c: the stored highlights must be READ before anything is
+  // saved — saving after a failed read would replace them by the new ones
+  // only. If the read failed, highlighting still works on screen, but is
+  // not saved (the stored ones stay; they come back on the next load).
+  const readOkRef = useRef(false);
 
   const tokens = React.useMemo(() => text.split(/(\s+)/), [text]);
 
   useEffect(() => {
     setLoaded(false);
     setColors({});
+    readOkRef.current = false;
+    let alive = true;
     (async () => {
       let query = supabase
         .from("reading_highlights")
@@ -46,7 +53,15 @@ export function HighlightableText({ assignmentId, userId, scopeType, scopeId, op
         query = optionKey ? query.eq("option_key", optionKey) : query.is("option_key", null);
       }
 
-      const { data } = await query.maybeSingle();
+      // Livraison 95c: the newest row wins. The database's unique key does not
+      // treat two empty (NULL) columns as equal, so each save of a passage's
+      // highlights ADDED a row instead of replacing it; with two rows,
+      // maybeSingle() failed and the highlights vanished after a reload.
+      // Each save holds the whole set seen on screen, so the newest row is
+      // the right one. (The extra rows are cleaned up by a later SQL script.)
+      const { data, error } = await query.order("updated_at", { ascending: false }).limit(1).maybeSingle();
+      if (!alive) return;
+      readOkRef.current = !error;
 
       const map = {};
       (data?.word_indices || []).forEach((i) => {
@@ -55,10 +70,12 @@ export function HighlightableText({ assignmentId, userId, scopeType, scopeId, op
       setColors(map);
       setLoaded(true);
     })();
+    return () => { alive = false; };
   }, [assignmentId, userId, scopeType, scopeId, optionKey]);
 
   const persist = useCallback(
     async (nextMap) => {
+      if (!readOkRef.current) return;   // see readOkRef above
       await supabase.from("reading_highlights").upsert(
         {
           assignment_id: assignmentId,

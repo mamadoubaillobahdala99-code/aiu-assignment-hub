@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { ArrowLeft, MessageSquare } from "lucide-react";
 import { supabase } from "../../supabaseClient";
-import { CenterSpinner } from "../../components/shared";
+import { CenterSpinner, LoadFailed } from "../../components/shared";
 import { ScoreRing } from "./ScoreRing";
 import { ReviewContent } from "./ReviewContent";
 import { formatAnswerValue, formatCorrectShort } from "./answerFormat";
@@ -27,6 +27,10 @@ export function StudentQuestionEngineFeedback({ assignmentId, userId, setScreen,
   const [feedbackRow, setFeedbackRow] = useState(null);
   const [handedAt, setHandedAt] = useState(null);
   const [view, setView] = useState("sheet");
+  // Livraison 95c: "" | "error" | "refused". A failed read is never shown
+  // as « 0 points · Band 1 » (it frightened the student for nothing).
+  const [loadFailed, setLoadFailed] = useState("");
+  const loadIdRef = useRef(0);
 
   // Livraison 81: everything at once — the whole paper with the correct
   // answers this student may read (get_paper, the student's own rights:
@@ -34,8 +38,10 @@ export function StudentQuestionEngineFeedback({ assignmentId, userId, setScreen,
   // answers, the feedback and the hand-in time, in parallel. Before: one
   // request per part and per group, one after the other.
   const load = useCallback(async () => {
+    const myId = ++loadIdRef.current;
     setLoading(true);
-    const [paper, { data: sa }, { data: fb }, { data: att }] = await Promise.all([
+    setLoadFailed("");
+    const got = await Promise.all([
       loadPaperTree(assignmentId, { withKeys: true }),
       supabase
         .from("student_answers")
@@ -56,7 +62,14 @@ export function StudentQuestionEngineFeedback({ assignmentId, userId, setScreen,
         .eq("assignment_id", assignmentId)
         .eq("student_id", userId)
         .maybeSingle(),
-    ]);
+    ]).catch(() => null);
+    if (myId !== loadIdRef.current) return;
+    if (!got || got[0].status !== "ok" || got[1].error || got[2].error || got[3].error) {
+      setLoadFailed(got && got[0].status === "refused" ? "refused" : "error");
+      setLoading(false);
+      return;
+    }
+    const [paper, { data: sa }, { data: fb }, { data: att }] = got;
     const ok = paper.status === "ok";
     setAssignment(ok ? paper.assignment : null);
     const built = ok ? toReviewSections(paper.sections, numberQuestions) : [];
@@ -85,7 +98,7 @@ export function StudentQuestionEngineFeedback({ assignmentId, userId, setScreen,
     setLoading(false);
   }, [assignmentId, userId]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); return () => { loadIdRef.current++; }; }, [load]);
 
   const allQuestions = useMemo(() => sections.flatMap((s) => s.groups.flatMap((g) => g.questions)), [sections]);
   const totalPoints = useMemo(() => allQuestions.reduce((sum, q) => sum + (q.points || 1), 0), [allQuestions]);
@@ -112,6 +125,17 @@ export function StudentQuestionEngineFeedback({ assignmentId, userId, setScreen,
     }
     return map;
   }, [allQuestions, correctByQ]);
+
+  if (loadFailed) {
+    return (
+      <div className="page">
+        <button className="back-link" onClick={() => setScreen(inExam ? { name: "home" } : { name: "student-assignments" })}><ArrowLeft size={14} /> {inExam ? "Back to the exam" : "Back to my assignments"}</button>
+        {loadFailed === "refused"
+          ? <p className="empty-inline">This result is not available to your account.</p>
+          : <LoadFailed what="your result" onRetry={load} />}
+      </div>
+    );
+  }
 
   if (loading || !assignment) return <CenterSpinner />;
 

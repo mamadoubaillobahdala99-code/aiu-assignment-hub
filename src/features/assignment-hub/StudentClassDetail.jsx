@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { FileText, LogOut, GraduationCap } from "lucide-react";
 import { supabase } from "../../supabaseClient";
-import { EmptyState, CenterSpinner } from "../../components/shared";
+import { EmptyState, CenterSpinner, LoadFailed } from "../../components/shared";
 import { confirmDialog } from "../../lib/confirmDialog";
 import { DropMenu, DropMenuItem, Breadcrumb } from "../../components/DropMenu";
 import { loadStudentWork, rememberedStudentWork, forgetStudentWork, isDone, sortTodo, sortDone } from "./studentWork";
@@ -16,7 +16,12 @@ export function StudentClassDetail({ classId, userId, setScreen, showToast }) {
   const [tab, setTab] = useState("todo");
   const [leaving, setLeaving] = useState(false);
 
-  const load = useCallback(async () => { setData(await loadStudentWork(userId, { classId })); }, [classId, userId]);
+  // Livraison 95c: a failed read says so (never « no class » / « Start » on a paper handed in).
+  const [loadFailed, setLoadFailed] = useState(false);
+  const load = useCallback(async () => {
+    try { setData(await loadStudentWork(userId, { classId })); setLoadFailed(false); }
+    catch { setLoadFailed(true); }
+  }, [classId, userId]);
   useEffect(() => { load(); }, [load]);
 
   const cls = data?.classes?.[0] || null;
@@ -35,6 +40,7 @@ export function StudentClassDetail({ classId, userId, setScreen, showToast }) {
     setScreen({ name: "student-classes" });
   }
 
+  if (loadFailed) return <div className="page page-wide"><LoadFailed what="this class" onRetry={() => { setLoadFailed(false); load(); }} /></div>;
   if (data === null) return <CenterSpinner />;
   if (!cls) {
     // Not (or no longer) in this class — nothing to show.

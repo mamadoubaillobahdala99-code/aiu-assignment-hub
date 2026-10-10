@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Users, GraduationCap, Plus } from "lucide-react";
 import { fmtDate } from "../../lib/utils";
-import { EmptyState, CenterSpinner } from "../../components/shared";
+import { EmptyState, CenterSpinner, LoadFailed } from "../../components/shared";
 import { loadStudentWork, rememberedStudentWork, isDone } from "./studentWork";
 
 // Livraison 71 — the student's classes as cards: teacher, what is left to
@@ -9,9 +9,15 @@ import { loadStudentWork, rememberedStudentWork, isDone } from "./studentWork";
 export function StudentClasses({ userId, setScreen }) {
   // Livraison 82: what this page last read is shown at once, then refreshed.
   const [data, setData] = useState(() => rememberedStudentWork(userId));
-  const load = useCallback(async () => { setData(await loadStudentWork(userId)); }, [userId]);
+  // Livraison 95c: a failed read says so (never « no class » / « Start » on a paper handed in).
+  const [loadFailed, setLoadFailed] = useState(false);
+  const load = useCallback(async () => {
+    try { setData(await loadStudentWork(userId)); setLoadFailed(false); }
+    catch { setLoadFailed(true); }
+  }, [userId]);
   useEffect(() => { load(); }, [load]);
 
+  if (loadFailed) return <div className="page page-wide"><LoadFailed what="your classes" onRetry={() => { setLoadFailed(false); load(); }} /></div>;
   if (data === null) return <CenterSpinner />;
 
   return (

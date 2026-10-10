@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { ArrowLeft, Eye, PenLine, MessageSquare } from "lucide-react";
 import { supabase } from "../../supabaseClient";
-import { CenterSpinner } from "../../components/shared";
+import { CenterSpinner, LoadFailed } from "../../components/shared";
 import { WritingView } from "./WritingView";
 import { sanitizeWritingHtml } from "./writingHtml";
 import { StoredImg } from "../../lib/storageFiles";
@@ -41,12 +41,18 @@ export function StudentWritingFeedback({ assignmentId, userId, setScreen, inExam
   const [view, setView] = useState("corrected");
   const [openNote, setOpenNote] = useState(null); // { text, note }
   const textRef = useRef(null);
+  // Livraison 95c: a failed read is never shown as « 0 words » / « You left
+  // this task empty » (or an endless spinner).
+  const [loadFailed, setLoadFailed] = useState("");   // "" | "error" | "gone"
+  const loadIdRef = useRef(0);
 
   // Livraison 81: the five reads are asked at the same time (before: one
   // after the other). Same reads, same rights.
   const load = useCallback(async () => {
-    const [{ data: a }, { data: rows }, { data: wr }, { data: wg }, { data: fb }] = await Promise.all([
-      supabase.from("assignments").select("id, title, type").eq("id", assignmentId).single(),
+    const myId = ++loadIdRef.current;
+    setLoadFailed("");
+    const got = await Promise.all([
+      supabase.from("assignments").select("id, title, type").eq("id", assignmentId).maybeSingle(),
       supabase
         .from("exam_sections")
         .select("id, title, passage_text, image_url, task_number, order_index")
@@ -68,7 +74,14 @@ export function StudentWritingFeedback({ assignmentId, userId, setScreen, inExam
         .eq("assignment_id", assignmentId)
         .eq("student_id", userId)
         .maybeSingle(),
-    ]);
+    ]).catch(() => null);
+    if (myId !== loadIdRef.current) return;
+    if (!got || got.some((x) => x.error) || !got[0].data) {
+      setLoadFailed(got && !got.some((x) => x.error) ? "gone" : "error");
+      setLoading(false);
+      return;
+    }
+    const [{ data: a }, { data: rows }, { data: wr }, { data: wg }, { data: fb }] = got;
     setAssignment(a || null);
     setSections(
       (rows || [])
@@ -85,8 +98,18 @@ export function StudentWritingFeedback({ assignmentId, userId, setScreen, inExam
     setLoading(false);
   }, [assignmentId, userId]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); return () => { loadIdRef.current++; }; }, [load]);
 
+  if (loadFailed) {
+    return (
+      <div className="page">
+        <button className="back-link" onClick={() => setScreen(inExam ? { name: "home" } : { name: "student-assignments" })}><ArrowLeft size={14} /> {inExam ? "Back to the exam" : "Back to my assignments"}</button>
+        {loadFailed === "gone"
+          ? <p className="empty-inline">This result is not available.</p>
+          : <LoadFailed what="your result" onRetry={() => { setLoading(true); load(); }} />}
+      </div>
+    );
+  }
   if (loading || !assignment) return <CenterSpinner />;
 
   const active = sections[Math.min(activeIndex, Math.max(0, sections.length - 1))];

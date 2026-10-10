@@ -4,7 +4,7 @@ import {
   ArrowLeft, Flag, Hourglass, MinusCircle, Smartphone, Laptop, ChevronRight,
 } from "lucide-react";
 import { supabase } from "../../supabaseClient";
-import { CenterSpinner } from "../../components/shared";
+import { CenterSpinner, LoadFailed } from "../../components/shared";
 import { Breadcrumb } from "../../components/DropMenu";
 import { CodeBoxes } from "../../components/CodeBoxes";
 import { TYPES, fmtDate } from "../../lib/utils";
@@ -114,12 +114,17 @@ export function StudentExamSession({ userId, screen, setScreen, showToast }) {
   }, []);
 
   // ---------- which exams am I in? ----------
+  // Livraison 95c: a failed read is never « you are in no exam » (that sent
+  // a candidate back to the code box in the middle of his exam).
+  const [sessionsFailed, setSessionsFailed] = useState(false);
   const loadSessions = useCallback(async () => {
     // The database returns only the sessions this student has joined.
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("exam_sessions")
       .select("id, name, code, container_class_id, opened_at, closed_at, opens_at, closes_at, results_released_at, created_at")
       .order("created_at", { ascending: false });
+    if (error) { setSessionsFailed(true); return; }
+    setSessionsFailed(false);
     const rows = data || [];
     setSessions(rows);
     // Sitting an exam right now? Go straight in — no extra click in the
@@ -187,13 +192,17 @@ export function StudentExamSession({ userId, screen, setScreen, showToast }) {
   // ---------- livraison 80: my published bands ----------
   // Only for the exams whose results are published; read with my own rights.
   const [bands, setBands] = useState(() => new Map());
+  const [bandsFailed, setBandsFailed] = useState(false);
+  const [bandsTry, setBandsTry] = useState(0);
   const releasedKey = (sessions || []).filter((x) => x.results_released_at).map((x) => x.id).join(",");
   useEffect(() => {
-    if (!releasedKey) { setBands(new Map()); return; }
+    if (!releasedKey) { setBands(new Map()); setBandsFailed(false); return; }
     let cancelled = false;
-    loadMyExamBands(userId, releasedKey.split(",")).then((m) => { if (!cancelled) setBands(m); }).catch(() => {});
+    loadMyExamBands(userId, releasedKey.split(","))
+      .then((m) => { if (!cancelled) { setBands(m); setBandsFailed(false); } })
+      .catch(() => { if (!cancelled) { setBands(new Map()); setBandsFailed(true); } });   // never a band from a failed read
     return () => { cancelled = true; };
-  }, [releasedKey, userId]);
+  }, [releasedKey, userId, bandsTry]);
 
   // ---------- livraison 80: when I handed each paper in ----------
   // Read again only when a paper is handed in (not at every refresh).
@@ -348,6 +357,13 @@ export function StudentExamSession({ userId, screen, setScreen, showToast }) {
     );
   }
 
+  if (sessionsFailed) {
+    return (
+      <div className="page page-wide">
+        <LoadFailed what="your exams" onRetry={() => { setSessionsFailed(false); loadSessions(); }} />
+      </div>
+    );
+  }
   if (sessions === null || resolvingAddress) return <CenterSpinner />;
 
   const session = sessions.find((s) => s.id === activeId) || null;
@@ -390,6 +406,12 @@ export function StudentExamSession({ userId, screen, setScreen, showToast }) {
           {sessions.length > 0 && (
             <div className="exc-past">
               <div className="exc-past-h">My past exams</div>
+              {bandsFailed && (
+                <p className="field-hint" role="alert">
+                  Your bands could not be loaded.{" "}
+                  <button type="button" className="panel-link" onClick={() => setBandsTry((n) => n + 1)}>Try again</button>
+                </p>
+              )}
               {sessions.map((s) => {
                 const st = examStage(s);
                 const b = bands.get(s.id);
@@ -409,7 +431,7 @@ export function StudentExamSession({ userId, screen, setScreen, showToast }) {
                         </span>
                       )}
                     </span>
-                    <span className="exc-past-band">{st === 3 ? (b && b.overall !== null ? `Band ${fmtBand(b.overall)}` : "—") : ""}</span>
+                    <span className="exc-past-band">{st === 3 && !bandsFailed ? (b && b.overall !== null ? `Band ${fmtBand(b.overall)}` : "—") : ""}</span>
                     <span className="exc-see">See <ChevronRight size={14} /></span>
                   </button>
                 );
@@ -494,6 +516,11 @@ export function StudentExamSession({ userId, screen, setScreen, showToast }) {
             <em>
               You can open each paper again to see your marks and your corrected answers.
               {myBands && myBands.overall === null ? " Your overall band appears once every Listening, Reading and Writing paper has its band." : ""}
+              {bandsFailed && (
+                <> Your bands could not be loaded.{" "}
+                  <button type="button" className="panel-link" onClick={() => setBandsTry((n) => n + 1)}>Try again</button>
+                </>
+              )}
             </em>
           </div>
         </div>

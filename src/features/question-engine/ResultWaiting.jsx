@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { ArrowLeft, Clock } from "lucide-react";
 import { supabase } from "../../supabaseClient";
-import { CenterSpinner } from "../../components/shared";
+import { CenterSpinner, LoadFailed } from "../../components/shared";
 import { Breadcrumb } from "../../components/DropMenu";
 import { WritingView } from "./WritingView";
 import { fmtWhen } from "./ResultParts";
@@ -37,23 +37,36 @@ function WaitShell({ title, type, at, inExam, setScreen, children, message }) {
 export function WritingWaiting({ assignmentId, userId, setScreen, inExam = false }) {
   const [data, setData] = useState(null);
   const [active, setActive] = useState(0);
+  // Livraison 95c: a failed read is never shown as « You left this task empty ».
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [loadTry, setLoadTry] = useState(0);
   useEffect(() => {
     let off = false;
     (async () => {
-      const [{ data: a }, { data: secs }, { data: wr }] = await Promise.all([
+      setLoadFailed(false);
+      const [{ data: a, error: aErr }, { data: secs, error: sErr }, { data: wr, error: wErr }] = await Promise.all([
         supabase.from("assignments").select("title, type").eq("id", assignmentId).maybeSingle(),
         supabase.from("exam_sections").select("id, task_number, order_index").eq("assignment_id", assignmentId).order("order_index"),
         supabase.from("writing_responses").select("section_id, content_html, word_count, submitted_at").eq("assignment_id", assignmentId).eq("student_id", userId),
       ]);
       if (off) return;
+      if (aErr || sErr || wErr) { setLoadFailed(true); return; }
       const tasks = (secs || []).filter((s) => s.task_number);
       const byS = new Map((wr || []).map((r) => [r.section_id, r]));
       const at = (wr || []).reduce((m, r) => (r.submitted_at && (!m || new Date(r.submitted_at) > new Date(m)) ? r.submitted_at : m), null);
       setData({ title: a?.title || "Writing", tasks, byS, at });
     })();
     return () => { off = true; };
-  }, [assignmentId, userId]);
+  }, [assignmentId, userId, loadTry]);
 
+  if (loadFailed) {
+    return (
+      <div className="page">
+        <button className="back-link" onClick={() => setScreen(inExam ? { name: "home" } : { name: "student-assignments" })}><ArrowLeft size={14} /> {inExam ? "Back to the exam" : "Back to my assignments"}</button>
+        <LoadFailed what="your writing" onRetry={() => setLoadTry((n) => n + 1)} />
+      </div>
+    );
+  }
   if (!data) return <CenterSpinner />;
   const task = data.tasks[Math.min(active, Math.max(0, data.tasks.length - 1))];
   const resp = task ? data.byS.get(task.id) : null;
@@ -84,18 +97,31 @@ export function WritingWaiting({ assignmentId, userId, setScreen, inExam = false
 
 export function PaperWaiting({ assignmentId, userId, setScreen, inExam = false }) {
   const [data, setData] = useState(null);
+  const [loadFailed, setLoadFailed] = useState(false);   // livraison 95c
+  const [loadTry, setLoadTry] = useState(0);
   useEffect(() => {
     let off = false;
     (async () => {
-      const [{ data: a }, { data: att }] = await Promise.all([
+      setLoadFailed(false);
+      const [{ data: a, error: aErr }, { data: att, error: tErr }] = await Promise.all([
         supabase.from("assignments").select("title, type").eq("id", assignmentId).maybeSingle(),
         supabase.from("exam_attempts").select("submitted_at").eq("assignment_id", assignmentId).eq("student_id", userId).maybeSingle(),
       ]);
-      if (!off) setData({ title: a?.title || "Assignment", type: a?.type || "", at: att?.submitted_at || null });
+      if (off) return;
+      if (aErr || tErr) { setLoadFailed(true); return; }
+      setData({ title: a?.title || "Assignment", type: a?.type || "", at: att?.submitted_at || null });
     })();
     return () => { off = true; };
-  }, [assignmentId, userId]);
+  }, [assignmentId, userId, loadTry]);
 
+  if (loadFailed) {
+    return (
+      <div className="page">
+        <button className="back-link" onClick={() => setScreen(inExam ? { name: "home" } : { name: "student-assignments" })}><ArrowLeft size={14} /> {inExam ? "Back to the exam" : "Back to my assignments"}</button>
+        <LoadFailed what="this paper" onRetry={() => setLoadTry((n) => n + 1)} />
+      </div>
+    );
+  }
   if (!data) return <CenterSpinner />;
   return (
     <WaitShell title={data.title} type={data.type} at={data.at} inExam={inExam} setScreen={setScreen}

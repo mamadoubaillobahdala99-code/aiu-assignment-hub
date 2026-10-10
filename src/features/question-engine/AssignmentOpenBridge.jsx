@@ -47,10 +47,10 @@ export function AssignmentOpenBridge({ userId, classId, assignmentId, setScreen,
       const [
         { data: paperRow, error: paperError },
         { count, error: countError },
-        { count: sentCount },
-        { data: fbRow },
-        { count: answerCount },
-        { data: att },
+        { count: sentCount, error: sentError },
+        { data: fbRow, error: fbError },
+        { count: answerCount, error: answerError },
+        { data: att, error: attError },
       ] = await Promise.all([
         supabase.from("assignments").select("type, auto_release_score").eq("id", assignmentId).maybeSingle(),
         supabase.from("exam_sections").select("id", { count: "exact", head: true }).eq("assignment_id", assignmentId),
@@ -68,7 +68,10 @@ export function AssignmentOpenBridge({ userId, classId, assignmentId, setScreen,
         }
         return;
       }
-      if (countError) {
+      // Livraison 95c: the other checks too — a failed one must never open a
+      // paper already handed in as « to do », or show a published result
+      // as « waiting ».
+      if (countError || sentError || fbError || answerError || attError) {
         // Not "no content": we simply could not tell.
         if (!cancelled) { setAccess("error"); setChecking(false); }
         return;

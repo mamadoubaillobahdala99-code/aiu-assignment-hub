@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Users, GraduationCap, Plus, ShieldCheck } from "lucide-react";
-import { EmptyState, CenterSpinner } from "../../components/shared";
+import { EmptyState, CenterSpinner, LoadFailed } from "../../components/shared";
 import { loadStudentWork, rememberedStudentWork, isDone, sortTodo, sortDone, actionLabel, resultLabel } from "./studentWork";
 import { TypeIcon, DuePill } from "./StudentHome";
 
@@ -22,9 +22,15 @@ function pct(r) {
 export function StudentDashboard({ userId, profile, setScreen }) {
   // Livraison 82: what this page last read is shown at once, then refreshed.
   const [data, setData] = useState(() => rememberedStudentWork(userId));
-  const load = useCallback(async () => { setData(await loadStudentWork(userId)); }, [userId]);
+  // Livraison 95c: a failed read says so (never « no class » / « Start » on a paper handed in).
+  const [loadFailed, setLoadFailed] = useState(false);
+  const load = useCallback(async () => {
+    try { setData(await loadStudentWork(userId)); setLoadFailed(false); }
+    catch { setLoadFailed(true); }
+  }, [userId]);
   useEffect(() => { load(); }, [load]);
 
+  if (loadFailed) return <div className="page page-wide"><LoadFailed what="your home page" onRetry={() => { setLoadFailed(false); load(); }} /></div>;
   if (data === null) return <CenterSpinner />;
   const open = (it) => setScreen({ name: "assignment-student", classId: it.class_id, assignmentId: it.id });
   const today = new Date().toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" });

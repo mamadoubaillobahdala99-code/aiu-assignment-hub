@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { ArrowLeft, ChevronLeft, ChevronRight, Download, FileText, Image as ImageIcon, Music, File, Menu, X } from "lucide-react";
 import { supabase } from "../../supabaseClient";
+import { LoadFailed } from "../../components/shared";
 import { SPEAKING_PARTS, cleanDocuments, fmtSize } from "./speaking";
 import { useIsCompact, useVisualViewportHeight } from "./useViewport";
 import { useSignedUrl } from "../../lib/storageFiles";
@@ -45,6 +46,9 @@ function DocumentBlock({ doc }) {
 export function StudentSpeakingViewer({ userId, assignmentId, setScreen }) {
   const [assignment, setAssignment] = useState(null);
   const [sections, setSections] = useState(null);
+  // Livraison 95c: a failed read says so (never « Loading… » for ever, nor
+  // « no content yet »), and the paper is not marked « viewed ».
+  const [loadFailed, setLoadFailed] = useState("");   // "" | "error" | "gone"
   const [activeIndex, setActiveIndex] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [className, setClassName] = useState("");
@@ -56,8 +60,10 @@ export function StudentSpeakingViewer({ userId, assignmentId, setScreen }) {
   useEffect(() => { setSidebarOpen(!compact); }, [compact]);
 
   const load = useCallback(async () => {
-    const { data: a } = await supabase.from("assignments").select("*").eq("id", assignmentId).single();
-    setAssignment(a || null);
+    setLoadFailed("");
+    const { data: a, error: aErr } = await supabase.from("assignments").select("*").eq("id", assignmentId).maybeSingle();
+    if (aErr || !a) { setLoadFailed(aErr ? "error" : "gone"); return; }
+    setAssignment(a);
     if (a?.class_id) {
       const { data: cls } = await supabase.from("classes").select("name, teacher_id").eq("id", a.class_id).single();
       if (cls?.name) setClassName(cls.name);
@@ -66,11 +72,12 @@ export function StudentSpeakingViewer({ userId, assignmentId, setScreen }) {
         if (t?.name) setTeacherName(t.name);
       }
     }
-    const { data: rows } = await supabase
+    const { data: rows, error: rowsErr } = await supabase
       .from("exam_sections")
       .select("id, title, passage_text, speaking_part, documents, order_index")
       .eq("assignment_id", assignmentId)
       .order("order_index");
+    if (rowsErr) { setLoadFailed("error"); return; }
     setSections(
       (rows || [])
         .filter((s) => s.speaking_part)
@@ -84,6 +91,17 @@ export function StudentSpeakingViewer({ userId, assignmentId, setScreen }) {
   }, [assignmentId, userId]);
 
   useEffect(() => { load(); }, [load]);
+
+  if (loadFailed) {
+    return (
+      <div className="page">
+        <button className="back-link" onClick={() => setScreen({ name: "home" })}><ArrowLeft size={14} /> All assignments</button>
+        {loadFailed === "gone"
+          ? <p className="empty-inline">This Speaking assignment is not available.</p>
+          : <LoadFailed what="this Speaking assignment" onRetry={load} />}
+      </div>
+    );
+  }
 
   if (!assignment || sections === null) {
     return (

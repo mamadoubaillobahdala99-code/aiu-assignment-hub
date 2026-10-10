@@ -28,6 +28,13 @@ export function rememberedStudentWork(userId, { classId } = {}) {
 }
 export function forgetStudentWork() { memory.clear(); }
 
+// Livraison 95c: a read that FAILS (network) is never turned into « no
+// class », « nothing done » or « Start » on a paper already handed in:
+// loadStudentWork throws, the page says « Could not load — Retry », and a
+// failed reading is never kept in memory.
+export class StudentWorkLoadError extends Error {}
+const failed = (...answers) => answers.some((x) => x && x.error);
+
 export async function loadStudentWork(userId, opts = {}) {
   const out = await readStudentWork(userId, opts);
   memory.set(memoryKey(userId, opts.classId), out);
@@ -50,7 +57,7 @@ async function readStudentWork(userId, { classId } = {}) {
   const { data: joined, error: joinedErr } = await q;
   // Safety net: if this combined reading is ever refused, the reading used
   // until livraison 81 (one table at a time) is used instead.
-  if (joinedErr) return readStudentWorkStepByStep(userId, { classId });
+  if (joinedErr) return readStudentWorkStepByStep(userId, { classId });   // throws if that fails too
   // An exam's private box is not a class and never shows as one.
   const rows = (joined || []).filter((r) => r.classes && r.classes.kind !== "exam");
   const classes = rows.map((r) => ({ id: r.class_id, name: r.classes.name || "Class", teacher: r.classes.profiles?.name || "", joinedAt: r.joined_at }));
@@ -82,6 +89,7 @@ async function readStudentWork(userId, { classId } = {}) {
     // Points of the questions this student can read (only papers with results use them).
     rlSecIds.length ? supabase.from("assignment_questions").select("section_id, questions(points)").in("section_id", rlSecIds) : { data: [] },
   ]);
+  if (failed(att, wr, sv, fb, sa, aq)) throw new StudentWorkLoadError("Could not load");
 
   const attempted = new Set(), submitted = new Map();
   for (const r of att.data || []) {
@@ -187,7 +195,8 @@ function fmtNum(n) { return Number.isInteger(n) ? String(n) : String(Math.round(
 async function readStudentWorkStepByStep(userId, { classId } = {}) {
   let q = supabase.from("roster").select("class_id, joined_at, classes(id, name, kind, profiles(name))").eq("student_id", userId);
   if (classId) q = q.eq("class_id", classId);
-  const { data: joined } = await q;
+  const { data: joined, error: joinedErr } = await q;
+  if (joinedErr) throw new StudentWorkLoadError("Could not load");
   // An exam's private box is not a class and never shows as one.
   const classes = (joined || [])
     .filter((r) => r.classes && r.classes.kind !== "exam")
@@ -195,12 +204,14 @@ async function readStudentWorkStepByStep(userId, { classId } = {}) {
   const classIds = classes.map((c) => c.id);
   if (classIds.length === 0) return { classes, items: [] };
 
-  const { data: assignments } = await supabase.from("assignments").select("*").in("class_id", classIds);
+  const { data: assignments, error: aErr } = await supabase.from("assignments").select("*").in("class_id", classIds);
+  if (aErr) throw new StudentWorkLoadError("Could not load");
   const all = assignments || [];
   const ids = all.map((a) => a.id);
   if (ids.length === 0) return { classes, items: [] };
 
-  const { data: secs } = await supabase.from("exam_sections").select("id, assignment_id").in("assignment_id", ids);
+  const { data: secs, error: sErr } = await supabase.from("exam_sections").select("id, assignment_id").in("assignment_id", ids);
+  if (sErr) throw new StudentWorkLoadError("Could not load");
   const structured = new Set((secs || []).map((s) => s.assignment_id));
   const sIds = [...structured];
   const typed = (t) => all.filter((a) => a.type === t && structured.has(a.id)).map((a) => a.id);
@@ -215,6 +226,7 @@ async function readStudentWorkStepByStep(userId, { classId } = {}) {
     // Only published results come back (row security).
     sIds.length ? supabase.from("student_answers").select("assignment_id, points_earned, is_correct").eq("student_id", userId).in("assignment_id", sIds) : { data: [] },
   ]);
+  if (failed(att, wr, sv, fb, sa)) throw new StudentWorkLoadError("Could not load");
 
   const attempted = new Set(), submitted = new Map();
   for (const r of att.data || []) {
@@ -241,9 +253,10 @@ async function readStudentWorkStepByStep(userId, { classId } = {}) {
   if (scored.length) {
     const secIds = (secs || []).filter((s) => earned.has(s.assignment_id)).map((s) => s.id);
     const secToA = new Map((secs || []).map((s) => [s.id, s.assignment_id]));
-    const { data: links } = secIds.length
+    const { data: links, error: lErr } = secIds.length
       ? await supabase.from("assignment_questions").select("section_id, questions(points)").in("section_id", secIds)
-      : { data: [] };
+      : { data: [], error: null };
+    if (lErr) throw new StudentWorkLoadError("Could not load");
     for (const l of links || []) {
       const a = secToA.get(l.section_id);
       total.set(a, (total.get(a) || 0) + Number(l.questions?.points || 1));
