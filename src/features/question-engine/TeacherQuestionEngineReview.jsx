@@ -122,13 +122,19 @@ export function TeacherQuestionEngineReview({ assignmentId, studentId, studentNa
 
   async function saveFeedback(release) {
     setSaving(true);
+    // Livraison 95: when the student ALREADY sees the score (shown
+    // automatically, e.g. an exam after « Publish the results »), there is
+    // no « Publish » button — so « Save » publishes the band and the
+    // comment too. Before, they stayed hidden from the student for ever
+    // (only published feedback can be read by the student).
+    const publish = release || Boolean(assignment.auto_release_score && !feedbackRow?.released_at);
     const payload = {
       assignment_id: assignmentId,
       student_id: studentId,
       band: bandDraft.trim() || null,
       feedback: feedbackDraft.trim() || null,
     };
-    if (release) payload.released_at = new Date().toISOString();
+    if (publish) payload.released_at = new Date().toISOString();
 
     const { data, error } = await supabase
       .from("assignment_feedback")
@@ -142,7 +148,7 @@ export function TeacherQuestionEngineReview({ assignmentId, studentId, studentNa
       return;
     }
     setFeedbackRow(data);
-    showToast?.(release ? "Score published to student" : "Feedback saved");
+    showToast?.(release ? "Score published to student" : (assignment.auto_release_score || feedbackRow?.released_at) ? "Saved — the student sees it" : "Feedback saved");
   }
 
 
@@ -247,7 +253,11 @@ export function TeacherQuestionEngineReview({ assignmentId, studentId, studentNa
               )}
             </div>
             <p className="rs-hint">
-              {feedbackRow?.released_at ? `Published ${fmtWhen(feedbackRow.released_at)}. ` : needsManualRelease ? "The student sees nothing until you publish. " : "The student already sees the score. "}
+              {feedbackRow?.released_at ? `Published ${fmtWhen(feedbackRow.released_at)}. ` : needsManualRelease ? "The student sees nothing until you publish. " : (feedbackRow && (feedbackRow.band || feedbackRow.feedback))
+                    // Saved before the score became visible (e.g. before « Publish the results »):
+                    // still hidden from the student until the next « Save ».
+                    ? "The student sees the score, but NOT yet your band and comment — press Save to show them. "
+                    : "The student already sees the score — what you save here is shown to them too. "}
               {dirty ? "You have unsaved changes." : ""}
             </p>
             {nav?.next && (
