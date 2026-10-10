@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from "react";
 import { Paperclip, X, FileText, Image as ImageIcon, Music, File } from "lucide-react";
 import { supabase } from "../../supabaseClient";
+import { LoadFailed } from "../../components/shared";
 import { uid } from "../../lib/utils";
 import { fileRef } from "../../lib/storageFiles";
 import { SPEAKING_PARTS, DOC_ACCEPT, MAX_DOC_MB, MAX_DOCS_PER_PART, docKindOf, extOf, fmtSize, cleanDocuments, deleteUnusedSpeakingFiles } from "./speaking";
@@ -36,21 +37,29 @@ export function TeacherSpeakingBuilder({ classId, teacherId, setScreen, showToas
   const [progress, setProgress] = useState("");
   const [error, setError] = useState("");
   const [loadingExisting, setLoadingExisting] = useState(Boolean(editAssignmentId));
+  // Livraison 95: if the saved assignment cannot be read, the form is NOT
+  // shown empty (« Save » would replace the title, dates and time limit).
+  const [loadFailed, setLoadFailed] = useState("");   // "" | "error" | "gone"
+  const [loadTry, setLoadTry] = useState(0);
 
   useEffect(() => {
     if (!editAssignmentId) return;
+    let alive = true;
     (async () => {
-      const { data: a } = await supabase.from("assignments").select("title, due_date, due_time").eq("id", editAssignmentId).single();
-      if (a) {
-        setTitle(a.title || "");
-        setDueDate(a.due_date || "");
-        setDueTime(a.due_time || "");
-      }
-      const { data: sections } = await supabase
+      setLoadFailed("");
+      const { data: a, error: aErr } = await supabase.from("assignments").select("title, due_date, due_time").eq("id", editAssignmentId).maybeSingle();
+      if (!alive) return;
+      if (aErr || !a) { setLoadFailed(aErr ? "error" : "gone"); return; }
+      setTitle(a.title || "");
+      setDueDate(a.due_date || "");
+      setDueTime(a.due_time || "");
+      const { data: sections, error: sErr } = await supabase
         .from("exam_sections")
         .select("id, speaking_part, passage_text, documents")
         .eq("assignment_id", editAssignmentId)
         .order("order_index");
+      if (!alive) return;
+      if (sErr) { setLoadFailed("error"); return; }
       const next = { 1: emptyPart(false), 2: emptyPart(false), 3: emptyPart(false) };
       for (const s of sections || []) {
         if (!next[s.speaking_part]) continue;
@@ -59,7 +68,8 @@ export function TeacherSpeakingBuilder({ classId, teacherId, setScreen, showToas
       setParts(next);
       setLoadingExisting(false);
     })();
-  }, [editAssignmentId]);
+    return () => { alive = false; };
+  }, [editAssignmentId, loadTry]);
 
   function updatePart(n, patch) {
     setParts((prev) => ({ ...prev, [n]: { ...prev[n], ...patch } }));
@@ -232,7 +242,11 @@ export function TeacherSpeakingBuilder({ classId, teacherId, setScreen, showToas
   if (loadingExisting) {
     return (
       <div className="page page-wide">
-        <p className="empty-inline">Loading assignment…</p>
+        {loadFailed === "gone"
+          ? <p className="empty-inline">This assignment no longer exists.</p>
+          : loadFailed
+            ? <LoadFailed what="this assignment" onRetry={() => setLoadTry((n) => n + 1)} />
+            : <p className="empty-inline">Loading assignment…</p>}
       </div>
     );
   }
