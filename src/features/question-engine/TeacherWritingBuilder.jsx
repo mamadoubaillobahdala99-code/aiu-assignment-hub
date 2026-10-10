@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from "react";
 import { ImagePlus, X } from "lucide-react";
 import { supabase } from "../../supabaseClient";
+import { LoadFailed } from "../../components/shared";
 import { uid } from "../../lib/utils";
 import { StoredImg, fileRef } from "../../lib/storageFiles";
 import { confirmDialog } from "../../lib/confirmDialog";
@@ -38,29 +39,38 @@ export function TeacherWritingBuilder({ classId, teacherId, setScreen, showToast
   const [publishing, setPublishing] = useState(false);
   const [error, setError] = useState("");
   const [loadingExisting, setLoadingExisting] = useState(Boolean(editAssignmentId));
+  // Livraison 95: if the saved assignment cannot be read, the form is NOT
+  // shown empty (« Save » would replace the title, dates and time limit).
+  const [loadFailed, setLoadFailed] = useState("");   // "" | "error" | "gone"
+  const [loadTry, setLoadTry] = useState(0);
 
   useEffect(() => {
     if (!editAssignmentId) return;
+    let alive = true;
     (async () => {
-      const { data: a } = await supabase.from("assignments").select("title, due_date, due_time, time_limit_minutes").eq("id", editAssignmentId).single();
-      if (a) {
-        setTitle(a.title || "");
-        setDueDate(a.due_date || "");
-        setDueTime(a.due_time || "");
-        setTimeLimit(a.time_limit_minutes ? String(a.time_limit_minutes) : "");
-      }
-      const { data: sections } = await supabase
+      setLoadFailed("");
+      const { data: a, error: aErr } = await supabase.from("assignments").select("title, due_date, due_time, time_limit_minutes").eq("id", editAssignmentId).maybeSingle();
+      if (!alive) return;
+      if (aErr || !a) { setLoadFailed(aErr ? "error" : "gone"); return; }
+      setTitle(a.title || "");
+      setDueDate(a.due_date || "");
+      setDueTime(a.due_time || "");
+      setTimeLimit(a.time_limit_minutes ? String(a.time_limit_minutes) : "");
+      const { data: sections, error: sErr } = await supabase
         .from("exam_sections")
         .select("id, task_number, passage_text, image_url")
         .eq("assignment_id", editAssignmentId)
         .order("order_index");
+      if (!alive) return;
+      if (sErr) { setLoadFailed("error"); return; }
       const s1 = (sections || []).find((s) => s.task_number === 1);
       const s2 = (sections || []).find((s) => s.task_number === 2);
       setTask1(s1 ? { ...emptyTask(), sectionId: s1.id, prompt: s1.passage_text || "", imageUrl: s1.image_url || "" } : { ...emptyTask(), include: false });
       setTask2(s2 ? { ...emptyTask(), sectionId: s2.id, prompt: s2.passage_text || "" } : { ...emptyTask(), include: false });
       setLoadingExisting(false);
     })();
-  }, [editAssignmentId]);
+    return () => { alive = false; };
+  }, [editAssignmentId, loadTry]);
 
   // Revoke the local preview URL when it's replaced or the screen closes.
   useEffect(() => {
@@ -237,7 +247,11 @@ export function TeacherWritingBuilder({ classId, teacherId, setScreen, showToast
   if (loadingExisting) {
     return (
       <div className="page page-wide">
-        <p className="empty-inline">Loading assignment…</p>
+        {loadFailed === "gone"
+          ? <p className="empty-inline">This assignment no longer exists.</p>
+          : loadFailed
+            ? <LoadFailed what="this assignment" onRetry={() => setLoadTry((n) => n + 1)} />
+            : <p className="empty-inline">Loading assignment…</p>}
       </div>
     );
   }
