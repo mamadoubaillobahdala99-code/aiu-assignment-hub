@@ -17,7 +17,7 @@ Il est dépassé : ne pas l'exécuter. Il est gardé tel quel pour l'histoire.
 
 | Fichier | À quoi il sert |
 |---|---|
-| `00_etat_actuel.sql` | **Photo de la base au 08/10/2026** (après le 52) : 26 tables, contraintes, index, RLS, 87 fonctions, déclencheurs, 63 règles (58 sur `public`, 5 sur le stockage), droits (dont « jamais anon » du 33 et les droits par défaut), stockage. Aucune donnée. Voir section 3. |
+| `00_etat_actuel.sql` | **Photo de la base au 10/10/2026** (après le 53) : 26 tables, contraintes, index, RLS, 88 fonctions, déclencheurs, 63 règles (58 sur `public`, 5 sur le stockage), droits (dont « jamais anon » du 33 et les droits par défaut), stockage. Aucune donnée. Voir section 3. |
 | `09_rls_exam_content.sql` | Sécurité, étape 1 : le contenu des examens n'est plus lisible par tout compte ; la correction n'est plus visible avant publication. |
 | `10_rls_copies_classes.sql` | Sécurité, étape 2 : copies et notes privées, code de classe protégé, un étudiant ne peut plus se déclarer prof ni se noter. |
 | `11_rls_storage_profiles.sql` | Sécurité, étape 3 : dépôt de fichiers limité à ses dossiers, profils visibles seulement entre membres d'une classe. |
@@ -64,6 +64,7 @@ Il est dépassé : ne pas l'exécuter. Il est gardé tel quel pour l'histoire.
 | `50_answer_sync.sql` | La copie la plus récente gagne (livraison 88c) : `save_answer_drafts` répond aussi l'heure (du serveur) de la sauvegarde ; nouvelle `my_answer_draft_state(uuid, timestamptz)` : l'élève lit l'heure de SA copie de secours et ses réponses (mêmes règles que `my_answer_drafts` du 49 ; avec une heure donnée, les réponses ne sont renvoyées que si la copie est plus récente). Sert à reprendre sur un autre appareil la version la plus récente (tablette ↔ ordinateur) et à mettre à jour une page restée ouverte. Aucune table, aucune règle RLS, aucun droit de table changés ; nouvelle fonction : `authenticated` seulement, jamais `anon`. À lancer APRÈS le 49 (garde-fou). 4 vérifications, ré-exécutable, retour arrière exact en bas (testé). À lancer AVANT : `50_test_annule.sql` (transaction annulée ; attendu « RESULTATS : 23 OK / 0 KO »). |
 | `51_task_feedback.sql` | Un commentaire par tâche en Writing (livraison 89) : nouvelle colonne `writing_grades.task_feedback` (texte, 5 000 caractères au plus) — le commentaire du prof pour la Task 1 ou la Task 2 ; le commentaire général (`assignment_feedback.feedback`) ne change pas. Aucune règle RLS, aucun droit, aucune fonction changés : les règles existantes s'appliquent (l'élève ne le lit qu'après la publication ; seuls les profs de la classe ou de l'examen l'écrivent). 4 vérifications, ré-exécutable, retour arrière en bas (efface les commentaires par tâche). À lancer AVANT : `51_test_annule.sql` (transaction annulée ; attendu « RESULTATS : 14 OK / 0 KO »). |
 | `52_exam_integrity.sql` | La BASE tient les règles d'examen (livraison 94) — avant, la page les tenait, mais pas un appel direct à la base. **B1 gel** : pendant un gel du surveillant, rien n'est enregistré (Reading / Listening : `saved:false, reason:'frozen'` ; Writing : erreur « Frozen… », la page réessaie et enregistre dès que le prof clique « Let back in ») ; une remise Reading / Listening pendant un gel remet la copie de secours d'AVANT le gel. **B2 fin** : « fermé » = bouton Close OU heure de fin passée ; Writing d'examen : examen ouvert et épreuve commencée obligatoires ; une remise après la fin n'est acceptée que 2 min (copie déjà commencée). **B3** : marge réseau après la fin du temps 2 min au lieu de 5 (sauvegardes, remises et les 3 ramassages : `exam_collect_papers`, `exam_uncollected_papers`, `collect_class_papers`). **B5** : règle RLS des corrigés RESSERRÉE (`sa.assignment_id = a.id` : le corrigé seulement pour l'épreuve où l'élève a répondu). **B7** : nouvelle garde `assignment_class_lock` (déclencheur) : une épreuve ne change plus de classe depuis le site. **B8** : `join_exam` refuse un NOUVEAU candidat après la publication. 7 fonctions réécrites (mêmes droits), 1 garde (lancée par personne), 1 règle resserrée ; aucune table, colonne, donnée ni droit de table changés. Garde-fou au début, 6 vérifications à la fin, ré-exécutable, retour arrière exact en bas (testé : empreintes d'origine retrouvées). À lancer AVANT : `52_test_annule.sql` (transaction annulée ; attendu « RESULTATS : 49 OK / 0 KO »). |
+| `53_access_rules.sql` | 4 règles d'accès RESSERRÉES (livraison 96). **B4** : règle « teacher manages own assignment_questions » : brancher (lire, enlever) une question dans une épreuve exige aussi d'être prof de la classe de cette épreuve (`is_class_teacher` : le propriétaire de la classe ou l'équipe de l'examen). **B9** : `record_audio_play` (écoutes Listening limitées) exige d'être inscrit dans la classe et que la partie soit dans l'épreuve ; le nombre d'écoutes permis vient de `exam_sections.max_plays` (`p_max_plays` ignoré, gardé pour la page). **B10** : règle du stockage « uploads limited to own folders » : seuls les profs (`is_teacher()`) déposent, et seulement dans `images|audio|speaking/<eux-mêmes>/` (la partie « dossier d'une classe », plus utilisée, est retirée ; les fichiers déjà là ne bougent pas). **Surlignages** : les lignes en double de `reading_highlights` supprimées (la plus récente gardée), clé `reading_highlights_scope_key` refaite en `UNIQUE NULLS NOT DISTINCT` (une sauvegarde REMPLACE au lieu d'ajouter), nouveau déclencheur `reading_highlights_touch` (heure de la base ; fonction lancée par personne). Aucune table, colonne ni droit de table changés ; aucune règle élargie. `lock_timeout` 5 s, garde-fou au début, 5 vérifications à la fin, ré-exécutable, retour arrière exact en bas (testé : empreintes d'origine retrouvées ; les doubles supprimés ne reviennent pas). À lancer AVANT : `53_test_annule.sql` (transaction annulée ; attendu « RESULTATS : 49 OK / 0 KO »). |
 | `nommer_prof.sql` | **Outil, pas une étape.** Donne le rôle prof à un compte existant (remplacer `<EMAIL>`). Lancé par Mamadou seulement ; ne jamais enregistrer une vraie adresse dans le dépôt. |
 | `reinitialiser_mot_de_passe.sql` | **Outil, pas une étape.** Donne un mot de passe provisoire (règle : 8+ caractères, une lettre, un chiffre) à un compte qui a oublié le sien ; ne change rien d'autre. Option commentée : déconnecter les autres appareils (compte volé). Lancé par Mamadou seulement ; ne jamais enregistrer une vraie adresse ni un vrai mot de passe dans le dépôt. |
 
@@ -94,10 +95,15 @@ Un script plus récent a réécrit ces éléments. **La version en base est touj
 | `exam_uncollected_papers` | 36 → 52 | 52 |
 | `collect_class_papers` | 49 → 52 | 52 |
 | `join_exam` | 12 → 52 | 52 |
+| `record_audio_play` | avant le 09 → 53 | 53 |
+| `reading_highlights_touch` (nouvelle) | 53 | 53 |
 
 **Autres éléments**
 
 - Contrainte `exam_incidents_kind_check` : créée par 18, remplacée par 32 (ajoute `page_reload`).
+- Contrainte `reading_highlights_scope_key` : d'origine, remplacée par le 53 (`UNIQUE NULLS NOT DISTINCT`).
+- Règle « teacher manages own assignment_questions » : d'origine, resserrée par le 53 (B4).
+- Règle du stockage « uploads limited to own folders » : créée par 11, resserrée par le 53 (B10).
 - Règles « groups / links / questions readable by class members » : créées par 09, modifiées par 31.
 - Règles supprimées par un script et absentes de la base (c'est voulu) :
   - les anciennes règles « … viewable by authenticated » (supprimées par 09, 10 et 11) ;
@@ -108,9 +114,9 @@ Un script plus récent a réécrit ces éléments. **La version en base est touj
 - **Supprimé par le 48** (ancien système de rendu, vide) : la table `submissions` et ses 4 règles, son déclencheur
   `trg_submissions_guard`, les fonctions `submissions_guard` et `submit_student_answer`.
 - **Créé avant le 09**, donc absent des scripts de ce dossier, mais présent en base et dans `00_etat_actuel.sql` :
-  - 1 fonction encore dans sa version d'origine : `record_audio_play`
+  - plus aucune fonction dans sa version d'origine
     (`handle_new_user` a été réécrite par le 37 puis le 40, `listening_audio_status` par le 46,
-    `submit_student_answer` supprimée par le 48, `save_writing_draft` réécrite par le 52) ;
+    `submit_student_answer` supprimée par le 48, `save_writing_draft` réécrite par le 52, `record_audio_play` par le 53) ;
   - 30 règles RLS ;
   - les tables d'origine.
 
@@ -167,6 +173,13 @@ Ils sont tous présents en base.
   mêmes empreintes partout (règles `683bb7fe…`, fonctions `6ac63da8…`, déclencheurs `db2cbc37…`, droits des tables inchangés `7285f854…`).
 - À comparer à la vraie base après que Mamadou a lancé le 52.
 
+**4 quater. `00_etat_actuel.sql` régénéré le 10/10/2026 (livraison 96, après le 53)**
+
+- Même méthode : copie locale IDENTIQUE à la vraie base (empreintes), puis le 53 appliqué ; rechargé dans une base vide :
+  mêmes empreintes partout (règles `1c84b98b…`, fonctions `4570d2c6…`, déclencheurs `70bd2135…`, index `f652b25e…`,
+  règles du stockage `0c74cfd9…`, droits des tables inchangés `7285f854…`, colonnes inchangées `debdf6c4…`).
+- À comparer à la vraie base après que Mamadou a lancé le 53.
+
 **5. Secrets**
 
 Une recherche automatique de clés, jetons, mots de passe, e-mails et identifiants dans tout le dossier donne 0 résultat (hors les faux `11111111-…` et `<ID_ETUDIANT>`).
@@ -175,7 +188,7 @@ Une recherche automatique de clés, jetons, mots de passe, e-mails et identifian
 
 ## 4. Règles pour les prochains scripts
 
-1. Un nouveau script prend le numéro suivant (`53_…`) et s'ajoute ici avec une ligne dans le tableau.
+1. Un nouveau script prend le numéro suivant (`54_…`) et s'ajoute ici avec une ligne dans le tableau.
 2. Il est complet et ré-exécutable, avec un retour arrière dans un bloc `/* … */`.
 3. Il est d'abord testé dans une transaction annulée, puis exécuté par Mamadou dans Supabase.
 4. Nouvelles tables : droits pour `authenticated` seulement, jamais `anon`. La RLS n'est jamais affaiblie.

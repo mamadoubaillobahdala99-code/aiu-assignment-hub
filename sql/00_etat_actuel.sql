@@ -1,7 +1,7 @@
 -- =====================================================================
 --  AIU Assignment Hub — 00_etat_actuel.sql
---  PHOTO de la base Supabase telle qu'elle est le 8 octobre 2026
---  (apres les scripts 09 a 52). Lue en lecture seule, verifiee par
+--  PHOTO de la base Supabase telle qu'elle est le 10 octobre 2026
+--  (apres les scripts 09 a 53). Lue en lecture seule, verifiee par
 --  empreintes (md5) contre la base : voir sql/README.md.
 --
 --  NE PAS EXECUTER SUR LA BASE ACTUELLE : elle contient deja tout ceci.
@@ -324,7 +324,7 @@ alter table public.assignment_feedback add constraint assignment_feedback_assign
 alter table public.classes add constraint classes_code_key UNIQUE (code);
 alter table public.exam_session_items add constraint exam_session_items_assignment_id_key UNIQUE (assignment_id);
 alter table public.exam_sessions add constraint exam_sessions_code_key UNIQUE (code);
-alter table public.reading_highlights add constraint reading_highlights_scope_key UNIQUE (assignment_id, student_id, scope_type, section_id, question_id, option_key);
+alter table public.reading_highlights add constraint reading_highlights_scope_key UNIQUE NULLS NOT DISTINCT (assignment_id, student_id, scope_type, section_id, question_id, option_key);
 alter table public.roster add constraint roster_class_id_student_id_key UNIQUE (class_id, student_id);
 alter table public.student_answers add constraint student_answers_student_id_question_id_key UNIQUE (student_id, question_id);
 alter table public.writing_grades add constraint writing_grades_one_per_task UNIQUE (section_id, student_id);
@@ -474,7 +474,7 @@ alter table public.writing_grades enable row level security;
 alter table public.writing_responses enable row level security;
 
 -- =====================================================================
--- 5. FONCTIONS (87)
+-- 5. FONCTIONS (88)
 --    Chaque corps est celui de la base ; la ligne « Source » dit quel
 --    script l'a ecrit en dernier.
 -- =====================================================================
@@ -3081,7 +3081,22 @@ as $fn$
   where s.assignment_id in (select public.readable_paper_ids());
 $fn$;
 
--- record_audio_play — Source : (aucun script : créée avant le 09)
+-- reading_highlights_touch — Source : 53_access_rules.sql
+create or replace function public.reading_highlights_touch()
+returns trigger
+language plpgsql
+volatile
+set search_path = public
+as $fn$
+-- Livraison 96 : l'heure d'une sauvegarde de surlignage est celle de la
+-- base, pas celle de l'ordinateur de l'élève.
+begin
+  new.updated_at := now();
+  return new;
+end;
+$fn$;
+
+-- record_audio_play — Source : 53_access_rules.sql
 create or replace function public.record_audio_play(p_assignment_id uuid, p_section_id uuid, p_max_plays integer)
 returns jsonb
 language plpgsql
@@ -3089,12 +3104,32 @@ volatile
 security definer
 set search_path = public
 as $fn$
+-- Livraison 96 (B9) : la base compte les écoutes d'une partie Listening
+-- limitée. Le nombre d'écoutes permis vient de la partie elle-même
+-- (exam_sections.max_plays), plus de la page : p_max_plays est ignoré
+-- (gardé pour que la page actuelle marche sans changement).
+-- Il faut être inscrit dans la classe de l'épreuve, et la partie doit
+-- appartenir à cette épreuve.
 declare
   v_student_id uuid := auth.uid();
+  v_class_id uuid;
+  v_max integer;
   v_current integer;
 begin
   if v_student_id is null then
     raise exception 'Not authenticated';
+  end if;
+
+  select a.class_id, s.max_plays into v_class_id, v_max
+    from exam_sections s
+    join assignments a on a.id = s.assignment_id
+   where s.id = p_section_id and s.assignment_id = p_assignment_id;
+  if not found then
+    raise exception 'This part is not in this assignment';
+  end if;
+
+  if not exists (select 1 from roster r where r.class_id = v_class_id and r.student_id = v_student_id) then
+    raise exception 'Not enrolled in this class';
   end if;
 
   insert into listening_plays (assignment_id, student_id, section_id, plays_used)
@@ -3106,7 +3141,7 @@ begin
   where assignment_id = p_assignment_id and student_id = v_student_id and section_id = p_section_id
   for update;
 
-  if p_max_plays is not null and v_current >= p_max_plays then
+  if v_max is not null and v_current >= v_max then
     return jsonb_build_object('allowed', false, 'plays_used', v_current);
   end if;
 
@@ -4126,6 +4161,7 @@ CREATE TRIGGER exam_settings_guard BEFORE UPDATE ON public.exam_sessions FOR EAC
 CREATE TRIGGER exam_paper_lock BEFORE INSERT OR DELETE OR UPDATE ON public.question_answer_key FOR EACH ROW EXECUTE FUNCTION exam_paper_content_guard();
 CREATE TRIGGER exam_paper_lock BEFORE INSERT OR DELETE OR UPDATE ON public.question_groups FOR EACH ROW EXECUTE FUNCTION exam_paper_content_guard();
 CREATE TRIGGER exam_paper_lock BEFORE DELETE OR UPDATE ON public.questions FOR EACH ROW EXECUTE FUNCTION exam_paper_content_guard();
+CREATE TRIGGER reading_highlights_touch BEFORE INSERT OR UPDATE ON public.reading_highlights FOR EACH ROW EXECUTE FUNCTION reading_highlights_touch();
 CREATE TRIGGER on_auth_user_created AFTER INSERT ON auth.users FOR EACH ROW EXECUTE FUNCTION handle_new_user();
 
 -- =====================================================================
@@ -4174,12 +4210,18 @@ create policy "teacher manages own assignment_questions" on public.assignment_qu
   as permissive
   for all
   to public
-  using ((EXISTS ( SELECT 1
+  using (((EXISTS ( SELECT 1
    FROM questions q
-  WHERE ((q.id = assignment_questions.question_id) AND (q.teacher_id = ( SELECT auth.uid() AS uid))))))
-  with check ((EXISTS ( SELECT 1
+  WHERE ((q.id = assignment_questions.question_id) AND (q.teacher_id = ( SELECT auth.uid() AS uid))))) AND (EXISTS ( SELECT 1
+   FROM (exam_sections s
+     JOIN assignments a ON ((a.id = s.assignment_id)))
+  WHERE ((s.id = assignment_questions.section_id) AND is_class_teacher(a.class_id))))))
+  with check (((EXISTS ( SELECT 1
    FROM questions q
-  WHERE ((q.id = assignment_questions.question_id) AND (q.teacher_id = ( SELECT auth.uid() AS uid))))));
+  WHERE ((q.id = assignment_questions.question_id) AND (q.teacher_id = ( SELECT auth.uid() AS uid))))) AND (EXISTS ( SELECT 1
+   FROM (exam_sections s
+     JOIN assignments a ON ((a.id = s.assignment_id)))
+  WHERE ((s.id = assignment_questions.section_id) AND is_class_teacher(a.class_id))))));
 
 create policy "assignments readable by class members" on public.assignments
   as permissive
@@ -4590,7 +4632,7 @@ create policy "uploads limited to own folders" on storage.objects
   as permissive
   for insert
   to authenticated
-  with check (((bucket_id = 'assignment-files'::text) AND ((((storage.foldername(name))[1] = ANY (ARRAY['images'::text, 'audio'::text, 'speaking'::text])) AND ((storage.foldername(name))[2] = (auth.uid())::text)) OR can_write_class_file((storage.foldername(name))[1]))));
+  with check (((bucket_id = 'assignment-files'::text) AND ((storage.foldername(name))[1] = ANY (ARRAY['images'::text, 'audio'::text, 'speaking'::text])) AND ((storage.foldername(name))[2] = (( SELECT auth.uid() AS uid))::text) AND is_teacher()));
 
 -- =====================================================================
 -- 8. DROITS
@@ -4794,6 +4836,7 @@ revoke all on function public.readable_question_ids() from public, anon, authent
 grant execute on function public.readable_question_ids() to authenticated;
 revoke all on function public.readable_section_ids() from public, anon, authenticated;
 grant execute on function public.readable_section_ids() to authenticated;
+revoke all on function public.reading_highlights_touch() from public, anon, authenticated;
 revoke all on function public.record_audio_play(p_assignment_id uuid, p_section_id uuid, p_max_plays integer) from public, anon, authenticated;
 grant execute on function public.record_audio_play(p_assignment_id uuid, p_section_id uuid, p_max_plays integer) to authenticated;
 revoke all on function public.rename_exam_session(p_session_id uuid, p_name text) from public, anon, authenticated;
