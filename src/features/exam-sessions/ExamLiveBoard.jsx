@@ -128,7 +128,8 @@ export function renderCandidatesTab(v) {
     if (t?.started_at) {
       const lim = it.assignment?.time_limit_minutes;
       const end = lim ? new Date(t.started_at).getTime() + lim * 60000 : null;
-      return { kind: "work", text: `${type.toLowerCase()} · ${end ? `${left(end - now)} left` : "in progress"}`, extra,
+      // Livraison 98b: « time over », not « time over left ».
+      return { kind: "work", text: `${type.toLowerCase()} · ${end ? (end > now ? `${left(end - now)} left` : "time over") : "in progress"}`, extra,
                canExtend: Boolean(end && end > now) };
     }
     // Livraison 79: not started for the room yet, or missed.
