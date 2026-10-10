@@ -970,7 +970,9 @@ export function ExamSessionDetail({ sessionId, userId, setScreen, showToast }) {
       </div>
       <p className="panel-note" style={{ marginTop: 10 }}>
         Click a score to open that copy (the same correction screen as in a class). Bands: the teacher's band if given, otherwise the IELTS estimate.
-        The overall band is the average of the Listening, Reading and Writing bands, rounded like IELTS.
+        Overall = Listening, Reading and Writing, like IELTS: one band per skill (two papers of the same skill are averaged first),
+        then their average, rounded to the nearest half band. It appears once every paper has a band.
+        Speaking is not marked on the site: type it in the Excel file, where the overall follows.
         {session.results_released_at ? " The candidates can see their results." : " Nothing is visible to candidates before « Publish the results »."}
       </p>
     </>
