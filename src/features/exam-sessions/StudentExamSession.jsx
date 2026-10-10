@@ -304,7 +304,10 @@ export function StudentExamSession({ userId, screen, setScreen, showToast }) {
       const m = error.message || "";
       setErr(
         /No exam found/i.test(m) ? "No exam with that code. Check it with your teacher."
-        : /not open yet/i.test(m) ? "This exam is not open yet. Wait for your teacher."
+        // Livraison 95: the server says « not open yet » for an exam that
+        // has not started AND for one that is over: the text fits both.
+        : /not open yet/i.test(m) ? "This exam is not open right now. Ask your teacher if it has started or is already over."
+        : /This exam is over/i.test(m) ? "This exam is over: its results are already published. Ask your teacher."
         : /Invalid code/i.test(m) ? "That code does not look right."
         : "Could not join. Check your connection and try again."
       );
