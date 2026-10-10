@@ -113,15 +113,27 @@ export async function loadExamGrid(items, roster) {
 
 const num = (b) => (b === null || b === undefined || b === "" || isNaN(Number(b)) ? null : Number(b));
 
-// A candidate's overall band: the average of the bands of the scored
-// papers (Listening, Reading, Writing), rounded like IELTS (to the nearest
-// half band, .25 and .75 going up). Only when EVERY scored paper has a band.
+// A candidate's overall band, like IELTS (livraison 95b): ONE band per
+// skill first (two papers of the same skill are averaged, then rounded),
+// then the average of the skills (Listening, Reading, Writing), rounded to
+// the nearest half band (.25 and .75 going up). The same rule as the Excel
+// export (examExport.js), so the page and the file agree. Only when EVERY
+// scored paper has a band (the student sees this overall too: an overall
+// without the Writing would mislead him). Speaking is not marked on the
+// site: it is added in the Excel file.
 export function overallBand(papers, cellOf) {
   const list = papers.filter((p) => scored(p.assignment?.type));
   if (list.length === 0) return null;
-  const bands = list.map((p) => num(cellOf(p)?.band));
-  if (bands.some((b) => b === null)) return null;
-  return roundHalf(bands.reduce((s, b) => s + b, 0) / bands.length);
+  const bySkill = new Map();
+  for (const p of list) {
+    const b = num(cellOf(p)?.band);
+    if (b === null) return null;
+    const t = p.assignment.type;
+    if (!bySkill.has(t)) bySkill.set(t, []);
+    bySkill.get(t).push(b);
+  }
+  const skills = [...bySkill.values()].map((bs) => roundHalf(bs.reduce((s, b) => s + b, 0) / bs.length));
+  return roundHalf(skills.reduce((s, b) => s + b, 0) / skills.length);
 }
 
 export function average(values) {
